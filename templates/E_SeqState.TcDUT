@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <DUT Name="E_SeqState" Id="{ffe2060b-3fa5-4053-9b5f-01a8cbcdf9d0}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+TYPE E_SeqState :
+(
+    Idle    := 0,
+    Step1   := 10,
+    Step2   := 20,
+    Done    := 80,
+    Error   := 90
+) DINT;
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

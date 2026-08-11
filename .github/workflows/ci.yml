@@ -1,0 +1,52 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reviewer loads and lists its rules
+        run: python3 scripts/st_review.py --list-rules
+
+      # The skill's own templates must survive the skill's own reviewer. If this
+      # fails, either a template regressed or a rule became wrong - both matter.
+      - name: templates pass the reviewer they ship with
+        run: python3 scripts/st_review.py templates/ --fail-on high
+
+      - name: every example file parses
+        run: |
+          python3 scripts/tcpou.py check \
+            examples/*/*.TcPOU examples/*/*.TcIO examples/*/*.TcDUT examples/*/*.TcGVL
+
+      - name: eval grader is runnable
+        # No run directory is present in CI, so it reports every eval as missing
+        # and exits 0. This catches a syntax error or a bad default path.
+        run: python3 evals/grade.py
+
+      - name: standalone contract
+        # Nothing may point outside this repository, and no private-repo branding
+        # may leak into it. The bracket around the first letter stops each pattern
+        # matching this file, which would fail the check against its own source.
+        run: |
+          ! grep -rn '\.\./\.\.' --include='*.md' --include='*.py' . || exit 1
+          ! grep -rniE '[s]olvera|certified [b]eckhoff' . || exit 1
+          ! grep -rnE '/[h]ome/|/[p]rojects/|[C]:\\Users' \
+              --include='*.md' --include='*.py' --include='*.yml' . || exit 1
+          # This skill ships alone, so it must not point at a sibling skill the
+          # reader may not have. Drop this line once a companion is published
+          # alongside it and a cross-reference becomes accurate.
+          ! grep -rn '[t]wincat-scope' . || exit 1
+
+      - name: examples keep their upstream licences
+        # MIT and BSD-2 both require the notice to travel with the files.
+        run: |
+          for d in examples/*/; do
+            [ -f "$d/LICENSE" ] || { echo "missing LICENSE in $d"; exit 1; }
+          done

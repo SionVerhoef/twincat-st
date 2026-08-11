@@ -1,0 +1,18 @@
+# Eval runs are agent transcripts: large, machine-specific, and not worth diffing.
+# grade.py recreates summary.json from them on demand.
+evals/runs/
+
+__pycache__/
+*.pyc
+
+# TwinCAT build and user artefacts, in case a real project is ever checked out here.
+_Boot/
+_CompileInfo/
+_Libraries/
+*.tpy
+*.tclrs
+*.suo
+*.user
+*.bak
+
+.DS_Store
