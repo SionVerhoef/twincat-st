@@ -39,10 +39,9 @@ jobs:
           ! grep -rniE '[s]olvera|certified [b]eckhoff' . || exit 1
           ! grep -rnE '/[h]ome/|/[p]rojects/|[C]:\\Users' \
               --include='*.md' --include='*.py' --include='*.yml' . || exit 1
-          # This skill ships alone, so it must not point at a sibling skill the
-          # reader may not have. Drop this line once a companion is published
-          # alongside it and a cross-reference becomes accurate.
-          ! grep -rn '[t]wincat-scope' . || exit 1
+          # No guard against naming twincat-scope: that companion is published, so
+          # the README's link to it is accurate. What must never appear is a path
+          # into a sibling checkout, which the absolute-path check above covers.
 
       - name: examples keep their upstream licences
         # MIT and BSD-2 both require the notice to travel with the files.

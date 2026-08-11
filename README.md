@@ -4,6 +4,10 @@ An agent skill for writing, reviewing and debugging IEC 61131-3 **Structured Tex
 CODESYS V3 dialect family — **Beckhoff TwinCAT 3** primary (build 4024.x), **CODESYS**
 secondary. Works with Claude Code and with GitHub Copilot in VS Code, from the same files.
 
+Companion skill: **[twincat-scope](https://github.com/SionVerhoef/twincat-scope)** records and
+triages TwinCAT 3 Scope measurements — what the code written here actually does on the machine.
+They are independent; install either alone.
+
 > **Not affiliated with or endorsed by Beckhoff Automation GmbH & Co. KG.**
 > "TwinCAT" and "Beckhoff" are trademarks of Beckhoff Automation GmbH & Co. KG, used here
 > nominatively to describe what this skill works with. "EtherCAT" is a registered trademark and
