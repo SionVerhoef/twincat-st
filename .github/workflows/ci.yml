@@ -20,6 +20,12 @@ jobs:
       - name: templates pass the reviewer they ship with
         run: python3 scripts/st_review.py templates/ --fail-on high
 
+      # The other half of the gate: quiet-on-good-code cannot catch a rule that has
+      # silently stopped detecting. This asserts every rule still fires, that the
+      # known false positives stay fixed, and that tcpou.py round trips byte-exact.
+      - name: every rule still detects its defect
+        run: python3 tests/run_tests.py
+
       - name: every example file parses
         run: |
           python3 scripts/tcpou.py check \

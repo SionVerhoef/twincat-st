@@ -35,8 +35,39 @@ First public version, extracted from a private repository.
 - Known-good skeletons for a sequence FB, a state enum and a TcUnit suite. They pass the
   skill's own reviewer.
 
+### Fixed after the first external test
+
+An independent test on Windows against a 1352-file TwinCAT project, plus a review of the
+findings it produced.
+
+- **`CP8`/`CP28` missed the assignment form.** `IF fActual = fTarget` was reported but
+  `bAtTarget := (fActual = fTarget);` was not — a whole-line skip on `:=` discarded the
+  exact defect the skill leads with. Now excluded per operator instead of per line.
+- **`X4` named the wrong token and ignored guards that were there.** It read `x / TO_REAL(n)`
+  as dividing by `TO_REAL`, and reported `stCfg.nDiv` and `aVals[1]` as unguarded while the
+  line above them read `IF stCfg.nDiv <> 0`. Guards now match the whole divisor expression,
+  a conversion call is guarded through its argument, and `IF n = 0 THEN RETURN` counts.
+- **`X6` ranked a METHOD parameter like an unwired FB input.** A method call site must bind
+  every input, so that case now reports `low`. It is not dropped — a caller can still pass
+  its own unassigned reference through. Roughly 44% of `X6` findings on real OOP code.
+- **`tcpou.py` rewrote every line ending in a file whose endings were mixed.** One stray
+  CRLF in an LF file became 152 after a no-op edit. The text is no longer normalised on
+  read; only the incoming payload is matched to the file's dominant ending.
+- **`tcpou.py` raised a stack trace on a missing path** in all six subcommands. It now
+  reports the same way `st_review.py` does.
+- **Docs.** `SKILL.md` gained the full `tcpou.py` command table (`new`'s signature was
+  documented nowhere), the `--fail-on`/`--min-severity`/`--rules` flags, the default gate,
+  and advice to scan the application folder rather than the whole `.plcproj`. The README
+  gained Windows install and invocation instructions: `python3` cannot work there, since
+  the python.org installer creates no `python3.exe` and the Microsoft Store alias stub
+  answers instead.
+
 ### Validation
 
+- `tests/run_tests.py`, in CI: every rule must still fire on a defective fixture, the
+  negative fixture must stay silent, `X6` must separate its two cases by severity, and
+  `tcpou.py` must round trip byte-exact across BOM, LF, CRLF and mixed-ending files.
+  Verified by mutation — reverting any of the four fixes above fails it.
 - Reviewer swept across **440 real `.TcPOU` files**; four false-positive classes found and
   fixed, two contested rules moved behind `--pedantic`.
 - `evals/` holds five prompts and a mechanical grader. Iteration 1 scored 31/31 with the

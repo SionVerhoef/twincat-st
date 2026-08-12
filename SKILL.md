@@ -73,11 +73,20 @@ Match the surrounding project's conventions even where they differ from `referen
 Run the reviewer on anything you wrote or were asked to review:
 
 ```bash
-python3 scripts/st_review.py <file-or-dir>...        # defect rules
-python3 scripts/st_review.py src/ --pedantic         # + style rules
-python3 scripts/st_review.py src/ --json             # machine-readable
-python3 scripts/st_review.py --list-rules            # what it checks
+python3 scripts/st_review.py <file-or-dir>...             # defect rules
+python3 scripts/st_review.py src/ --pedantic              # + style rules
+python3 scripts/st_review.py src/ --json                  # machine-readable
+python3 scripts/st_review.py src/ --fail-on high          # CI gate (already the default)
+python3 scripts/st_review.py src/ --min-severity medium   # hide the low findings
+python3 scripts/st_review.py src/ --rules X1,X5,CP8       # only these rules
+python3 scripts/st_review.py --list-rules                 # what it checks
 ```
+
+**On Windows use `py -3`, not `python3`** — see the README. That applies to every command in this file.
+
+**Point it at the code you own, not at the whole `.plcproj`.** A project pulls in vendor and framework libraries nobody on the team can change, and their findings bury yours: on one real 1352-file project, scanning everything gave 835 findings where the 111 application files gave 68. Scan the application folder.
+
+**Exit status is 1 only at `--fail-on` or above, and that defaults to `high`.** A run reporting hundreds of `medium` findings still exits 0 — that is the gate working, not the tool ignoring them. `--min-severity` filters *before* the gate, so hiding a severity also stops it ever failing a build.
 
 It parses `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking **every** declaration/implementation pair — POU body, methods, property getters and setters. That matters: a top-level-only parse misses about 84% of the code in an OOP project.
 
@@ -139,13 +148,29 @@ Load a reference when the task reaches it — don't read them all up front.
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from three published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 
-Editing a `.TcPOU` as plain text is how you corrupt a project. Use `scripts/tcpou.py`, and afterwards:
+Both scripts need Python 3 and nothing else. On Windows that means `py -3` — see the README.
+
+### `tcpou.py`
+
+Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
 
 ```bash
-python3 scripts/tcpou.py check <file>...
+python3 scripts/tcpou.py show     <file>                                   # parts + encoding
+python3 scripts/tcpou.py get      <file> --part impl                       # print one part
+python3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
+python3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold
+python3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
+python3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
+python3 scripts/tcpou.py check    <file>...                                # validate
 ```
 
-**A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional.
+- `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`/`--implements`.
+- `set` reads stdin when `--from-file` is omitted.
+- Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
+
+**Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
+
+**A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional; it is idempotent, so running it twice is safe.
 
 ## Adding material to this skill
 

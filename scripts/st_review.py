@@ -57,7 +57,11 @@ RULES: dict[str, tuple[str, str]] = {
     "X3": ("medium", "CASE without ELSE — corrupted or new state falls through silently"),
     "X4": ("medium", "division by a variable with no zero guard"),
     "X5": ("high", "pointer dereferenced without a NULL check"),
-    "X6": ("medium", "REFERENCE TO used without __ISVALIDREF anywhere in the POU"),
+    # Reported low when the reference is a METHOD parameter: a method call site must
+    # supply every input, so that reference is always bound. Still reported, because
+    # a caller can pass its own unassigned reference straight through.
+    "X6": ("medium", "REFERENCE TO used without __ISVALIDREF anywhere in the POU "
+                     "(low for a METHOD parameter, which the call site always binds)"),
     "X7": ("medium", "state machine has no error/fault state"),
     "X8": ("medium", "FB_init does real work without an online-change (bInCopyCode) guard"),
     "CP8": ("high", "equality/inequality comparison on REAL/LREAL"),
@@ -337,6 +341,25 @@ def is_pointerish(t: str) -> bool:
 
 NUM = r"(?:\d+\.\d+|\.\d+|\d+)"
 
+# A divisor, as written: an identifier plus any .member and [index] chain, then an
+# optional argument list that marks it a call rather than a variable. Capturing only
+# the leading identifier made 'TO_REAL' the divisor of 'x / TO_REAL(n)' and hid the
+# guard on 'IF stCfg.nDiv <> 0', so the rule contradicted the code it was reading.
+DIVISOR = re.compile(
+    r"/\s*([A-Za-z_]\w*(?:\s*\.\s*\w+|\s*\[[^\]]*\])*)\s*(\(\s*([^()]*?)\s*\))?"
+)
+# TO_REAL / DINT_TO_LREAL and friends: the argument is the value being divided by,
+# so the guard belongs on it. Any other call has no divisor name worth reporting.
+CONVERSION = re.compile(r"^(?:TO_[A-Z]+\d*|[A-Z]+\d*_TO_[A-Z]+\d*)$", re.I)
+
+
+def guard_pattern(expr: str) -> str:
+    """Regex matching `expr` in source, tolerating whitespace inside the path."""
+    e = re.escape(expr)
+    for lit, spaced in ((r"\.", r"\s*\.\s*"), (r"\[", r"\s*\[\s*"), (r"\]", r"\s*\]\s*")):
+        e = e.replace(lit, spaced)
+    return e
+
 
 # --------------------------------------------------------------------------- checks
 
@@ -434,19 +457,35 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         # --- X4 unguarded division ------------------------------------------
         const_names = {v.name for v in scope_vars if "CONSTANT" in v.section}
         for i, line in enumerate(lines):
-            for m in re.finditer(r"/\s*([A-Za-z_]\w*)", line):
-                name = m.group(1)
-                if name.upper() in KEYWORDS or name in const_names:
+            for m in DIVISOR.finditer(line):
+                expr = re.sub(r"\s+", "", m.group(1))
+                if m.group(2):
+                    arg = re.sub(r"\s+", "", m.group(3) or "")
+                    root = re.match(r"[A-Za-z_]\w*", expr).group(0)
+                    if not (CONVERSION.match(root)
+                            and re.fullmatch(r"[A-Za-z_][\w.\[\]]*", arg)):
+                        continue      # a call whose result has no name to guard
+                    expr = arg
+                root = re.match(r"[A-Za-z_]\w*", expr).group(0)
+                if root.upper() in KEYWORDS or root in const_names:
                     continue
+                # Match the guard against the whole divisor expression. Matching only
+                # the root reported 'stCfg.nDiv' as unguarded while the line above it
+                # read 'IF stCfg.nDiv <> 0' — the rule contradicting the code's guard.
+                e = guard_pattern(expr)
                 window = "\n".join(lines[max(0, i - 12): i + 1])
-                if re.search(rf"\b{re.escape(name)}\s*(<>|>|<)\s*0", window):
+                if re.search(rf"(?<![.\w]){e}\s*(<>|>|<)\s*0", window):
                     continue
-                if re.search(rf"\bABS\s*\(\s*{re.escape(name)}\s*\)\s*>", window):
+                if re.search(rf"\bABS\s*\(\s*{e}\s*\)\s*>", window, re.I):
+                    continue
+                # 'IF n = 0 THEN RETURN; END_IF' is the other guard shape in wide use.
+                if re.search(rf"(?<![.\w]){e}\s*=\s*0\s*THEN\b.{{0,60}}?"
+                             rf"\b(RETURN|EXIT|CONTINUE)\b", window, re.I | re.S):
                     continue
                 sup, _ = suppressed(raw_lines, i, "X4")
                 if not sup:
                     add("X4", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
-                        f"'{name}' is not proven non-zero before the division; a "
+                        f"'{expr}' is not proven non-zero before the division; a "
                         f"divide-by-zero faults the runtime", unit.impl_line)
                 break
 
@@ -473,8 +512,12 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         for i, line in enumerate(lines):
             for m in re.finditer(r"([A-Za-z_]\w*(?:\.\w+)*)\s*(=|<>)\s*([A-Za-z_]\w*(?:\.\w+)*|" + NUM + r")", line):
                 lhs, op, rhs = m.group(1), m.group(2), m.group(3)
-                if re.match(r"^\s*(IF|ELSIF|WHILE|UNTIL|CASE)\b", line, re.I) is None and ":=" in line:
-                    continue          # an assignment, not a comparison
+                # Exclude ':=' where it actually sits, not anywhere on the line. A
+                # whole-line skip also discarded 'bAtTarget := (fA = fB);' — storing a
+                # comparison in a BOOL is everyday ST, and it is the exact defect this
+                # rule exists for.
+                if line[:m.start(2)].rstrip().endswith(":"):
+                    continue          # ':=' assignment, not a comparison
                 lroot, rroot = lhs.split(".")[0], rhs.split(".")[0]
                 float_lit = bool(re.fullmatch(r"\d+\.\d+|\.\d+", rhs))
                 if lroot in real_names or rroot in real_names or float_lit:
@@ -572,12 +615,20 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         if not re.search(rf"__ISVALIDREF\s*\(\s*{re.escape(v.name)}", all_impl, re.I):
             if re.search(rf"(?<![.\w]){re.escape(v.name)}\b", all_impl):
                 unit = next((u for u in sf.units if u.name == v.unit), sf.units[0])
+                # A METHOD parameter is bound at every call site — the compiler will
+                # not let a caller omit it — so it cannot be the unwired-input defect
+                # this rule is aimed at. Reported low rather than dropped, because a
+                # caller can still pass its own unassigned reference straight through.
+                bound = unit.kind == "Method" and v.section in ("VAR_INPUT", "VAR_IN_OUT")
+                sev = "low" if bound else RULES["X6"][0]
+                why = ("the call site always binds it, but a caller can pass an "
+                       "unassigned reference through" if bound else
+                       "an unassigned reference dereferences address zero")
                 if "X6" in enabled:
                     found.append(Finding(
-                        "X6", RULES["X6"][0], fname, v.unit, unit.decl_line + v.line - 1,
+                        "X6", sev, fname, v.unit, unit.decl_line + v.line - 1,
                         f"{v.name} : {v.type}",
-                        f"'{v.name}' is used but never checked with __ISVALIDREF; an "
-                        f"unassigned reference dereferences address zero"))
+                        f"'{v.name}' is used but never checked with __ISVALIDREF; " + why))
 
     # --- CP24 unused variables -------------------------------------------------
     for v in file_vars:
