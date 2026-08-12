@@ -1,0 +1,74 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Filler" Id="{0f2a71c4-9b3d-4e18-a5c2-6d40e1b83a17}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Filler
+VAR_INPUT
+    ixStart          : BOOL;
+    ixProductPresent : BOOL;
+    irTargetVolume   : LREAL;   // ml
+END_VAR
+VAR_OUTPUT
+    qxFilling  : BOOL;
+    qxDone     : BOOL;
+    qxError    : BOOL;
+    qnErrorID  : UDINT;
+END_VAR
+VAR
+    eState         : E_FillState;
+    rActualVolume  : LREAL;     // ml
+    fbDoseTimer    : TON;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE eState OF
+    E_FillState.Idle:
+        IF ixStart AND ixProductPresent THEN
+            eState := E_FillState.Dosing;
+        END_IF
+
+    E_FillState.Dosing:
+        qxFilling := TRUE;
+        IF THIS^.DoseComplete() THEN
+            eState := E_FillState.Done;
+        END_IF
+
+    E_FillState.Done:
+        qxFilling := FALSE;
+        qxDone := TRUE;
+        IF NOT ixStart THEN
+            eState := E_FillState.Idle;
+        END_IF
+
+    E_FillState.Fault:
+        qxFilling := FALSE;
+        qxError := TRUE;
+        IF NOT ixStart THEN
+            qxError := FALSE;
+            eState := E_FillState.Idle;
+        END_IF
+ELSE
+    eState := E_FillState.Fault;
+END_CASE
+]]></ST>
+    </Implementation>
+    <Method Name="DoseComplete" Id="{0f2a71c4-9b3d-4e18-a5c2-6d40e1b83a18}">
+      <Declaration><![CDATA[METHOD DoseComplete : BOOL
+VAR
+    nSettleCount : DINT;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Let the dose settle before comparing against the target.
+WHILE fbDoseTimer.Q = FALSE DO
+    nSettleCount := nSettleCount + 1;
+    fbDoseTimer(IN := TRUE, PT := 250);
+END_WHILE
+
+IF rActualVolume = irTargetVolume THEN
+    DoseComplete := TRUE;
+END_IF
+]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>

@@ -31,10 +31,24 @@ jobs:
           python3 scripts/tcpou.py check \
             examples/*/*.TcPOU examples/*/*.TcIO examples/*/*.TcDUT examples/*/*.TcGVL
 
+      # The grader decides whether the skill looks like it works, so it gets the same
+      # treatment as the reviewer: a gold run must score full marks and a null run must
+      # score zero. Without this a check that passes for free reads as a win.
+      - name: eval grader is calibrated
+        run: python3 evals/selftest.py
+
       - name: eval grader is runnable
         # No run directory is present in CI, so it reports every eval as missing
         # and exits 0. This catches a syntax error or a bad default path.
         run: python3 evals/grade.py
+
+      - name: fixture project has its documented baseline
+        # Exactly three high-severity findings, all inside FB_Filler.DoseComplete. If
+        # this drifts, every artifact eval is grading against the wrong original.
+        run: |
+          n=$(python3 scripts/st_review.py evals/fixture-project --json \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["summary"]["high"])')
+          [ "$n" = "3" ] || { echo "expected 3 high findings, got $n"; exit 1; }
 
       - name: standalone contract
         # Nothing may point outside this repository, and no private-repo branding

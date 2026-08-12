@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Homing" Id="{5c81d3ea-27f6-4b90-8e14-af0329d7b652}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Homing
+VAR_INPUT
+    ixStart      : BOOL;
+    ixHomeSensor : BOOL;
+END_VAR
+VAR_OUTPUT
+    qxHomed : BOOL;
+    qxError : BOOL;
+END_VAR
+VAR
+    nStep : INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE nStep OF
+    0:  // idle
+        IF ixStart THEN
+            nStep := 10;
+        END_IF
+
+    10: // driving to the home sensor, waiting for it to make
+        IF ixHomeSensor THEN
+            qxHomed := TRUE;
+            nStep := 20;
+        END_IF
+
+    20: // homed, hold until the request drops
+        IF NOT ixStart THEN
+            qxHomed := FALSE;
+            nStep := 0;
+        END_IF
+
+    99: // fault
+        qxError := TRUE;
+        IF NOT ixStart THEN
+            qxError := FALSE;
+            nStep := 0;
+        END_IF
+ELSE
+    nStep := 99;
+END_CASE
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

@@ -80,7 +80,7 @@ twincat-st/
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
 ├── tests/                              every rule must fire; fixed false positives must stay fixed
-├── evals/                              prompts + a mechanical grader, and iteration-1 results
+├── evals/                              A/B prompts, a fixture project, and a self-graded grader
 └── ATTRIBUTIONS.md                     what this was built from, and what each source gave it
 ```
 

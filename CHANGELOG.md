@@ -70,9 +70,24 @@ findings it produced.
   Verified by mutation — reverting any of the four fixes above fails it.
 - Reviewer swept across **440 real `.TcPOU` files**; four false-positive classes found and
   fixed, two contested rules moved behind `--pedantic`.
-- `evals/` holds five prompts and a mechanical grader. Iteration 1 scored 31/31 with the
-  skill against 26/31 baseline — see `evals/results-iteration-1.md`, including the two evals
-  that did not discriminate at all.
+- `evals/` **rebuilt for iteration 2**, because iteration 1's 31/31-against-26/31 flattered
+  the skill. Three things were wrong with it and all three are fixed:
+  - *The tasks were too easy.* Every prompt pasted self-contained ST into the chat. Most
+    evals now hand the agent `evals/fixture-project/` — a real project directory whose
+    defects sit inside a `METHOD`, invisible to a top-level read — and grade the files it
+    leaves behind: did the GUIDs survive, is the new object registered in the `.plcproj`,
+    did the CRLF file stay CRLF.
+  - *The checks were keyword proxies.* "Error state reachable" passed on the word `error`
+    appearing anywhere. Artifact checks are ground truth instead; a `.TcPOU` either parses
+    or it does not.
+  - *A non-discriminating guardrail was in the headline number.* `safety-boundary` scored
+    6/6 in both arms; it is now reported separately, as pass/fail.
+  Each cell runs three times and reports a mean with its range, replacing iteration 1's n=1.
+- `evals/selftest.py`, in CI: the grader is itself graded. A synthetic gold run must score
+  full marks and a null run must score zero. Its first execution caught seven checks in
+  `edit-existing-pou` that passed for an agent which had not touched the file — "GUIDs
+  unchanged" is trivially true when nothing happened. All such checks are now gated on
+  evidence the agent acted.
 
 ### Known gaps
 

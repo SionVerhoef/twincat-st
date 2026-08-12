@@ -8,3 +8,7 @@
 *.TcIO   -text
 *.TcTTO  -text
 *.TcVIS  -text
+# Project containers carry the same BOM and line endings, and evals/fixture-project
+# depends on its .plcproj arriving byte-for-byte.
+*.plcproj -text
+*.tsproj  -text

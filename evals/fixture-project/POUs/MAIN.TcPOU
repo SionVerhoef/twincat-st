@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{9b4e0c15-3af8-42d7-b06e-71c8d5a29e33}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    fbHoming : FB_Homing;
+    fbFiller : FB_Filler;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fbHoming(ixStart := GVL_Machine.xRunRequest,
+         ixHomeSensor := GVL_Machine.xHomeSensor);
+
+fbFiller(ixStart := GVL_Machine.xRunRequest AND fbHoming.qxHomed,
+         ixProductPresent := GVL_Machine.xProductPresent,
+         irTargetVolume := GVL_Machine.rTargetVolume);
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
