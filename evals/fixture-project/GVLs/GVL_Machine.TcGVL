@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <GVL Name="GVL_Machine" Id="{6d13f8b2-40ae-4c97-85d1-e2093ba4f7c6}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+    xRunRequest     : BOOL;
+    xHomeSensor     : BOOL;
+    xProductPresent : BOOL;
+    rTargetVolume   : LREAL := 250.0;   // ml
+END_VAR
+]]></Declaration>
+  </GVL>
+</TcPlcObject>

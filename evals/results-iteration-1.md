@@ -1,5 +1,11 @@
 # Eval results — iteration 1
 
+> **Superseded.** Kept as the historical record. The harness has since been rebuilt: see
+> `README.md` in this folder for what changed and why these numbers read higher than the
+> skill deserves. In short — the tasks were self-contained chat prompts rather than a
+> project on disk, every check was a keyword proxy over prose, and a non-discriminating
+> guardrail was counted in the headline total.
+
 Five prompts from `evals.json`, each run twice: once by an agent told to read and follow the skill, once by an agent told to answer from its own knowledge and not read the skill. Graded mechanically against 31 objective checks.
 
 Run 2026-08-11. One run per cell, no repeats — treat single-point differences as noise.
