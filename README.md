@@ -24,8 +24,30 @@ git submodule add https://github.com/SionVerhoef/twincat-st .claude/skills/twinc
 git submodule add https://github.com/SionVerhoef/twincat-st .github/skills/twincat-st
 ```
 
-Or just clone it anywhere and point your agent at `SKILL.md`. Python 3 is the only
-requirement, and both scripts use the standard library alone.
+Or just clone it anywhere and point your agent at `SKILL.md`.
+
+### Python
+
+Both scripts need **Python 3** and nothing else — standard library only, no `pip install`.
+
+On **Windows**, which is where TwinCAT runs:
+
+```powershell
+winget install -e --id Python.Python.3.12
+```
+
+Then invoke the scripts with **`py -3`**, never `python3`:
+
+```powershell
+py -3 scripts\st_review.py src\
+```
+
+Windows has no `python3.exe`. The python.org installer — which is what winget fetches —
+creates `python.exe` and the `py` launcher, so a bare `python3` falls through to the
+Microsoft Store alias stub, which prints *"Python was not found"* and exits 1 **even when
+Python is installed correctly**. The scripts cannot warn you about this, because the stub
+answers before Python ever starts. The docs here write `python3` for brevity; read it as
+`py -3` on Windows.
 
 ## The claim
 
@@ -57,6 +79,7 @@ twincat-st/
 │   └── codesys.md                      VENDOR — untested, flagged as such
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
+├── tests/                              every rule must fire; fixed false positives must stay fixed
 ├── evals/                              prompts + a mechanical grader, and iteration-1 results
 └── ATTRIBUTIONS.md                     what this was built from, and what each source gave it
 ```
@@ -80,7 +103,12 @@ Exit status is 1 when anything at or above `--fail-on` (default `high`) is found
 
 ### How it was validated
 
-- **Detection:** a fixture exercising every rule; each fires exactly once.
+- **Detection:** `tests/run_tests.py` asserts every one of the 19 rules still fires on a
+  deliberately defective fixture, and that the reviewer stays silent on a second fixture
+  collecting every shape that was once a false positive. Both run in CI. Checking only that
+  good code stays clean cannot catch a rule that has quietly stopped detecting anything —
+  which is how `CP8` came to miss `bAtTarget := (fA = fB);`, the assignment form of the very
+  defect this skill leads with.
 - **False positives:** swept across **440 real `.TcPOU` files** from Beckhoff's own samples, TcUnit, TcMatrix, the PackML example and Stefan Henneken's corpus. Four genuine false-positive classes were found and fixed during tuning — member access via `THIS^.` being read as an unused variable, type names leaking between methods of the same file, `POINTER TO LREAL` being treated as a float, and the mandatory `FB_init` parameters being reported as dead. Two contested rules (line length, early `RETURN`) were moved behind `--pedantic` because they fire hundreds of times on well-regarded code and drown the real findings.
 - **Self-consistency:** the skill's own templates pass its own reviewer.
 

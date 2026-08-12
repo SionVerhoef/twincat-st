@@ -47,8 +47,16 @@ class TcFile:
         self.has_bom = raw.startswith(BOM)
         if self.has_bom:
             raw = raw[len(BOM):]
-        self.crlf = b"\r\n" in raw
-        self.text = raw.decode("utf-8").replace("\r\n", "\n")
+        # Hold the text exactly as stored, line endings included. Normalising the
+        # whole file to one ending and converting back on save rewrote every line
+        # of a mixed-ending file: one stray CRLF in an LF file turned into 152, so
+        # a one-line edit produced a whole-file diff. `eol` is only used to match
+        # incoming source to whatever the file already predominantly uses.
+        n_crlf = raw.count(b"\r\n")
+        n_lf = raw.count(b"\n") - n_crlf
+        self.mixed = bool(n_crlf and n_lf)
+        self.eol = "\r\n" if n_crlf > n_lf else "\n"
+        self.text = raw.decode("utf-8")
 
     # -- structure -----------------------------------------------------------
 
@@ -81,7 +89,7 @@ class TcFile:
         span = self.parts().get(key)
         if span is None:
             raise KeyError(key)
-        return self.text[span[0]:span[1]]
+        return self.text[span[0]:span[1]].replace("\r\n", "\n")
 
     def set(self, key, body):
         if "]]>" in body:
@@ -89,13 +97,13 @@ class TcFile:
         span = self.parts().get(key)
         if span is None:
             raise KeyError(key)
+        body = body.replace("\r\n", "\n").replace("\n", self.eol)
         self.text = self.text[:span[0]] + body + self.text[span[1]:]
 
     # -- output --------------------------------------------------------------
 
     def save(self):
-        text = self.text.replace("\n", "\r\n") if self.crlf else self.text
-        data = text.encode("utf-8")
+        data = self.text.encode("utf-8")
         if self.has_bom:
             data = BOM + data
         open(self.path, "wb").write(data)
@@ -181,8 +189,9 @@ def register(plcproj, files):
     has_bom = raw.startswith(BOM)
     if has_bom:
         raw = raw[len(BOM):]
-    crlf = b"\r\n" in raw
-    text = raw.decode("utf-8").replace("\r\n", "\n")
+    n_crlf = raw.count(b"\r\n")
+    eol = "\r\n" if n_crlf > raw.count(b"\n") - n_crlf else "\n"
+    text = raw.decode("utf-8")      # as stored; see TcFile.__init__
 
     base = os.path.dirname(os.path.abspath(plcproj))
     added = []
@@ -192,9 +201,9 @@ def register(plcproj, files):
             print(f"  already registered: {rel}")
             continue
         entry = (
-            f'    <Compile Include="{rel}">\n'
-            f"      <SubType>Code</SubType>\n"
-            f"    </Compile>\n"
+            f'    <Compile Include="{rel}">{eol}'
+            f"      <SubType>Code</SubType>{eol}"
+            f"    </Compile>{eol}"
         )
         # Insert into the ItemGroup that already holds Compile items.
         anchor = text.rfind("</Compile>")
@@ -203,12 +212,11 @@ def register(plcproj, files):
             text = text[:cut] + entry + text[cut:]
         else:
             cut = text.rindex("</Project>")
-            text = text[:cut] + f"  <ItemGroup>\n{entry}  </ItemGroup>\n" + text[cut:]
+            text = text[:cut] + f"  <ItemGroup>{eol}{entry}  </ItemGroup>{eol}" + text[cut:]
         added.append(rel)
 
     if added:
-        out = text.replace("\n", "\r\n") if crlf else text
-        data = out.encode("utf-8")
+        data = text.encode("utf-8")
         if has_bom:
             data = BOM + data
         open(plcproj, "wb").write(data)
@@ -231,7 +239,12 @@ def check(path):
     if not raw.startswith(BOM):
         notes.append("no UTF-8 BOM (XAE writes one; edits here will preserve its absence)")
     body = raw[len(BOM):] if raw.startswith(BOM) else raw
-    if b"\r\n" not in body:
+    n_crlf = body.count(b"\r\n")
+    n_lf = body.count(b"\n") - n_crlf
+    if n_crlf and n_lf:
+        notes.append(f"mixed line endings ({n_crlf} CRLF, {n_lf} LF); "
+                     "edits here leave each line as it is")
+    elif not n_crlf:
         notes.append("LF line endings, not CRLF (edits here will preserve LF)")
 
     text = body.decode("utf-8", errors="replace")
@@ -298,7 +311,8 @@ def main():
 
     if a.cmd == "show":
         f = TcFile(a.file)
-        enc = ("BOM" if f.has_bom else "no-BOM") + ", " + ("CRLF" if f.crlf else "LF")
+        eol = "mixed CRLF+LF" if f.mixed else ("CRLF" if f.eol == "\r\n" else "LF")
+        enc = ("BOM" if f.has_bom else "no-BOM") + ", " + eol
         print(f"{a.file}  [{enc}]")
         for key, (s, e) in f.parts().items():
             first = f.text[s:e].strip().splitlines()
@@ -371,4 +385,13 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # A stack trace in agent output invites the agent to start debugging this tool
+    # instead of fixing its own argument. Report the same way st_review.py does.
+    try:
+        sys.exit(main())
+    except FileNotFoundError as exc:
+        print(f"  ! no such path: {exc.filename}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as exc:
+        print(f"  ! {exc.filename}: {exc.strerror}", file=sys.stderr)
+        sys.exit(1)

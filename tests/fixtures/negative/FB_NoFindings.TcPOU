@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_NoFindings" Id="{c5f0b7d2-6a34-49e8-8b71-9e4d20fa6c38}" SpecialFunc="None">
+    <Declaration><![CDATA[// Shapes that were reported and should not have been. Every one of these was a
+// real false positive at some point; the reviewer must stay silent on all of them.
+// Checked without --pedantic, so the early RETURN below is not a CP14 finding.
+FUNCTION_BLOCK FB_NoFindings
+VAR_INPUT
+    stCfg : ST_Cfg;
+    aVals : ARRAY[1..4] OF DINT;
+    nRaw : DINT;
+    fA : LREAL;
+    fB : LREAL;
+    bGo : BOOL;
+END_VAR
+VAR_OUTPUT
+    fResult : LREAL;
+    bBigger : BOOL;
+END_VAR
+VAR
+    fbTimer : TON;
+    refCfg : REFERENCE TO ST_Cfg;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// X4: the guard is on the whole divisor expression, not on its root identifier.
+IF stCfg.nDiv <> 0 THEN
+    fResult := 1.0 / stCfg.nDiv;
+END_IF
+IF aVals[1] <> 0 THEN
+    fResult := 1.0 / aVals[1];
+END_IF
+
+// X4: an early return is a guard too, and a conversion divides by its argument.
+IF nRaw = 0 THEN
+    RETURN;
+END_IF
+fResult := 100.0 / nRaw;
+fResult := fA / TO_LREAL(nRaw);
+
+// CP8: an ordering comparison is fine, and ':=' is an assignment, not a test.
+bBigger := fA > fB;
+fA := fB;
+
+// X2: a TIME literal is what the preset wants.
+fbTimer(IN := bGo, PT := T#1S);
+
+// X6: validated before use.
+IF __ISVALIDREF(refCfg) THEN
+    fResult := fResult + TO_LREAL(refCfg.nDiv);
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

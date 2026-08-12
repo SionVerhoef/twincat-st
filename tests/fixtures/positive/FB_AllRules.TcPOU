@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_AllRules" Id="{7a1c0e3a-4b62-4d18-9d5e-2f0c8b41a901}" SpecialFunc="None">
+    <Declaration><![CDATA[// Every rule fires at least once somewhere in this folder. Keep each block minimal:
+// this file exists so a rule that silently stops detecting fails CI, not to look
+// like real code. Nothing here is a style example - it is deliberately defective.
+FUNCTION_BLOCK FB_AllRules
+VAR_INPUT
+    refCfg : REFERENCE TO ST_Cfg;   // X6 medium - an FB input can be left unwired
+    fA : LREAL;
+    fB : LREAL;
+    tA : TIME;
+    tB : TIME;
+    nDiv : DINT;
+    bGo : BOOL;
+    eMode : E_Mode;
+    nP9 : INT;
+    nP10 : INT;
+    nP11 : INT;                     // CP23 - twelve pins, over the limit of ten
+END_VAR
+VAR_OUTPUT
+    bFlag : BOOL;
+END_VAR
+VAR
+    fbTimer : TON;
+    pBuf : POINTER TO BYTE;
+    pOther : POINTER TO BYTE;
+    aInit : ARRAY[1..4] OF INT;
+    nUnused : INT;                  // CP24 - declared and never referenced
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[bFlag := (fA = fB);                 // CP8  - float equality, assignment form
+bFlag := (tA = tB);                 // CP28 - TIME equality
+fbTimer(IN := bGo, PT := 500);      // X2   - bare number where TIME is required
+fbTimer(IN := FALSE, PT := T#1S);   // CP20 - same instance called from two sites
+fA := 1.0 / nDiv;                   // X4   - no zero guard on nDiv
+pBuf := __NEW(BYTE);                // E1   - allocation outside FB_init
+pBuf^ := 1;                         // X5   - dereference with no NULL check
+IF pBuf > pOther THEN               // E3   - ordering comparison on a pointer
+    RETURN;                         // CP14 - early RETURN (pedantic)
+END_IF
+FB_AllRules();                      // CP13 - calls itself
+WHILE bGo DO                        // X1   - loop with no provable bound
+    bGo := FALSE;
+END_WHILE
+WHILE bGo DO   // lint:allow X1
+    bGo := FALSE;                   // X0   - the suppression above gives no reason
+END_WHILE
+CASE eMode OF                       // X3   - no ELSE branch
+    0: nP9 := nP10 + nP11;
+END_CASE
+refCfg.nId := aInit[1];             // X6   - never checked with __ISVALIDREF
+// L11 - this comment is deliberately longer than the eighty character line limit PLCopen suggests
+]]></ST>
+    </Implementation>
+    <Method Name="HandleValue" Id="{7a1c0e3a-4b62-4d18-9d5e-2f0c8b41a902}">
+      <Declaration><![CDATA[METHOD HandleValue : BOOL
+VAR_INPUT
+    refStamp : REFERENCE TO DT;     // X6 low - a call site must always bind this
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[HandleValue := (refStamp <> DT#1970-01-01-00:00:00);
+]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="FB_init" Id="{7a1c0e3a-4b62-4d18-9d5e-2f0c8b41a903}">
+      <Declaration><![CDATA[METHOD FB_init : BOOL
+VAR_INPUT
+    bInitRetains : BOOL;
+    bInCopyCode : BOOL;
+END_VAR
+VAR
+    i : INT;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[FOR i := 1 TO 4 DO                  // X8 - repeated on every online change
+    aInit[i] := 0;
+END_FOR
+]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>
