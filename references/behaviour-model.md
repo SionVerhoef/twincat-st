@@ -128,4 +128,4 @@ When you write an FB that acts over time, work through this:
 4. Can its work exceed one scan? → add `TimeLimit` and slice it, rather than looping.
 5. Does it report `Error` **and** `ErrorID`, and does the caller read both? (CP7)
 
-`templates/FB_Sequence.TcPOU` implements the edge-triggered shape with a timeout and a reachable, resettable error state — start there rather than from a blank file.
+`templates/FB_Sequence.TcPOU` implements the edge-triggered shape with a timeout and a reachable, resettable error state — start there rather than from a blank file. For an empty one, `scripts/tcpou.py new --type fb --shape execute|enable|cyclic` scaffolds the declarations of whichever family you picked, and `scripts/st_review.py` reports a mixed pair as `X9`.

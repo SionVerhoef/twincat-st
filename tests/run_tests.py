@@ -10,6 +10,10 @@ defect this skill leads with. This is the other half of the gate:
   * nothing fires on tests/fixtures/negative/, which collects the shapes that
     were false positives until they were fixed
   * X6 separates an FB input from a METHOD parameter by severity
+  * X9 catches both directions of a mixed PLCopen behaviour model
+  * what tcpou.py scaffolds passes the reviewer tcpou.py ships beside — the two
+    tools disagreed for the skill's whole life, and only a human reading both
+    noticed, because nothing here ever reviewed a scaffold
   * a get/set round trip through tcpou.py is byte-exact, including on a file
     whose line endings are mixed
   * a missing path is reported rather than raising
@@ -79,12 +83,24 @@ x6 = {f["object"]: f["severity"] for f in review(FIXTURES / "positive") if f["ru
 check("X6 is medium on an FB input", x6.get("FB_AllRules") == "medium", repr(x6))
 check("X6 is low on a METHOD parameter", x6.get("HandleValue") == "low", repr(x6))
 
+# --- X9 catches both directions of a mixed behaviour model ------------------
+# One fixture per branch. With only one, a typo in the other branch detects
+# nothing and CI still passes on the strength of the half that works.
+
+x9 = {f["object"] for f in review(FIXTURES / "positive") if f["rule"] == "X9"}
+check("X9 fires on Enable paired with Done", "FB_EnableDone" in x9, repr(sorted(x9)))
+check("X9 fires on Execute paired with Valid", "FB_ExecuteValid" in x9, repr(sorted(x9)))
+
 # --- the skill's own known-good code stays clean ----------------------------
 
 for folder in ("templates", "examples"):
-    high = [f for f in review(ROOT / folder) if f["severity"] == "high"]
+    findings = review(ROOT / folder)
+    high = [f for f in findings if f["severity"] == "high"]
     check(f"{folder}/ has no high-severity findings", not high,
           "; ".join(f"{f['rule']} {f['file']}:{f['line']}" for f in high))
+    mixed = [f for f in findings if f["rule"] == "X9"]
+    check(f"{folder}/ keeps Execute with Done and Enable with Valid", not mixed,
+          "; ".join(f"{f['file']}:{f['line']}" for f in mixed))
 
 # --- tcpou.py round trips the bytes it was not asked to change --------------
 
@@ -115,6 +131,36 @@ with tempfile.TemporaryDirectory() as tmp:
         err = r.stderr.decode("utf-8", "replace")
         check(f"'{cmd[0]}' reports a missing path cleanly",
               r.returncode == 1 and "Traceback" not in err, err.strip()[:200])
+
+    # --- what the scaffolder emits passes the reviewer beside it ------------
+    # 'new --type fb' paired bEnable with bDone for the skill's whole life: the
+    # exact mix references/behaviour-model.md names as the mistake, seeded into
+    # every FB an agent creates here, and with no reason for the author to doubt
+    # a skeleton the skill itself produced. Reviewing a scaffold is what catches
+    # the two tools drifting apart, so it is a test rather than a one-off fix.
+    shapes = {
+        "execute": (("bExecute", "bBusy", "bDone"), ("bEnable", "bValid")),
+        "enable": (("bEnable", "bValid", "bBusy"), ("bExecute", "bDone")),
+        "cyclic": ((), ("bExecute", "bEnable", "bDone", "bValid")),
+    }
+    for shape, (wanted, unwanted) in shapes.items():
+        made = Path(tmp) / f"FB_{shape.title()}.TcPOU"
+        r = tcpou("new", "--type", "fb", "--name", made.stem, "--dir", tmp, "--shape", shape)
+        check(f"'new --shape {shape}' scaffolds a file",
+              made.exists(), r.stderr.decode("utf-8", "replace")[:200])
+        decl = tcpou("get", str(made), "--part", "decl").stdout.decode("utf-8", "replace")
+        check(f"'new --shape {shape}' declares one family's pins and not the other's",
+              all(p in decl for p in wanted) and not any(p in decl for p in unwanted), decl)
+        bad = [f for f in review(made) if f["rule"] == "X9"]
+        check(f"'new --shape {shape}' scaffolds an interface X9 accepts",
+              not bad, "; ".join(f["message"] for f in bad))
+
+    # The default is what an agent actually gets, so it is what regressed.
+    default = Path(tmp) / "FB_Default.TcPOU"
+    tcpou("new", "--type", "fb", "--name", default.stem, "--dir", tmp)
+    decl = tcpou("get", str(default), "--part", "decl").stdout.decode("utf-8", "replace")
+    check("'new --type fb' defaults to the edge-triggered shape",
+          "bExecute" in decl and "bEnable" not in decl, decl)
 
 print()
 if failures:

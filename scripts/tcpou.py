@@ -152,19 +152,46 @@ SIMPLE_TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
-def scaffold(kind, name, extends=None, implements=None):
+# The two PLCopen interface families, and a plain block with neither. The pairing is
+# the contract: Execute goes with Done, Enable goes with Valid. This scaffold shipped
+# Enable with Done - the exact mix references/behaviour-model.md names as the mistake -
+# and every FB scaffolded here inherited it, with no reason for the author to doubt a
+# skeleton the skill itself produced. Reviewer rule X9 now fails that combination.
+FB_SHAPES = {
+    "execute": (
+        "VAR_INPUT\n"
+        "    bExecute : BOOL;    // rising edge starts the operation\n"
+        "END_VAR\n"
+        "VAR_OUTPUT\n"
+        "    bBusy    : BOOL;    // true from the accepted edge until bDone or bError\n"
+        "    bDone    : BOOL;    // completed; latched until bExecute goes false\n"
+        "    bError   : BOOL;\n"
+        "    nErrorID : UDINT;   // 0 = no error\n"
+        "END_VAR\n"
+    ),
+    "enable": (
+        "VAR_INPUT\n"
+        "    bEnable  : BOOL;    // runs for as long as this is held true\n"
+        "END_VAR\n"
+        "VAR_OUTPUT\n"
+        "    bValid   : BOOL;    // the outputs below are meaningful right now\n"
+        "    bBusy    : BOOL;\n"
+        "    bError   : BOOL;\n"
+        "    nErrorID : UDINT;   // 0 = no error\n"
+        "END_VAR\n"
+    ),
+    "cyclic": "VAR_INPUT\nEND_VAR\nVAR_OUTPUT\nEND_VAR\n",
+}
+
+
+def scaffold(kind, name, extends=None, implements=None, shape="execute"):
     if kind == "fb":
         head = f"FUNCTION_BLOCK {name}"
         if extends:
             head += f" EXTENDS {extends}"
         if implements:
             head += f" IMPLEMENTS {implements}"
-        decl = (
-            f"{head}\n"
-            "VAR_INPUT\n    bEnable : BOOL;\nEND_VAR\n"
-            "VAR_OUTPUT\n    bDone : BOOL;\n    bError : BOOL;\n    nErrorID : UDINT;\nEND_VAR\n"
-            "VAR\nEND_VAR\n"
-        )
+        decl = f"{head}\n" + FB_SHAPES[shape] + "VAR\nEND_VAR\n"
         impl = "// Called unconditionally every cycle - see cyclic-execution-rules.md Rule 2\n"
         return "TcPOU", POU_TEMPLATE.format(name=name, id=guid(), decl=decl, impl=impl)
     if kind == "prg":
@@ -296,6 +323,10 @@ def main():
     p.add_argument("--dir", default=".")
     p.add_argument("--extends")
     p.add_argument("--implements")
+    p.add_argument("--shape", default="execute", choices=list(FB_SHAPES),
+                   help="fb only: which PLCopen interface family — 'execute' gives "
+                        "bExecute/bBusy/bDone (default), 'enable' gives bEnable/bValid, "
+                        "'cyclic' gives no command interface at all")
 
     p = sub.add_parser("register", help="add files to a .plcproj")
     p.add_argument("plcproj")
@@ -346,7 +377,7 @@ def main():
         return 0
 
     if a.cmd == "new":
-        ext, content = scaffold(a.type, a.name, a.extends, a.implements)
+        ext, content = scaffold(a.type, a.name, a.extends, a.implements, a.shape)
         path = os.path.join(a.dir, f"{a.name}.{ext}")
         if os.path.exists(path):
             print(f"refused: {path} already exists", file=sys.stderr)

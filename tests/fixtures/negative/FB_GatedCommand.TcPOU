@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_GatedCommand" Id="{3e9a1b40-77c2-4f16-9a03-1d5b8c2e4472}" SpecialFunc="None">
+    <Declaration><![CDATA[// X9 must stay quiet here. bEnable sits beside bExecute rather than replacing it:
+// this is a command block behind an enable gate, Execute still pairs with Done, and
+// nothing in the text can prove otherwise. Firing here would be the rule arguing
+// with a real design, which is how a linter earns the right to be ignored.
+FUNCTION_BLOCK FB_GatedCommand
+VAR_INPUT
+    bEnable : BOOL;                 // gates the block; not the PLCopen Enable family
+    bExecute : BOOL;                // rising edge starts the operation
+END_VAR
+VAR_OUTPUT
+    bDone : BOOL;
+END_VAR
+VAR
+    fbTrig : R_TRIG;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fbTrig(CLK := bExecute);
+IF bEnable AND fbTrig.Q THEN
+    bDone := TRUE;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

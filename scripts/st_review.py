@@ -5,9 +5,11 @@ Findings are keyed to a rule id so a review can cite one:
 
   CP*/N*/C*/L*/E*   PLCopen Coding Guidelines v1.0 rule ids, with PLCopen's own
                     Importance rating carried through as the severity.
-  X*                Cyclic-execution rules — the failure mode that is specific to
-                    a scanned real-time task and that no general linter looks for.
-                    See references/cyclic-execution-rules.md.
+  X*                This skill's own ids, where that catalogue is silent: the
+                    failure modes specific to a scanned real-time task, plus X9 for
+                    the PLCopen *behaviour model* contract, which is standardised in
+                    a different document. See references/cyclic-execution-rules.md
+                    and references/behaviour-model.md.
 
 Reads .TcPOU / .TcDUT / .TcGVL / .TcIO (XML, code in CDATA) and plain .st/.txt.
 For XML it walks *every* Declaration/Implementation pair — POU body, methods,
@@ -64,6 +66,8 @@ RULES: dict[str, tuple[str, str]] = {
                      "(low for a METHOD parameter, which the call site always binds)"),
     "X7": ("medium", "state machine has no error/fault state"),
     "X8": ("medium", "FB_init does real work without an online-change (bInCopyCode) guard"),
+    "X9": ("medium", "FB mixes the two PLCopen behaviour models — Enable with Done, "
+                     "or Execute with Valid"),
     "CP8": ("high", "equality/inequality comparison on REAL/LREAL"),
     "CP13": ("high", "POU calls itself — recursion is not allowed"),
     "CP14": ("high", "RETURN before the end of the POU — single point of exit"),
@@ -118,6 +122,15 @@ POU_HEADER = re.compile(
     re.I,
 )
 SUPPRESS = re.compile(r"//\s*lint:allow\s+([A-Za-z0-9_,]+)\s*(.*)$", re.I)
+
+# The command pins of the two PLCopen behaviour models (X9). Matched whole, allowing
+# only the conventional BOOL prefix, so a house name like bExecuteMove is left alone:
+# a partial match cannot tell a second command pin from a differently-spelled one, and
+# guessing wrong makes the rule argue with code that is right.
+PIN_EXECUTE = re.compile(r"^[bx]?Execute$", re.I)
+PIN_ENABLE = re.compile(r"^[bx]?Enable$", re.I)
+PIN_DONE = re.compile(r"^[bx]?Done$", re.I)
+PIN_VALID = re.compile(r"^[bx]?Valid$", re.I)
 
 # ST keywords that must never be mistaken for an identifier being called.
 KEYWORDS = {
@@ -609,6 +622,31 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                 add("CP23", unit, 1, unit.name,
                     f"{len(pins)} parameters; group related ones into a STRUCT to stay "
                     f"under about {MAX_POU_PINS}", unit.decl_line)
+
+        # --- X9 the two PLCopen behaviour models mixed -----------------------------
+        # Execute pairs with Done, Enable pairs with Valid. Mixing them costs nothing at
+        # runtime, which is why it survives review and then misleads every caller who
+        # knows the convention. An FB carrying BOTH triggers is left alone: a command
+        # block behind an enable gate is a real design, and the text cannot say otherwise.
+        if re.search(r"^\s*FUNCTION_BLOCK\b", decl, re.I | re.M):
+            declared = own_vars[unit_idx] if unit_idx < len(own_vars) else []
+            ins = [v for v in declared if v.section == "VAR_INPUT"]
+            outs = [v for v in declared if v.section == "VAR_OUTPUT"]
+            execute = next((v for v in ins if PIN_EXECUTE.match(v.name)), None)
+            enable = next((v for v in ins if PIN_ENABLE.match(v.name)), None)
+            done = next((v for v in outs if PIN_DONE.match(v.name)), None)
+            valid = next((v for v in outs if PIN_VALID.match(v.name)), None)
+            mixed = None
+            if enable and done and not execute:
+                mixed = (enable, done, "Enable", "Valid")
+            elif execute and valid and not enable:
+                mixed = (execute, valid, "Execute", "Done")
+            if mixed:
+                trigger, result, family, partner = mixed
+                add("X9", unit, trigger.line, f"{trigger.name} : {trigger.type}",
+                    f"'{trigger.name}' and '{result.name}' come from the two different "
+                    f"PLCopen behaviour models; {family} pairs with {partner}, so rename "
+                    f"one of them (see references/behaviour-model.md)", unit.decl_line)
 
     # --- X6 REFERENCE TO never validated --------------------------------------
     for v in ref_vars:

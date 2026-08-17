@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_EnableDone" Id="{3e9a1b40-77c2-4f16-9a03-1d5b8c2e4470}" SpecialFunc="None">
+    <Declaration><![CDATA[// X9 - the level-controlled trigger with the edge-triggered completion output.
+// This is the shape 'tcpou.py new --type fb' scaffolded by default until the
+// --shape flag was added, so every FB created with this skill inherited it.
+FUNCTION_BLOCK FB_EnableDone
+VAR_INPUT
+    bEnable : BOOL;                 // X9 - Enable pairs with Valid, not Done
+END_VAR
+VAR_OUTPUT
+    bDone : BOOL;
+    bBusy : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[bBusy := bEnable AND NOT bDone;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
