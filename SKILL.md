@@ -73,16 +73,16 @@ Match the surrounding project's conventions even where they differ from `referen
 Run the reviewer on anything you wrote or were asked to review:
 
 ```bash
-python3 scripts/st_review.py <file-or-dir>...             # defect rules
-python3 scripts/st_review.py src/ --pedantic              # + style rules
-python3 scripts/st_review.py src/ --json                  # machine-readable
-python3 scripts/st_review.py src/ --fail-on high          # CI gate (already the default)
-python3 scripts/st_review.py src/ --min-severity medium   # hide the low findings
-python3 scripts/st_review.py src/ --rules X1,X5,CP8       # only these rules
-python3 scripts/st_review.py --list-rules                 # what it checks
+py -3 scripts/st_review.py <file-or-dir>...             # defect rules
+py -3 scripts/st_review.py src/ --pedantic              # + style rules
+py -3 scripts/st_review.py src/ --json                  # machine-readable
+py -3 scripts/st_review.py src/ --fail-on high          # CI gate (already the default)
+py -3 scripts/st_review.py src/ --min-severity medium   # hide the low findings
+py -3 scripts/st_review.py src/ --rules X1,X5,CP8       # only these rules
+py -3 scripts/st_review.py --list-rules                 # what it checks
 ```
 
-**On Windows use `py -3`, not `python3`** — see the README. That applies to every command in this file.
+**Every command in this file is written `py -3`, because TwinCAT runs on Windows and Windows has no `python3`.** A bare `python3` there reaches the Microsoft Store alias stub, which prints *"Python was not found"* and exits 1 **even when Python is installed correctly** — so read the error as a wrong command, not a missing interpreter. On Linux or macOS use `python3` instead. The README has the detail.
 
 **Point it at the code you own, not at the whole `.plcproj`.** A project pulls in vendor and framework libraries nobody on the team can change, and their findings bury yours: on one real 1352-file project, scanning everything gave 835 findings where the 111 application files gave 68. Scan the application folder.
 
@@ -90,7 +90,7 @@ python3 scripts/st_review.py --list-rules                 # what it checks
 
 It parses `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking **every** declaration/implementation pair — POU body, methods, property getters and setters. That matters: a top-level-only parse misses about 84% of the code in an OOP project.
 
-Findings carry a rule id you can cite in a review — `CP8`, `X1`, `E3`. The `CP`/`N`/`C`/`L`/`E` ids are PLCopen Coding Guidelines rules and carry that document's own severity; the `X` ids are cyclic-execution rules specific to a scanned task. `references/plcopen-rules.md` is the full catalogue.
+Findings carry a rule id you can cite in a review — `CP8`, `X1`, `E3`. The `CP`/`N`/`C`/`L`/`E` ids are PLCopen Coding Guidelines rules and carry that document's own severity; the `X` ids are this skill's own, for what that catalogue does not cover — the failure modes specific to a scanned task, plus `X9` for the PLCopen *behaviour model* contract, which is standardised in a different document. `references/plcopen-rules.md` is the full catalogue.
 
 The tool is a floor, not a ceiling. It cannot see intent, so **you still read the code** for the things it cannot check: is the shape right, is the error path meaningful, does the timeout value make physical sense, is this secretly a safety function. `references/cyclic-execution-rules.md` carries the review rubric for that pass.
 
@@ -148,23 +148,24 @@ Load a reference when the task reaches it — don't read them all up front.
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from three published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 
-Both scripts need Python 3 and nothing else. On Windows that means `py -3` — see the README.
+Both scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
 
 ### `tcpou.py`
 
 Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
 
 ```bash
-python3 scripts/tcpou.py show     <file>                                   # parts + encoding
-python3 scripts/tcpou.py get      <file> --part impl                       # print one part
-python3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
-python3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold
-python3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
-python3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
-python3 scripts/tcpou.py check    <file>...                                # validate
+py -3 scripts/tcpou.py show     <file>                                   # parts + encoding
+py -3 scripts/tcpou.py get      <file> --part impl                       # print one part
+py -3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
+py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold
+py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
+py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
+py -3 scripts/tcpou.py check    <file>...                                # validate
 ```
 
-- `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`/`--implements`.
+- `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
+- **`--shape` picks which interface family the FB gets:** `execute` (the default) declares `bExecute`/`bBusy`/`bDone`, `enable` declares `bEnable`/`bValid`, and `cyclic` declares no command interface at all. Choose the one the block actually is — `Execute` pairs with `Done`, `Enable` pairs with `Valid`, and mixing the two is what rule `X9` reports. `references/behaviour-model.md` is the decision.
 - `set` reads stdin when `--from-file` is omitted.
 - Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
 

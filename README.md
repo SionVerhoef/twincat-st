@@ -46,8 +46,8 @@ Windows has no `python3.exe`. The python.org installer — which is what winget 
 creates `python.exe` and the `py` launcher, so a bare `python3` falls through to the
 Microsoft Store alias stub, which prints *"Python was not found"* and exits 1 **even when
 Python is installed correctly**. The scripts cannot warn you about this, because the stub
-answers before Python ever starts. The docs here write `python3` for brevity; read it as
-`py -3` on Windows.
+answers before Python ever starts. `SKILL.md` and the commands below are written `py -3` for
+that reason; on Linux or macOS read them as `python3`.
 
 ## The claim
 
@@ -61,7 +61,7 @@ So this skill leads with the execution model, and it makes the review step **a p
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 19 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 20 rules, PLCopen-keyed
 │   └── tcpou.py                        surgical .TcPOU editing, reguid, .plcproj registration
 ├── references/
 │   ├── cyclic-execution-rules.md       CORE — the execution model + review rubric
@@ -87,28 +87,32 @@ twincat-st/
 ## The reviewer
 
 ```bash
-python3 scripts/st_review.py src/                 # defect rules
-python3 scripts/st_review.py src/ --pedantic      # + contested style rules
-python3 scripts/st_review.py src/ --json          # machine-readable
-python3 scripts/st_review.py --list-rules         # what it checks
+py -3 scripts/st_review.py src/                 # defect rules
+py -3 scripts/st_review.py src/ --pedantic      # + contested style rules
+py -3 scripts/st_review.py src/ --json          # machine-readable
+py -3 scripts/st_review.py --list-rules         # what it checks
 ```
 
 Python 3 and nothing else — both scripts use only the standard library.
 
 Reads `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking **every** declaration/implementation pair — POU body, methods, property getters and setters. A top-level-only parse misses roughly 84% of the code in an OOP project.
 
-Findings carry a citable id. `CP`/`N`/`C`/`L`/`E` are PLCopen Coding Guidelines rules carrying that document's own severity; `X` ids are cyclic-execution rules that no general-purpose linter looks for — blocking loops, timer presets typed as integers, pointers dereferenced without a null check, state machines with no reachable error state, `FB_init` without an online-change guard.
+Findings carry a citable id. `CP`/`N`/`C`/`L`/`E` are PLCopen Coding Guidelines rules carrying that document's own severity; `X` ids are this skill's own, for what no general-purpose linter looks for — blocking loops, timer presets typed as integers, pointers dereferenced without a null check, state machines with no reachable error state, `FB_init` without an online-change guard, and an FB that mixes the two PLCopen behaviour models by pairing `Enable` with `Done`.
 
 Exit status is 1 when anything at or above `--fail-on` (default `high`) is found, so it can gate CI.
 
 ### How it was validated
 
-- **Detection:** `tests/run_tests.py` asserts every one of the 19 rules still fires on a
+- **Detection:** `tests/run_tests.py` asserts every one of the 20 rules still fires on a
   deliberately defective fixture, and that the reviewer stays silent on a second fixture
   collecting every shape that was once a false positive. Both run in CI. Checking only that
   good code stays clean cannot catch a rule that has quietly stopped detecting anything —
   which is how `CP8` came to miss `bAtTarget := (fA = fB);`, the assignment form of the very
   defect this skill leads with.
+- **The two tools check each other.** The tests scaffold an FB with `tcpou.py` and review it
+  with `st_review.py`. Nothing did that before, which is how `new --type fb` came to emit
+  `bEnable` alongside `bDone` — the PLCopen pairing violation `references/behaviour-model.md`
+  names explicitly — into every function block created with this skill.
 - **False positives:** swept across **440 real `.TcPOU` files** from Beckhoff's own samples, TcUnit, TcMatrix, the PackML example and Stefan Henneken's corpus. Four genuine false-positive classes were found and fixed during tuning — member access via `THIS^.` being read as an unused variable, type names leaking between methods of the same file, `POINTER TO LREAL` being treated as a float, and the mandatory `FB_init` parameters being reported as dead. Two contested rules (line length, early `RETURN`) were moved behind `--pedantic` because they fire hundreds of times on well-regarded code and drown the real findings.
 - **Self-consistency:** the skill's own templates pass its own reviewer.
 

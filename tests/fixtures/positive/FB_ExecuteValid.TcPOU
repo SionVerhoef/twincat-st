@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_ExecuteValid" Id="{3e9a1b40-77c2-4f16-9a03-1d5b8c2e4471}" SpecialFunc="None">
+    <Declaration><![CDATA[// X9 in the other direction - the edge-triggered trigger with the level-controlled
+// completion output. Both branches of the rule need a fixture, or a typo in one of
+// them detects nothing and CI still passes on the strength of the other.
+FUNCTION_BLOCK FB_ExecuteValid
+VAR_INPUT
+    bExecute : BOOL;                // X9 - Execute pairs with Done, not Valid
+END_VAR
+VAR_OUTPUT
+    bValid : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[bValid := bExecute;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

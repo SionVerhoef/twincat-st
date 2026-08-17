@@ -17,7 +17,7 @@ First public version, extracted from a private repository.
 
 ### Tools
 
-- `scripts/st_review.py` — 19 rules, PLCopen-keyed, standard library only. Walks **every**
+- `scripts/st_review.py` — 20 rules, PLCopen-keyed, standard library only. Walks **every**
   declaration/implementation pair, including methods and property accessors; a top-level-only
   parse misses roughly 84% of the code in an OOP project. Exits 1 at or above `--fail-on`
   (default `high`) so it can gate CI.
@@ -62,12 +62,45 @@ findings it produced.
   the python.org installer creates no `python3.exe` and the Microsoft Store alias stub
   answers instead.
 
+### Fixed after the second external test
+
+A second independent test on Windows, against the same project grown to 1374 files. It
+confirmed all six round-1 defects fixed, and found two more.
+
+- **`tcpou.py new --type fb` scaffolded a PLCopen contract violation.** It emitted `bEnable`
+  paired with `bDone` — the level-controlled trigger with the edge-triggered completion
+  output, the exact mix `references/behaviour-model.md` names as the mistake — and omitted
+  `bBusy`. So the scaffolder disagreed with both that document and
+  `templates/FB_Sequence.TcPOU`, which gets it right. `new` is where every FB written with
+  this skill starts, and an agent has no reason to doubt a skeleton the skill produced.
+  `--shape` now picks the family: `execute` (the default, matching the template) gives
+  `bExecute`/`bBusy`/`bDone`, `enable` gives `bEnable`/`bValid`, `cyclic` gives neither.
+- **Nothing reviewed what the scaffolder produced.** Rule **`X9`** now reports an FB that
+  pairs `Enable` with `Done` or `Execute` with `Valid`, and `tests/run_tests.py` scaffolds
+  each shape and reviews it, so the two tools check each other instead of drifting apart.
+  `X9` stays quiet when an FB carries *both* triggers — a command block behind an enable
+  gate is a real design, and the text cannot prove otherwise. It fired zero times on the
+  tester's 111 application files and zero times on `examples/` and `templates/`.
+- **The Windows fix was in the prose, not in the commands.** `SKILL.md` said "on Windows use
+  `py -3`" beside code blocks that all still read `python3`, and an agent scanning for a
+  command copies the block, not the sentence next to it — which is what cost the tester
+  their first run. Every block in `SKILL.md` and the README is now written `py -3`, with the
+  Linux and macOS form stated once in prose.
+
+The tester also reported that the round-1 `CP8` fix immediately paid for itself: on the real
+project it turned up an `LREAL` measured servo position compared with `=` against a computed
+target, a status bit that can essentially never go true. That was invisible before the fix.
+
 ### Validation
 
 - `tests/run_tests.py`, in CI: every rule must still fire on a defective fixture, the
-  negative fixture must stay silent, `X6` must separate its two cases by severity, and
-  `tcpou.py` must round trip byte-exact across BOM, LF, CRLF and mixed-ending files.
-  Verified by mutation — reverting any of the four fixes above fails it.
+  negative fixture must stay silent, `X6` must separate its two cases by severity, `X9` must
+  catch both directions of a mixed behaviour model, what `tcpou.py` scaffolds must pass the
+  reviewer, and `tcpou.py` must round trip byte-exact across BOM, LF, CRLF and mixed-ending
+  files. Verified by mutation — reverting any of the fixes above fails it, including each
+  branch of `X9` separately. One fixture per branch is deliberate: with only one, a typo in
+  the other detects nothing and the "every rule fires" check stays green on the half that
+  works.
 - Reviewer swept across **440 real `.TcPOU` files**; four false-positive classes found and
   fixed, two contested rules moved behind `--pedantic`.
 - `evals/` **rebuilt for iteration 2**, because iteration 1's 31/31-against-26/31 flattered
