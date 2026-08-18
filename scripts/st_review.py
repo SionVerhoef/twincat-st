@@ -123,14 +123,19 @@ POU_HEADER = re.compile(
 )
 SUPPRESS = re.compile(r"//\s*lint:allow\s+([A-Za-z0-9_,]+)\s*(.*)$", re.I)
 
-# The command pins of the two PLCopen behaviour models (X9). Matched whole, allowing
-# only the conventional BOOL prefix, so a house name like bExecuteMove is left alone:
-# a partial match cannot tell a second command pin from a differently-spelled one, and
-# guessing wrong makes the rule argue with code that is right.
-PIN_EXECUTE = re.compile(r"^[bx]?Execute$", re.I)
-PIN_ENABLE = re.compile(r"^[bx]?Enable$", re.I)
-PIN_DONE = re.compile(r"^[bx]?Done$", re.I)
-PIN_VALID = re.compile(r"^[bx]?Valid$", re.I)
+# The command pins of the two PLCopen behaviour models (X9). Matched whole, allowing an
+# optional IEC direction letter ahead of the conventional type letter, because half the
+# Beckhoff codebases in the field spell their pins ibEnable and obDone. Without that
+# prefix the rule reads as clean on code it has simply failed to look at: on one real
+# 1374-file project it reported nothing while 108 function blocks carried an Enable pin.
+# Anchoring is what keeps the rule honest — obHomingDone is the named completion of one
+# specific operation, not a PLCopen completion pin, and a substring match cannot tell the
+# two apart. A house name like bExecuteMove is left alone for the same reason: guessing
+# wrong makes the rule argue with code that is right.
+PIN_EXECUTE = re.compile(r"^[ioq]?[bx]?Execute$", re.I)
+PIN_ENABLE = re.compile(r"^[ioq]?[bx]?Enable$", re.I)
+PIN_DONE = re.compile(r"^[ioq]?[bx]?Done$", re.I)
+PIN_VALID = re.compile(r"^[ioq]?[bx]?Valid$", re.I)
 
 # ST keywords that must never be mistaken for an identifier being called.
 KEYWORDS = {

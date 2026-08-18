@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_PrefixedCommand" Id="{3e9a1b40-77c2-4f16-9a03-1d5b8c2e4474}" SpecialFunc="None">
+    <Declaration><![CDATA[// X9 must stay quiet here. Execute pairs with Done, which is correct -- but the pins
+// carry direction prefixes, so widening the matchers to see ibEnable/obDone is what
+// makes this block eligible to fire for the first time. A correctly paired interface
+// staying silent is the half of that change nothing else proves.
+FUNCTION_BLOCK FB_PrefixedCommand
+VAR_INPUT
+    ibExecute : BOOL;               // rising edge starts the operation
+END_VAR
+VAR_OUTPUT
+    obDone : BOOL;
+    obBusy : BOOL;
+END_VAR
+VAR
+    fbTrig : R_TRIG;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fbTrig(CLK := ibExecute);
+IF fbTrig.Q THEN
+    obBusy := TRUE;
+END_IF
+IF obBusy THEN
+    obDone := TRUE;
+    obBusy := FALSE;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
