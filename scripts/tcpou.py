@@ -127,6 +127,8 @@ def reguid(path):
     """
     f = TcFile(path)
     n = len(GUID_ATTR.findall(f.text))
+    if n == 0:
+        return 0                      # nothing to stamp; leave the file untouched
     f.text = GUID_ATTR.sub(lambda _: f'Id="{guid()}"', f.text)
     f.save()
     return n
@@ -394,10 +396,20 @@ def main():
         return 0
 
     if a.cmd == "reguid":
+        # Zero replacements has to fail. The documented workflow is copy the
+        # template, then reguid the copy - and reporting 'ok (0 regenerated)'
+        # there tells you the identity was refreshed when it was not, leaving
+        # the copy colliding with the template on the same Id in TwinCAT.
+        failed = False
         for path in a.files:
             n = reguid(path)
-            print(f"ok   {path}  ({n} GUID{'s' if n != 1 else ''} regenerated)")
-        return 0
+            if n == 0:
+                failed = True
+                print(f"FAIL {path}")
+                print("  - no Id attribute found; nothing was regenerated")
+            else:
+                print(f"ok   {path}  ({n} GUID{'s' if n != 1 else ''} regenerated)")
+        return 1 if failed else 0
 
     if a.cmd == "check":
         failed = False

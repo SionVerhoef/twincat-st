@@ -112,6 +112,36 @@ A third independent test on Windows, against the same project. It confirmed `--s
   A rule that has stopped matching and a rule with nothing to report produce identical output.
   The tester caught this only by printing the population scanned next to the findings count.
 
+### Fixed after the automated PR review
+
+Four defects raised on the rebuild PR and verified here against a repro before being
+fixed. Each has a regression test, and each test was mutation-checked by reverting the
+fix.
+
+- **`X5` treated a null *test* as a null *guard*.** Any comparison against zero in the
+  preceding lines was accepted as proof, so `IF p = 0 THEN Log(); END_IF; x := p^;` — which
+  notices the null case and then lets it through — scanned clean. It now takes only the two
+  shapes that actually stop the null path reaching the dereference: `IF p <> 0 THEN`, or a
+  null branch that `RETURN`s, `EXIT`s or `CONTINUE`s. `X4` already drew this distinction;
+  `X5` had collapsed both operators into one pattern.
+- **An unparseable file scanned green.** A parse error was turned into an empty unit, so the
+  file produced no findings and the run exited 0 — the CI gate passing on code it never
+  read. Unreadable files are now listed on stderr and in the JSON, excluded from
+  `files_scanned`, and exit **2**, which `--fail-on never` cannot suppress: "could not
+  check" is a tool failure, not a clean result.
+- **`reguid` reported success after regenerating nothing.** The documented workflow is copy
+  the template, then `reguid` the copy, so `ok (0 GUIDs regenerated)` said the identity was
+  refreshed when it was not — leaving the copy colliding with the template on the same `Id`,
+  which is exactly the conflict the command exists to prevent. Zero replacements now fails
+  and the file is left untouched.
+- **The shipped TcUnit suite contained a test that could only fail.** `FB_Sequence` hardcoded
+  both step conditions to `IF TRUE`, so the timeout fixture always reached `bDone` and
+  `TestTimeoutRaisesError` always took its `AssertTrue(FALSE)` branch. Found while
+  verifying: it also asserted `nErrorID = 16#8001`, while the block raises `16#8101` — wrong
+  even had the path been reachable. The step conditions are now inputs, which is what lets a
+  test hold a step open and watch it fault, and the suite drives its two fixtures
+  differently so both the completion and the timeout path are genuinely exercised.
+
 ### Validation
 
 - `tests/run_tests.py`, in CI: every rule must still fire on a defective fixture, the

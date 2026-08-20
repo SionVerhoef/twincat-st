@@ -27,6 +27,14 @@
          elapses and no TON ever elapses either. Drive it once per cycle and
          assert when it arrives.
 
+    WHY EACH FIXTURE GETS ITS OWN STEP CONDITIONS
+    The two tests need the sequence to behave differently, so each drives its
+    instance with different inputs: fbSeq is told its steps are done and must
+    reach Done; fbSeqTimeout never is, and must fault on its own step timeout.
+    Two instances of one FB with the same inputs can only ever take the same
+    path - which is how a timeout test ends up asserting against a sequence
+    that completed.
+
     TcUnit calls the suite body every cycle until each test calls
     TEST_FINISHED(), which is what makes the across-scans pattern work.
 *)
@@ -41,7 +49,15 @@ VAR CONSTANT
     // A test that never reaches its condition would otherwise hang the suite
     // silently. Fail it instead, and make the reason obvious.
     cTestWatchdog   : TIME := T#10S;
-END_VAR]]></Declaration>
+    // Short enough that the timeout test finishes quickly, and far enough
+    // below cTestWatchdog that the watchdog firing means the timeout path is
+    // genuinely dead rather than merely slow.
+    cStepTimeout    : TIME := T#500MS;
+    // Must equal FB_Sequence's cErrStep1Timeout. It is a VAR CONSTANT there,
+    // so the test cannot read it - change one and you must change the other.
+    cErrStep1Timeout: UDINT := 16#8101;
+END_VAR
+]]></Declaration>
     <Implementation>
       <ST><![CDATA[// Every test method is called unconditionally, every cycle.
 // TcUnit tracks which have finished.
@@ -54,8 +70,9 @@ TestTimeoutRaisesError();]]></ST>
         <ST><![CDATA[TEST('TestSequenceReachesDone');
 
 // One call per cycle. The sequence advances a step at a time, exactly as it
-// would on the machine.
-fbSeq(bExecute := TRUE);
+// would on the machine. Both step conditions are held true, so this instance
+// must walk through to Done without any timer elapsing.
+fbSeq(bExecute := TRUE, bStep1Done := TRUE, bStep2Done := TRUE);
 
 fbWatchdog(IN := TRUE, PT := cTestWatchdog);
 
@@ -76,7 +93,8 @@ ELSIF fbWatchdog.Q THEN
         Condition := FALSE,
         Message   := 'Sequence did not reach Done within the test watchdog');
     TEST_FINISHED();
-END_IF]]></ST>
+END_IF
+]]></ST>
       </Implementation>
     </Method>
     <Method Name="TestTimeoutRaisesError" Id="{308cffd6-e678-4698-a69e-004620893b74}">
@@ -85,15 +103,20 @@ END_IF]]></ST>
         <ST><![CDATA[TEST('TestTimeoutRaisesError');
 
 // The timeout branch is the code most likely to be wrong and least likely to
-// be exercised on a good day, so it gets a test of its own. Here the step
-// condition is never satisfied, so the sequence must fault on its own timeout.
-fbSeqTimeout(bExecute := TRUE);
+// be exercised on a good day, so it gets a test of its own. bStep1Done is held
+// false, so the sequence sits in step 1 until its own step timer elapses and
+// must fault. Shortening tStepTimeout keeps the test quick without changing
+// which path it takes.
+fbSeqTimeout(bExecute     := TRUE,
+             bStep1Done   := FALSE,
+             bStep2Done   := FALSE,
+             tStepTimeout := cStepTimeout);
 
 fbTimeoutWd(IN := TRUE, PT := cTestWatchdog);
 
 IF fbSeqTimeout.bError THEN
     AssertEquals_UDINT(
-        Expected := 16#8001,
+        Expected := cErrStep1Timeout,
         Actual   := fbSeqTimeout.nErrorID,
         Message  := 'Timeout raised the wrong error id');
     TEST_FINISHED();
@@ -109,7 +132,8 @@ ELSIF fbTimeoutWd.Q THEN
         Condition := FALSE,
         Message   := 'Sequence neither completed nor timed out - the timeout path is dead');
     TEST_FINISHED();
-END_IF]]></ST>
+END_IF
+]]></ST>
       </Implementation>
     </Method>
   </POU>

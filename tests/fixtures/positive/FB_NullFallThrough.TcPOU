@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_NullFallThrough" Id="{6b1c8a90-4f2d-4c77-9a3e-5d81b0c2e714}" SpecialFunc="None">
+    <Declaration><![CDATA[// X5 accepted any comparison against 0 as proof the pointer was checked, so a
+// null test that does not actually stop the null case scanned clean. The two
+// guarding shapes live in the negative fixture; this is the one that must fire.
+FUNCTION_BLOCK FB_NullFallThrough
+VAR
+    pBuf  : POINTER TO DINT;
+    nSeen : DINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// The null case is noticed and then not stopped. Control leaves the IF and
+// reaches the dereference on exactly the path the test was looking for.
+IF pBuf = 0 THEN
+    nSeen := nSeen + 1;
+END_IF
+
+pBuf^ := nSeen;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

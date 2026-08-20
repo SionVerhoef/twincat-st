@@ -8,10 +8,21 @@
 
     Contract: call this FB unconditionally every cycle. bExecute is edge-triggered.
     Every waiting state has a timeout and a path to Error. Error is resettable.
+
+    WHY THE STEP CONDITIONS ARE INPUTS
+    A step's done-condition is the one thing a test has to control: hardwire it
+    and the timeout branch becomes unreachable, so the error path - the code most
+    likely to be wrong and least likely to run on a good day - can never be
+    exercised. Taking the conditions as inputs lets a test hold a step open and
+    watch it fault. Wire them to the real signal at the call site (a sensor, an
+    axis status, another FB's bDone), or read that signal directly in the CASE
+    branch if you accept that you are giving up the test.
 *)
 VAR_INPUT
     bExecute    : BOOL;                 // rising edge starts the sequence
     bReset      : BOOL;                 // clears the error state
+    bStep1Done  : BOOL;                 // step 1 has finished its work
+    bStep2Done  : BOOL;                 // step 2 has finished its work
     tStepTimeout: TIME := T#10S;        // max time allowed in any one step
 END_VAR
 VAR_OUTPUT
@@ -53,7 +64,7 @@ CASE eState OF
     E_SeqState.Step1:
         // Rule 5: timer instance driven every cycle while in this state.
         fbStepTimer(IN := TRUE, PT := tStepTimeout);
-        IF TRUE THEN                            // <- replace with the real step-1 done condition
+        IF bStep1Done THEN                      // wire this input to the real step-1 signal
             M_EnterStep(newState := E_SeqState.Step2);
         ELSIF fbStepTimer.Q THEN
             M_Fail(errorID := cErrStep1Timeout);
@@ -61,7 +72,7 @@ CASE eState OF
 
     E_SeqState.Step2:
         fbStepTimer(IN := TRUE, PT := tStepTimeout);
-        IF TRUE THEN                            // <- replace with the real step-2 done condition
+        IF bStep2Done THEN                      // wire this input to the real step-2 signal
             M_EnterStep(newState := E_SeqState.Done);
         ELSIF fbStepTimer.Q THEN
             M_Fail(errorID := cErrStep2Timeout);

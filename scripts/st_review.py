@@ -22,8 +22,10 @@ of the code in OOP projects, which is the whole reason this script exists.
     python3 st_review.py src/ --rules X1,X2,CP8        # only these
 
 Exit status is 1 when a finding at or above --fail-on (default: high) is
-reported, so it can gate a pipeline. Nothing here compiles the code: a clean
-run means "no known defect pattern matched", not "this builds".
+reported, so it can gate a pipeline, and 2 when a file could not be parsed —
+a file that was never analysed must not read as a clean one. Nothing here
+compiles the code: a clean run means "no known defect pattern matched", not
+"this builds".
 
 Suppress a finding you have judged acceptable by putting a reason on the line
 or the line above:
@@ -251,12 +253,10 @@ def line_of(raw: str, needle: str) -> int:
 def parse_xml(path: Path) -> SourceFile:
     raw = path.read_text(encoding="utf-8-sig", errors="replace")
     sf = SourceFile(path=path, raw=raw)
-    try:
-        root = ET.fromstring(raw)
-    except ET.ParseError as exc:
-        sf.units.append(Unit(name=path.name, kind="unparsable", decl="", impl=""))
-        print(f"  ! {path}: XML parse error: {exc}", file=sys.stderr)
-        return sf
+    # Let a parse error out. Standing in an empty unit here made an unreadable
+    # file contribute nothing and the run still exit 0 - a gate that reports a
+    # green check on a file it never analysed.
+    root = ET.fromstring(raw)
 
     # Walk the tree rather than flattening it, so a getter can be named for the
     # property that owns it. A bare <Get Name="Get"> would otherwise make every
@@ -514,16 +514,27 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                 if name.upper() in ("THIS", "SUPER") or name not in pointer_names:
                     continue
                 window = "\n".join(lines[max(0, i - 15): i + 1])
-                if re.search(rf"\b{re.escape(name)}\s*(<>|=)\s*0", window):
+                # Accept the two shapes that actually protect the dereference, not
+                # merely any comparison against 0. 'IF p <> 0 THEN' guards, because
+                # the null case never enters the branch.
+                if re.search(rf"\b{re.escape(name)}\s*<>\s*0", window):
+                    continue
+                # 'IF p = 0 THEN RETURN; END_IF' guards too - the null case leaves.
+                # A bare 'IF p = 0 THEN Log(); END_IF' does not: it names the null
+                # case without stopping it, and control falls straight through to
+                # the dereference. Reading either comparison as proof was the hole.
+                if re.search(rf"\b{re.escape(name)}\s*=\s*0\s*THEN\b.{{0,60}}?"
+                             rf"\b(RETURN|EXIT|CONTINUE)\b", window, re.I | re.S):
                     continue
                 if re.search(rf"__ISVALIDREF\s*\(\s*{re.escape(name)}", window, re.I):
                     continue
                 sup, _ = suppressed(raw_lines, i, "X5")
                 if not sup:
                     add("X5", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
-                        f"'{name}' dereferenced with no preceding '{name} <> 0' check; "
-                        f"a stale pointer after an online change corrupts memory silently",
-                        unit.impl_line)
+                        f"'{name}' dereferenced with no guard that stops the null case "
+                        f"reaching it - use 'IF {name} <> 0 THEN', or return from the "
+                        f"null branch; a stale pointer after an online change corrupts "
+                        f"memory silently", unit.impl_line)
                 break
 
         # --- CP8 / CP28 equality on REAL or TIME -----------------------------
@@ -780,12 +791,13 @@ def main() -> int:
         return 2
 
     findings: list[Finding] = []
+    unreadable: list[tuple[Path, str]] = []
     for f in files:
         suf = f.suffix.lower()
         try:
             sf = parse_xml(f) if suf in XML_SUFFIXES else parse_text(f)
         except Exception as exc:                      # keep going over a big tree
-            print(f"  ! {f}: {exc}", file=sys.stderr)
+            unreadable.append((f, f"{type(exc).__name__}: {exc}"))
             continue
         if sf.units:
             findings.extend(check_file(sf, enabled))
@@ -794,15 +806,18 @@ def main() -> int:
     findings = [f for f in findings if SEVERITIES.index(f.severity) <= cut]
     findings.sort(key=lambda f: (SEVERITIES.index(f.severity), f.file, f.line))
 
+    scanned = len(files) - len(unreadable)
+
     if args.json:
         print(json.dumps({
-            "files_scanned": len(files),
+            "files_scanned": scanned,
+            "files_unreadable": [{"file": str(p), "error": e} for p, e in unreadable],
             "findings": [f.as_dict() for f in findings],
             "summary": {s: sum(1 for f in findings if f.severity == s) for s in SEVERITIES},
         }, indent=2))
     else:
         if not findings:
-            print(f"{len(files)} file(s) scanned — no findings.")
+            print(f"{scanned} file(s) scanned — no findings.")
             print("This is a pattern check, not a compile. It does not prove the code builds.")
         else:
             current = None
@@ -814,9 +829,23 @@ def main() -> int:
                 if f.text.strip():
                     print(f"         | {f.text.strip()[:100]}")
             counts = {s: sum(1 for f in findings if f.severity == s) for s in SEVERITIES}
-            print(f"\n{len(files)} file(s) scanned — "
+            print(f"\n{scanned} file(s) scanned — "
                   + ", ".join(f"{counts[s]} {s}" for s in SEVERITIES))
             print("Pattern check only; a clean run does not mean the code compiles.")
+
+        if unreadable:
+            print(f"\n{len(unreadable)} file(s) could not be parsed and were NOT checked:",
+                  file=sys.stderr)
+            for p, e in unreadable:
+                print(f"  ! {p}: {e}", file=sys.stderr)
+
+    # A file the reviewer could not read is a tool failure, not a clean result,
+    # so it fails the run on its own - ahead of --fail-on, which grades findings
+    # and has nothing to say about a file that produced none because it was
+    # never analysed. Exit 2 matches the other usage errors and separates
+    # "could not check" from "checked and found something" (1).
+    if unreadable:
+        return 2
 
     if args.fail_on != "never":
         gate = SEVERITIES.index(args.fail_on)

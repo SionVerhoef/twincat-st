@@ -4,9 +4,9 @@ Known-good TwinCAT 3 (4024) object files. All are UTF-8 with BOM and CRLF, carry
 
 | File | What it is |
 |---|---|
-| `FB_Sequence.TcPOU` | **The workhorse.** PLCopen-style command interface (`bExecute` / `bBusy` / `bDone` / `bError` / `nErrorID`) over a `CASE` state machine, with a per-step timeout, a private transition method that resets the timer, and a resettable error state. Copy this shape for anything with steps or waiting. |
+| `FB_Sequence.TcPOU` | **The workhorse.** PLCopen-style command interface (`bExecute` / `bBusy` / `bDone` / `bError` / `nErrorID`) over a `CASE` state machine, with a per-step timeout, a private transition method that resets the timer, and a resettable error state. Each step's done-condition is an **input** (`bStep1Done`, `bStep2Done`) rather than a hardwired expression — that is what lets a test hold a step open and watch it fault. Copy this shape for anything with steps or waiting. |
 | `E_SeqState.TcDUT` | The state enum `FB_Sequence` uses — qualified-only, explicit values, gaps left for inserting states. |
-| `FB_ExampleTestSuite.TcPOU` | TcUnit suite skeleton showing how to drive an FB across multiple cycles in a test. Requires the TcUnit library. |
+| `FB_ExampleTestSuite.TcPOU` | TcUnit suite skeleton showing how to drive an FB across multiple cycles in a test. Two fixtures, driven with different step conditions, so the completion path and the timeout path are both actually reachable. Requires the TcUnit library. |
 
 ## Using them
 
