@@ -119,7 +119,7 @@ POU_HEADER = re.compile(
     r"^\s*(FUNCTION_BLOCK|FUNCTION|PROGRAM|METHOD|INTERFACE|PROPERTY)\s+"
     r"(?:(?:PUBLIC|PRIVATE|PROTECTED|INTERNAL|ABSTRACT|FINAL|OVERRIDE)\s+)*"
     r"([A-Za-z_]\w*)",
-    re.I,
+    re.I | re.M,
 )
 SUPPRESS = re.compile(r"//\s*lint:allow\s+([A-Za-z0-9_,]+)\s*(.*)$", re.I)
 
@@ -280,19 +280,38 @@ def parse_xml(path: Path) -> SourceFile:
 
 def parse_text(path: Path) -> SourceFile:
     raw = path.read_text(encoding="utf-8-sig", errors="replace")
-    # Split declaration from body at the last END_VAR, which is how a plain ST
-    # export is laid out.
-    ends = [m.end() for m in re.finditer(r"^\s*END_VAR\s*$", raw, re.M | re.I)]
-    if ends:
-        decl, impl = raw[: ends[-1]], raw[ends[-1]:]
-    else:
-        decl, impl = "", raw
-    m = POU_HEADER.search(decl or raw)
-    name = m.group(2) if m else path.stem
-    return SourceFile(path=path, raw=raw, units=[Unit(
-        name=name, kind="POU", decl=decl, impl=impl,
-        decl_line=1, impl_line=raw.count("\n", 0, len(decl)) + 1,
-    )])
+    sf = SourceFile(path=path, raw=raw)
+    # One unit per POU header. Splitting the whole file at its last END_VAR instead
+    # treats a multi-POU source as a single block, and that fails silently in the
+    # worst way: every body but the last ends up inside the merged declaration and is
+    # never scanned as implementation, so a CP8 float comparison in the first POU
+    # simply disappears. TwinCAT writes one POU per file, which is why 1374 real
+    # .TcPOU files never showed it — CODESYS text exports and library sources do not
+    # follow that rule.
+    heads = list(POU_HEADER.finditer(raw))
+    if not heads:
+        sf.units.append(Unit(name=path.stem, kind="POU", decl="", impl=raw))
+        return sf
+    for i, head in enumerate(heads):
+        start = head.start()
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(raw)
+        block = raw[start:end]
+        ends = [m.end() for m in re.finditer(r"^\s*END_VAR\s*$", block, re.M | re.I)]
+        if ends:
+            decl, impl = block[: ends[-1]], block[ends[-1]:]
+        else:
+            # No declarations: keep the header line as the declaration so the rules
+            # that read the POU keyword still see it, and scan the rest as body.
+            cut = block.find("\n") + 1
+            decl, impl = block[:cut], block[cut:]
+        sf.units.append(Unit(
+            name=head.group(2),
+            kind="Method" if head.group(1).upper() in ("METHOD", "PROPERTY") else "POU",
+            decl=decl, impl=impl,
+            decl_line=raw.count("\n", 0, start) + 1,
+            impl_line=raw.count("\n", 0, start + len(decl)) + 1,
+        ))
+    return sf
 
 
 def parse_variables(unit: Unit) -> list[Variable]:
@@ -392,8 +411,15 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # from a sibling method. Typing names file-wide instead leaks: TcUnit declares
     # 'Expected'/'Actual' as LREAL in one assert method and as USINT in another, and
     # a shared set makes every integer comparison look like a float comparison.
-    container_idx = next((i for i, u in enumerate(sf.units) if u.kind == "POU"), 0)
-    container_vars = own_vars[container_idx] if own_vars else []
+    # Nearest preceding POU, not the first one in the file: a .TcPOU holds exactly one
+    # so the two are identical there, but a text source can hold several, and taking
+    # the first hands every later POU's methods the wrong object's members.
+    owner_of: list[int] = []
+    seen_pou = 0
+    for i, u in enumerate(sf.units):
+        if u.kind == "POU":
+            seen_pou = i
+        owner_of.append(seen_pou)
 
     def add(rule: str, unit: Unit, rel_line: int, text: str, msg: str, base: int) -> None:
         if rule not in enabled:
@@ -402,7 +428,9 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         found.append(Finding(rule, sev, fname, unit.name, base + rel_line - 1, text, msg))
 
     for unit_idx, unit in enumerate(sf.units):
-        scope_vars = list(container_vars) if unit_idx != container_idx else []
+        owner_idx = owner_of[unit_idx] if unit_idx < len(owner_of) else 0
+        scope_vars = (list(own_vars[owner_idx])
+                      if unit_idx != owner_idx and owner_idx < len(own_vars) else [])
         scope_vars += own_vars[unit_idx] if unit_idx < len(own_vars) else []
         pointer_names = {v.name for v in scope_vars if is_pointerish(v.type)}
         # base_type() strips 'POINTER TO', so guard against calling a POINTER TO

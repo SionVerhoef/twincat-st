@@ -11,6 +11,8 @@ defect this skill leads with. This is the other half of the gate:
     were false positives until they were fixed
   * X6 separates an FB input from a METHOD parameter by severity
   * X9 catches both directions of a mixed PLCopen behaviour model
+  * a text source holding several POUs is parsed as several POUs — merging
+    them hid every body but the last and crossed their variable scopes
   * what tcpou.py scaffolds passes the reviewer tcpou.py ships beside — the two
     tools disagreed for the skill's whole life, and only a human reading both
     noticed, because nothing here ever reviewed a scaffold
@@ -90,6 +92,46 @@ check("X6 is low on a METHOD parameter", x6.get("HandleValue") == "low", repr(x6
 x9 = {f["object"] for f in review(FIXTURES / "positive") if f["rule"] == "X9"}
 check("X9 fires on Enable paired with Done", "FB_EnableDone" in x9, repr(sorted(x9)))
 check("X9 fires on Execute paired with Valid", "FB_ExecuteValid" in x9, repr(sorted(x9)))
+
+# --- a text source holding several POUs is not one POU ----------------------
+# parse_text used to split the whole file at its last END_VAR, which assumes one
+# POU per file. TwinCAT writes one POU per file so no .TcPOU ever showed it, but a
+# CODESYS text export does not, and the failure was silent in both directions: the
+# earlier bodies ended up inside the merged declaration and were never scanned, and
+# the merged variable scope let one block's trigger pair with another's completion.
+# Both halves are asserted, because fixing only the split turns the silent miss into
+# a false positive instead.
+
+MULTI_POU = """FUNCTION_BLOCK FB_First
+VAR_INPUT
+    bEnable : BOOL;
+END_VAR
+VAR
+    fA : LREAL;
+    bEq : BOOL;
+END_VAR
+bEq := bEnable AND (fA = 1.0);
+
+FUNCTION_BLOCK FB_Second
+VAR_OUTPUT
+    bDone : BOOL;
+END_VAR
+VAR
+    fB : LREAL;
+END_VAR
+bDone := (fB = 2.0);
+"""
+
+with tempfile.TemporaryDirectory() as tmp:
+    multi = Path(tmp) / 'two_pous.st'
+    multi.write_text(MULTI_POU, encoding='utf-8')
+    findings = review(multi)
+    cp8 = {f['object'] for f in findings if f['rule'] == 'CP8'}
+    check("every POU's body in a text source is scanned",
+          cp8 == {'FB_First', 'FB_Second'}, repr(sorted(cp8)))
+    crossed = [f for f in findings if f['rule'] == 'X9']
+    check('X9 does not pair pins across POU boundaries', not crossed,
+          '; '.join(f"{f['object']}:{f['line']} {f['message'][:60]}" for f in crossed))
 
 # --- the skill's own known-good code stays clean ----------------------------
 
