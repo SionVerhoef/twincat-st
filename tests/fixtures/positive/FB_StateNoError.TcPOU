@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
   <POU Name="FB_StateNoError" Id="{3d92f4c7-18ab-4f60-b2e1-55c7a0d3e114}" SpecialFunc="None">
-    <Declaration><![CDATA[// X7 needs its own file: the rule is satisfied by an error, fault, alarm or abort
-// word appearing anywhere in the file's implementations, so it cannot share one
-// with the other fixtures.
+    <Declaration><![CDATA[// X7 used to be satisfied by an error, fault, alarm or abort word appearing
+// anywhere in the file's implementations — so a bError output, which nearly every
+// FB has, silenced it. The output below is deliberate: the rule must look for an
+// error *state* and still fire here. It stays in its own file because the CASE
+// must be the only state machine under test.
 FUNCTION_BLOCK FB_StateNoError
+VAR_OUTPUT
+    bError : BOOL;
+END_VAR
 VAR
     eState : E_Step;
 END_VAR
@@ -14,6 +19,8 @@ END_VAR
     0: eState := 1;
     1: eState := 0;
 END_CASE
+
+bError := FALSE;
 ]]></ST>
     </Implementation>
   </POU>

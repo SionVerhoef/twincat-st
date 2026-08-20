@@ -21,21 +21,21 @@ sed -i 's/FB_Sequence/FB_Filling/g' MyProject/PLC/POUs/FB_Filling.TcPOU
 # REQUIRED - the copy still carries the template's Id GUIDs, and TwinCAT
 # identifies objects by Id. Two objects sharing one is a real conflict and
 # nothing warns you.
-python3 scripts/tcpou.py reguid MyProject/PLC/POUs/FB_Filling.TcPOU
+py -3 scripts/tcpou.py reguid MyProject/PLC/POUs/FB_Filling.TcPOU
 
 # validate structure and encoding
-python3 scripts/tcpou.py check MyProject/PLC/POUs/FB_Filling.TcPOU
+py -3 scripts/tcpou.py check MyProject/PLC/POUs/FB_Filling.TcPOU
 
 # edit the implementation
-python3 scripts/tcpou.py get MyProject/PLC/POUs/FB_Filling.TcPOU --part impl > /tmp/body.st
+py -3 scripts/tcpou.py get MyProject/PLC/POUs/FB_Filling.TcPOU --part impl > /tmp/body.st
 $EDITOR /tmp/body.st
-python3 scripts/tcpou.py set MyProject/PLC/POUs/FB_Filling.TcPOU --part impl --from-file /tmp/body.st
+py -3 scripts/tcpou.py set MyProject/PLC/POUs/FB_Filling.TcPOU --part impl --from-file /tmp/body.st
 
 # REQUIRED - a file not in the .plcproj is silently not compiled
-python3 scripts/tcpou.py register MyProject/PLC/PLC.plcproj MyProject/PLC/POUs/FB_Filling.TcPOU
+py -3 scripts/tcpou.py register MyProject/PLC/PLC.plcproj MyProject/PLC/POUs/FB_Filling.TcPOU
 
 # then review what you wrote
-python3 scripts/st_review.py MyProject/PLC/POUs/FB_Filling.TcPOU
+py -3 scripts/st_review.py MyProject/PLC/POUs/FB_Filling.TcPOU
 ```
 
 **Copying a template duplicates its GUID.** For a new object, prefer `tcpou.py new` (which generates a fresh one) and paste the template body in, or replace the `Id="{...}"` value by hand before adding the file to a project that already contains the original.

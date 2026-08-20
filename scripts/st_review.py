@@ -263,7 +263,12 @@ def parse_xml(path: Path) -> SourceFile:
     # accessor in a file report as "Get", and any later lookup by name resolves
     # to whichever one came first — wrong file positions on the finding.
     def walk(el, owner: str = "") -> None:
-        if el.tag in ("POU", "Method", "Get", "Set", "Property", "DUT", "GVL", "Itf"):
+        # 'Action' belongs here for the same reason methods do. Leaving it out did
+        # not merely skip the action's code: because that code was invisible, every
+        # variable it used was reported as CP24 unused. One gap, false negatives on
+        # the action and false positives on the POU that owns it.
+        if el.tag in ("POU", "Method", "Get", "Set", "Property", "Action",
+                      "DUT", "GVL", "Itf"):
             own = el.get("Name") or path.stem
             name = f"{owner}.{own}" if owner and el.tag in ("Get", "Set") else own
             decl_el = el.find("Declaration")
@@ -442,28 +447,46 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                         unit.impl_line)
 
         # --- X2 timer preset must be a TIME literal ------------------------
+        # Key on the type, not on a name that merely sounds like a timeout. PLCopen's
+        # own 'udiTimeOut' is a UDINT of milliseconds (references/behaviour-model.md),
+        # so 'udiTimeOut := 500' is correct there and 'T#500MS' would be the type
+        # error — yet this rule reported that line high. Three things do imply TIME:
+        # 'PT', which is TIME on every standard timer; a 't'-prefixed pin, which says
+        # TIME in the convention this skill measured; and a variable this scope
+        # declares as TIME, which is not a guess at all.
         for i, line in enumerate(lines):
-            for m in re.finditer(r"\b(PT|udiTimeOut|TimeOut)\s*:=\s*([^,;)\s]+)", line, re.I):
-                val = m.group(2).strip()
-                if re.fullmatch(NUM, val) or re.fullmatch(r"\d+", val):
+            for m in re.finditer(r"\b([A-Za-z_]\w*)\s*:=\s*([^,;)\s]+)", line):
+                pin, val = m.group(1), m.group(2).strip()
+                if not (pin.upper() == "PT" or re.match(r"^t[A-Z_]", pin)
+                        or pin in time_names):
+                    continue
+                if re.fullmatch(NUM, val):
                     add("X2", unit, i + 1, line,
-                        f"{m.group(1)} := {val} is a number; a preset needs a TIME literal "
+                        f"{pin} := {val} is a number; a preset needs a TIME literal "
                         f"such as T#500MS, or DINT_TO_TIME(...)", unit.impl_line)
 
         # --- X3 CASE without ELSE ------------------------------------------
-        depth = 0
-        case_open: list[tuple[int, bool]] = []
+        # An ELSE is the CASE's fallback only when no IF is open inside it. Marking
+        # the CASE on any ELSE let a nested IF/ELSE stand in as the fallback — and
+        # since almost every real state branch contains one, the rule went quiet on
+        # exactly the state machines it exists to catch. 'ELSIF' and 'END_IF' are
+        # not word-boundary matches for IF, so they need no special casing; an
+        # entirely inline 'IF .. ELSE .. END_IF' does, since it nets to zero.
+        case_open: list[list] = []          # [start line, has ELSE, IFs open inside]
         for i, line in enumerate(lines):
             u = line.upper()
             for _ in re.finditer(r"\bCASE\b", u):
-                case_open.append((i, False))
-                depth += 1
-            if case_open and re.search(r"^\s*ELSE\b", u):
-                case_open[-1] = (case_open[-1][0], True)
+                case_open.append([i, False, 0])
+            if case_open:
+                inline_if = re.search(r"\bIF\b", u) or re.search(r"\bEND_IF\b", u)
+                if (re.search(r"^\s*ELSE\b", u) and not inline_if
+                        and case_open[-1][2] == 0):
+                    case_open[-1][1] = True
+                case_open[-1][2] += (len(re.findall(r"\bIF\b", u))
+                                     - len(re.findall(r"\bEND_IF\b", u)))
             for _ in re.finditer(r"\bEND_CASE\b", u):
                 if case_open:
-                    start, has_else = case_open.pop()
-                    depth -= 1
+                    start, has_else, _ifs = case_open.pop()
                     if not has_else:
                         sup, _ = suppressed(raw_lines, start, "X3")
                         if not sup:
@@ -708,9 +731,26 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"'{v.name}' is declared in {v.section} but never referenced"))
 
     # --- X7 state machine with no error state -----------------------------------
-    if re.search(r"\bCASE\b", all_impl, re.I):
-        state_words = re.findall(r"\b(\w*(?:ERROR|FAULT|ALARM|ABORT)\w*)\b", all_impl, re.I)
-        if not state_words and re.search(r"\bCASE\s+\w*(STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I):
+    # Look for an error CASE *label*, not for the word anywhere in the file. The
+    # old search accepted any identifier containing Error/Fault/Alarm/Abort, and
+    # since nearly every FB declares a bError output it almost always succeeded —
+    # so the rule stayed silent on precisely the state machines it targets. A
+    # label is what proves the state exists and can be entered.
+    if re.search(r"\bCASE\s+\w*(STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I):
+        # A state counts as the error state when its label says so —
+        # 'E_SeqState.Error:' — or when its body raises one. The second signal is
+        # not optional: a machine that numbers its steps has no room to say
+        # 'error' in a label, and '99: qxError := TRUE;' is the whole of what it
+        # can show. Comments are already stripped from all_impl, so '99: // fault'
+        # says nothing by the time this runs. Each body is cut at END_CASE so a
+        # method further down the file cannot lend the machine an error state.
+        ERR = r"ERROR|FAULT|ALARM|ABORT"
+        parts = re.split(r"^[ \t]*([\w.]+(?:\s*,\s*[\w.]+)*)\s*:(?!=)", all_impl, flags=re.M)
+        states = [(lab, re.split(r"\bEND_CASE\b", body, maxsplit=1, flags=re.I)[0])
+                  for lab, body in zip(parts[1::2], parts[2::2])]
+        if not any(re.search(ERR, lab, re.I)
+                   or re.search(rf"\w*(?:{ERR})\w*\s*:=\s*TRUE\b", body, re.I)
+                   for lab, body in states):
             unit = sf.units[0]
             if "X7" in enabled:
                 found.append(Finding(

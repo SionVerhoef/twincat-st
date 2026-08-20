@@ -114,9 +114,13 @@ A third independent test on Windows, against the same project. It confirmed `--s
 
 ### Fixed after the automated PR review
 
-Four defects raised on the rebuild PR and verified here against a repro before being
-fixed. Each has a regression test, and each test was mutation-checked by reverting the
-fix.
+Twelve defects raised on the rebuild PR — four in its review comments, eight more folded
+behind its "suppressed comments" summary — each verified here against a repro before being
+fixed. Every code fix has a regression test, and each test was mutation-checked by
+reverting the fix.
+
+Four of them made a rule report the opposite of the truth, and three of those were in
+rules the skill sells itself on:
 
 - **`X5` treated a null *test* as a null *guard*.** Any comparison against zero in the
   preceding lines was accepted as proof, so `IF p = 0 THEN Log(); END_IF; x := p^;` — which
@@ -141,6 +145,41 @@ fix.
   even had the path been reachable. The step conditions are now inputs, which is what lets a
   test hold a step open and watch it fault, and the suite drives its two fixtures
   differently so both the completion and the timeout path are genuinely exercised.
+- **`<Action>` bodies were never reviewed, and their variables reported as unused.**
+  `tcpou.py` has always recognised `Action`; `parse_xml` walked every container except
+  that one. The gap cut both ways — a `CP8` float comparison and an `X4` unguarded
+  division inside an action went unreported, while all five declarations the action used
+  came back as `CP24` unused, because from the reviewer's side nothing referenced them.
+- **`X2` reported the correct `udiTimeOut := 500` as high.** It matched pin *names* that
+  sound like timeouts. But `udiTimeOut` is PLCopen's UDINT millisecond pin — documented
+  as such in this skill's own `references/behaviour-model.md` — so a number is right
+  there and `T#500MS` would be the type error. It now keys on things that really are
+  TIME: `PT`, a `t`-prefixed pin, or a variable the scope declares as TIME.
+- **`X3` accepted a nested `IF`'s `ELSE` as the `CASE`'s fallback.** Nesting was not
+  tracked, and since almost every real state branch contains an `IF/ELSE`, the rule was
+  close to inert on the state machines it exists to check.
+- **`X7` was satisfied by a `bError` output.** It searched for any identifier containing
+  Error/Fault/Alarm/Abort anywhere in the file, which nearly every FB supplies, so it
+  missed exactly the defect it claims to detect. It now looks for an error *state*: a
+  label that says so, or a step that raises the fault flag — the second signal is not
+  optional, because a machine that numbers its steps (`99: qxError := TRUE;`) has no room
+  to say "error" in a label, and matching label text alone reported one such machine in
+  `evals/fixture-project` as having no error state at all.
+
+And four documents that contradicted the code or each other:
+
+- `references/testing-tcunit.md` stated flatly that each test method declares its own
+  fixtures — which recreates the reset-every-scan bug fixed above, and contradicted its
+  own multi-cycle section further down. It now says which kind of test each scope suits.
+- `examples/tcmatrix-tests/NOTES.md` still described the `FOR`-loop-of-calls test pattern
+  that was removed for not working.
+- `examples/packml-vffs/NOTES.md` said there is no constructor in ST, while
+  `references/twincat.md` documents `FB_init` as TwinCAT's. The real reason that example
+  uses an init state machine is that its work spans scans, which `FB_init` cannot.
+- `examples/README.md` gave commands no working directory could run: `../scripts/...`
+  paired with globs beginning `examples/`. Its blocks, and those in `templates/README.md`,
+  are now `py -3` from the repository root like the rest of the skill — the round-2 fix
+  had reached `SKILL.md` and the top-level README but not these two.
 
 ### Validation
 

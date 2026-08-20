@@ -60,9 +60,12 @@ No `LICENSE` file needed for your own code. Once it exists, prefer it over every
 
 Every file here parses with the skill's own tooling:
 
+Run these from the repository root, as everything else in the skill does — with
+`../scripts` the globs starting `examples/` cannot resolve from the same directory:
+
 ```bash
-python3 ../scripts/tcpou.py check examples/*/*.TcPOU examples/*/*.TcIO examples/*/*.TcDUT examples/*/*.TcGVL
-python3 ../scripts/tcpou.py show examples/packml-vffs/FB_Cylinder.TcPOU
+py -3 scripts/tcpou.py check examples/*/*.TcPOU examples/*/*.TcIO examples/*/*.TcDUT examples/*/*.TcGVL
+py -3 scripts/tcpou.py show examples/packml-vffs/FB_Cylinder.TcPOU
 ```
 
 All ten report `ok`. Two notes are expected and correct: every file uses **LF** line endings rather than CRLF, and the `design-patterns-state/` files were saved by TwinCAT **4022**, not 4024.

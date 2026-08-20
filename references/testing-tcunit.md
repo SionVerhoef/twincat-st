@@ -6,7 +6,9 @@ PLC code has a reputation for being untestable. Most of that is a design problem
 
 ## The shape
 
-A test suite is a function block extending `FB_TestSuite`. Its **body** calls each test method; each method declares its own fixtures, runs the code under test, and asserts.
+A test suite is a function block extending `FB_TestSuite`. Its **body** calls each test method; each method runs the code under test and asserts.
+
+Where the fixtures are declared decides what you can test. A method's `VAR` is `VAR_TEMP` — re-initialised on every call — so it suits a **single-cycle** test of a pure function, and nothing else. Anything **stateful**, where the FB needs several scans to reach a verdict, must declare its fixtures on the **suite**, or the instance resets before it can get anywhere. The multi-cycle section below is the shape to copy for those.
 
 ```pascal
 FUNCTION_BLOCK FB_Scaling_Tests EXTENDS FB_TestSuite

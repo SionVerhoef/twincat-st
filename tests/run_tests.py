@@ -105,6 +105,44 @@ x5 = {f["object"] for f in review(FIXTURES / "positive") if f["rule"] == "X5"}
 check("X5 fires when a null test falls through to the dereference",
       "FB_NullFallThrough" in x5, repr(sorted(x5)))
 
+# --- code inside an <Action> is code ----------------------------------------
+# parse_xml walked every container except Action, which tcpou.py has always
+# recognised. The gap cut both ways: defects in the action went unreported, and
+# the declarations the action used came back as CP24 unused, because from the
+# reviewer's side nothing referenced them.
+
+positive = review(FIXTURES / "positive")
+act = [f for f in positive if f["object"] == "Act_Compare"]
+check("a defect inside an <Action> is reported, and against the action",
+      any(f["rule"] == "CP8" for f in act), repr([(f["rule"], f["object"]) for f in act]))
+check("variables an <Action> uses are not called unused",
+      not [f for f in positive
+           if f["rule"] == "CP24" and f["object"] == "FB_ActionDefect"],
+      "the action's code is invisible again")
+
+# --- X3 and X7 look at structure, not at a word anywhere in the file --------
+# X3 accepted a nested IF's ELSE as the CASE's fallback, and X7 accepted any
+# identifier containing Error/Fault/Alarm/Abort — which a bError output supplies
+# in nearly every FB. Both rules stayed quiet on exactly what they exist to find.
+# The negative fixtures hold the other side: a numerically-labelled machine whose
+# step 99 raises the fault flag has an error state, and must not be reported.
+
+x3 = {f["object"] for f in positive if f["rule"] == "X3"}
+check("X3 fires when the only ELSE belongs to a nested IF",
+      "FB_NestedElse" in x3, repr(sorted(x3)))
+x7 = {f["object"] for f in positive if f["rule"] == "X7"}
+check("X7 fires even though the FB declares a bError output",
+      "FB_StateNoError" in x7, repr(sorted(x7)))
+
+# --- X2 keys on the type, not on a name that sounds like a timeout ----------
+# 'udiTimeOut' is PLCopen's UDINT millisecond pin, so a plain number is correct
+# there and T#500MS would be the type error — yet X2 reported it high. 'PT' is
+# TIME on every standard timer and must still be caught.
+
+x2 = {f["object"] for f in positive if f["rule"] == "X2"}
+check("X2 still fires on a bare number given to PT",
+      "FB_AllRules" in x2, repr(sorted(x2)))
+
 # --- the skill's own known-good code stays clean ----------------------------
 
 for folder in ("templates", "examples"):
