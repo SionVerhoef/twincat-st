@@ -166,6 +166,23 @@ rules the skill sells itself on:
   to say "error" in a label, and matching label text alone reported one such machine in
   `evals/fixture-project` as having no error state at all.
 
+One more came from a human read of the PR rather than the bot, and it is the worst of
+the set because it is the template every FB written with this skill starts from:
+
+- **`FB_Sequence` called its step timer from inside the `CASE` branches** — the shape
+  `references/cyclic-execution-rules.md` Rule 5 prints under a `// WRONG` comment, in the
+  skill's own flagship template. Rule 5 adds that sharing one timer instance across
+  several states is a bug, and `fbStepTimer` was shared by `Step1` and `Step2`; Rule 2
+  says the call site is unconditional and the input is the control. It *worked*, because
+  `M_EnterStep` reset the timer on every transition — but a reader copying the shape
+  gets no such guarantee, and swapping the `TON` for a `TOF` breaks it outright, since a
+  `TOF` must keep being called after `IN` falls. The edge detector and the timer are now
+  called once, unconditionally, above the `CASE`, with `IN` held low for the single scan
+  on which the state changes — so the re-arm is structural rather than something a future
+  transition has to remember. `M_EnterStep` became a bare assignment and is gone.
+  Nothing in `st_review.py` looks for this shape, so `tests/run_tests.py` now asserts the
+  timer has exactly one call site and that it sits above the `CASE`.
+
 And four documents that contradicted the code or each other:
 
 - `references/testing-tcunit.md` stated flatly that each test method declares its own

@@ -184,6 +184,22 @@ with tempfile.TemporaryDirectory() as tmp:
 
 seq = (ROOT / "templates" / "FB_Sequence.TcPOU").read_text(encoding="utf-8-sig")
 suite = (ROOT / "templates" / "FB_ExampleTestSuite.TcPOU").read_text(encoding="utf-8-sig")
+# The template shipped its step timer called from inside the Step1 and Step2
+# branches — the shape references/cyclic-execution-rules.md Rule 5 prints under a
+# WRONG comment, in the skill's own flagship template. Rule 5 also calls sharing
+# one timer instance across states a bug. No rule in st_review.py looks for this,
+# so this check is the only thing keeping the template off the shape its own
+# reference forbids.
+seq_body = seq.split("<Implementation>")[1].split("</Implementation>")[0]
+timer_calls = list(re.finditer(r"\bfbStepTimer\s*\(", seq_body))
+case_at = seq_body.find("CASE ")
+check("FB_Sequence services its step timer from exactly one call site",
+      len(timer_calls) == 1, f"{len(timer_calls)} call sites")
+check("FB_Sequence services its step timer above the CASE, not inside a branch",
+      bool(timer_calls) and case_at > 0 and timer_calls[0].start() < case_at,
+      "a timer called inside the branch that reads it stops being serviced "
+      "the moment the state machine leaves that branch")
+
 check("FB_Sequence's step conditions are not literals",
       not re.search(r"\bIF\s+(TRUE|FALSE)\s+THEN", seq, re.I),
       "a literal condition makes the ELSIF timeout branch unreachable")

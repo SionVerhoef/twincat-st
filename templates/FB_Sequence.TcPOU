@@ -9,6 +9,16 @@
     Contract: call this FB unconditionally every cycle. bExecute is edge-triggered.
     Every waiting state has a timeout and a path to Error. Error is resettable.
 
+    WHY THE TIMER IS CALLED ABOVE THE CASE AND NOT INSIDE IT
+    Every instance that carries state - the edge detector, the step timer - is
+    called exactly once, unconditionally, before the state machine runs. The CASE
+    chooses the timer's *inputs*; it never chooses whether the call happens.
+    Calling a timer inside the branch that reads it is the shape
+    references/cyclic-execution-rules.md Rule 5 prints as WRONG: it stops being
+    serviced the moment you leave the state, and one instance shared between two
+    steps carries its elapsed time from one into the next. Rule 2 puts the same
+    thing positively - the input is the control, not the call site.
+
     WHY THE STEP CONDITIONS ARE INPUTS
     A step's done-condition is the one thing a test has to control: hardwire it
     and the timeout branch becomes unreachable, so the error path - the code most
@@ -33,8 +43,11 @@ VAR_OUTPUT
 END_VAR
 VAR
     eState      : E_SeqState := E_SeqState.Idle;
+    eStatePrev  : E_SeqState := E_SeqState.Idle;
     fbExecTrig  : R_TRIG;
     fbStepTimer : TON;
+    bStepChanged: BOOL;                 // TRUE for the one scan a new state is entered
+    bTimedStep  : BOOL;                 // TRUE while a state that has a timeout is active
 END_VAR
 VAR CONSTANT
     cErrStep1Timeout : UDINT := 16#8101;
@@ -43,8 +56,21 @@ VAR CONSTANT
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[// Rule 2: edge detector is an instance and is called every cycle.
+      <ST><![CDATA[// Rule 2 / Rule 5: every instance that carries state is called exactly once,
+// unconditionally, before the state machine runs. Nothing below decides whether
+// a call happens - only what its inputs are.
 fbExecTrig(CLK := bExecute);
+
+bStepChanged := (eState <> eStatePrev);
+eStatePrev   := eState;
+
+bTimedStep := (eState = E_SeqState.Step1) OR (eState = E_SeqState.Step2);
+
+// A TON re-arms when IN goes low, so holding IN low for the single scan on which
+// the state changed gives every step a full, fresh timeout. That is what makes
+// one timer instance safe to share between steps: the reset is structural, not
+// something a future transition has to remember to do.
+fbStepTimer(IN := bTimedStep AND NOT bStepChanged, PT := tStepTimeout);
 
 // Reset is handled outside the state machine so it works from any state.
 IF bReset AND eState = E_SeqState.Error THEN
@@ -58,22 +84,19 @@ CASE eState OF
         IF fbExecTrig.Q THEN
             bDone  := FALSE;
             bError := FALSE;
-            M_EnterStep(newState := E_SeqState.Step1);
+            eState := E_SeqState.Step1;
         END_IF
 
     E_SeqState.Step1:
-        // Rule 5: timer instance driven every cycle while in this state.
-        fbStepTimer(IN := TRUE, PT := tStepTimeout);
         IF bStep1Done THEN                      // wire this input to the real step-1 signal
-            M_EnterStep(newState := E_SeqState.Step2);
+            eState := E_SeqState.Step2;
         ELSIF fbStepTimer.Q THEN
             M_Fail(errorID := cErrStep1Timeout);
         END_IF
 
     E_SeqState.Step2:
-        fbStepTimer(IN := TRUE, PT := tStepTimeout);
         IF bStep2Done THEN                      // wire this input to the real step-2 signal
-            M_EnterStep(newState := E_SeqState.Done);
+            eState := E_SeqState.Done;
         ELSIF fbStepTimer.Q THEN
             M_Fail(errorID := cErrStep2Timeout);
         END_IF
@@ -95,19 +118,6 @@ bBusy  := (eState <> E_SeqState.Idle) AND (eState <> E_SeqState.Error);
 bError := (eState = E_SeqState.Error);
 ]]></ST>
     </Implementation>
-    <Method Name="M_EnterStep" Id="{c2aa5b89-eee4-4849-8357-4bec2013ba32}">
-      <Declaration><![CDATA[METHOD PRIVATE M_EnterStep
-VAR_INPUT
-    newState : E_SeqState;
-END_VAR
-]]></Declaration>
-      <Implementation>
-        <ST><![CDATA[// Reset the step timer on every transition so a re-entered state
-// does not start with an already-elapsed timer (Rule 5).
-fbStepTimer(IN := FALSE);
-eState := newState;]]></ST>
-      </Implementation>
-    </Method>
     <Method Name="M_Fail" Id="{4df4ca21-902d-4af4-8bb4-b5dc09e5bd1d}">
       <Declaration><![CDATA[METHOD PRIVATE M_Fail
 VAR_INPUT
@@ -116,7 +126,6 @@ END_VAR
 ]]></Declaration>
       <Implementation>
         <ST><![CDATA[nErrorID := errorID;
-fbStepTimer(IN := FALSE);
 eState   := E_SeqState.Error;]]></ST>
       </Implementation>
     </Method>
