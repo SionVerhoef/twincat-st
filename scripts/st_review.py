@@ -22,8 +22,10 @@ of the code in OOP projects, which is the whole reason this script exists.
     python3 st_review.py src/ --rules X1,X2,CP8        # only these
 
 Exit status is 1 when a finding at or above --fail-on (default: high) is
-reported, so it can gate a pipeline. Nothing here compiles the code: a clean
-run means "no known defect pattern matched", not "this builds".
+reported, so it can gate a pipeline, and 2 when a file could not be parsed —
+a file that was never analysed must not read as a clean one. Nothing here
+compiles the code: a clean run means "no known defect pattern matched", not
+"this builds".
 
 Suppress a finding you have judged acceptable by putting a reason on the line
 or the line above:
@@ -251,19 +253,22 @@ def line_of(raw: str, needle: str) -> int:
 def parse_xml(path: Path) -> SourceFile:
     raw = path.read_text(encoding="utf-8-sig", errors="replace")
     sf = SourceFile(path=path, raw=raw)
-    try:
-        root = ET.fromstring(raw)
-    except ET.ParseError as exc:
-        sf.units.append(Unit(name=path.name, kind="unparsable", decl="", impl=""))
-        print(f"  ! {path}: XML parse error: {exc}", file=sys.stderr)
-        return sf
+    # Let a parse error out. Standing in an empty unit here made an unreadable
+    # file contribute nothing and the run still exit 0 - a gate that reports a
+    # green check on a file it never analysed.
+    root = ET.fromstring(raw)
 
     # Walk the tree rather than flattening it, so a getter can be named for the
     # property that owns it. A bare <Get Name="Get"> would otherwise make every
     # accessor in a file report as "Get", and any later lookup by name resolves
     # to whichever one came first — wrong file positions on the finding.
     def walk(el, owner: str = "") -> None:
-        if el.tag in ("POU", "Method", "Get", "Set", "Property", "DUT", "GVL", "Itf"):
+        # 'Action' belongs here for the same reason methods do. Leaving it out did
+        # not merely skip the action's code: because that code was invisible, every
+        # variable it used was reported as CP24 unused. One gap, false negatives on
+        # the action and false positives on the POU that owns it.
+        if el.tag in ("POU", "Method", "Get", "Set", "Property", "Action",
+                      "DUT", "GVL", "Itf"):
             own = el.get("Name") or path.stem
             name = f"{owner}.{own}" if owner and el.tag in ("Get", "Set") else own
             decl_el = el.find("Declaration")
@@ -379,6 +384,53 @@ def guard_pattern(expr: str) -> str:
     return e
 
 
+def case_block(text: str, start: int) -> str:
+    """One CASE body: from `start` (just past its `OF`) to its matching END_CASE.
+
+    Counts nested CASE/END_CASE pairs so a state machine containing one does not
+    end up truncated at the inner terminator.
+    """
+    depth = 1
+    for m in re.finditer(r"\b(CASE|END_CASE)\b", text[start:], re.I):
+        depth += 1 if m.group(1).upper() == "CASE" else -1
+        if depth == 0:
+            return text[start:start + m.start()]
+    return text[start:]
+
+
+def inside_nonnull_branch(lines: list[str], idx: int, name: str) -> bool:
+    """True when line `idx` sits inside a still-open `IF <name> <> 0 THEN` block.
+
+    Searching a window for the comparison is not enough, in either direction.
+    `IF p <> 0 THEN Log(); END_IF; p^ := 1;` contains the test and is still
+    unguarded, exactly as `IF p = 0 THEN Log(); END_IF` is: once `END_IF` closes
+    the block the null case rejoins the flow and walks into the dereference.
+
+    So walk backwards keeping an END_IF/IF balance and consider only blocks that
+    are still open at `idx`. An `ELSE` seen at that level before the `IF` means
+    this line is on the *other* branch - the null one - which guards nothing.
+    """
+    depth = 0
+    in_else = False
+    for j in range(idx - 1, max(-1, idx - 41), -1):
+        raw = lines[j]
+        u = raw.upper()
+        depth += len(re.findall(r"\bEND_IF\b", u))
+        if depth == 0 and re.match(r"^\s*(ELSE|ELSIF)\b", u):
+            in_else = True
+        # 'ELSIF' and 'END_IF' are not word-boundary matches for IF, so a plain
+        # \bIF\b finds only the block openers.
+        for m in re.finditer(r"\bIF\b", u):
+            if depth > 0:
+                depth -= 1
+                continue
+            if not in_else and re.search(rf"\b{re.escape(name)}\s*<>\s*0",
+                                         raw[m.end():]):
+                return True
+            in_else = False        # consumed by this IF; keep walking outward
+    return False
+
+
 # --------------------------------------------------------------------------- checks
 
 def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
@@ -416,6 +468,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                       if base_type(v.type) in REAL_TYPES and not is_pointerish(v.type)}
         time_names = {v.name for v in scope_vars
                       if base_type(v.type) in TIME_TYPES and not is_pointerish(v.type)}
+        time_names_upper = {n.upper() for n in time_names}
 
         impl = strip_noise(unit.impl)
         decl = strip_noise(unit.decl)
@@ -442,28 +495,50 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                         unit.impl_line)
 
         # --- X2 timer preset must be a TIME literal ------------------------
+        # Key on the type, not on a name that merely sounds like a timeout. PLCopen's
+        # own 'udiTimeOut' is a UDINT of milliseconds (references/behaviour-model.md),
+        # so 'udiTimeOut := 500' is correct there and 'T#500MS' would be the type
+        # error — yet this rule reported that line high. Three things do imply TIME:
+        # 'PT', which is TIME on every standard timer; a 't'-prefixed pin, which says
+        # TIME in the convention this skill measured; and a variable this scope
+        # declares as TIME, which is not a guess at all.
         for i, line in enumerate(lines):
-            for m in re.finditer(r"\b(PT|udiTimeOut|TimeOut)\s*:=\s*([^,;)\s]+)", line, re.I):
-                val = m.group(2).strip()
-                if re.fullmatch(NUM, val) or re.fullmatch(r"\d+", val):
+            for m in re.finditer(r"\b([A-Za-z_]\w*)\s*:=\s*([^,;)\s]+)", line):
+                pin, val = m.group(1), m.group(2).strip()
+                # ST identifiers are case-insensitive, so the *type* lookup has to
+                # fold case: 'tDelay : TIME' assigned as 'TDELAY := 500' is the
+                # same variable. The 't' prefix stays case-sensitive on purpose —
+                # it is a casing convention, and 'TDELAY' carries none of it.
+                if not (pin.upper() == "PT" or re.match(r"^t[A-Z_]", pin)
+                        or pin.upper() in time_names_upper):
+                    continue
+                if re.fullmatch(NUM, val):
                     add("X2", unit, i + 1, line,
-                        f"{m.group(1)} := {val} is a number; a preset needs a TIME literal "
+                        f"{pin} := {val} is a number; a preset needs a TIME literal "
                         f"such as T#500MS, or DINT_TO_TIME(...)", unit.impl_line)
 
         # --- X3 CASE without ELSE ------------------------------------------
-        depth = 0
-        case_open: list[tuple[int, bool]] = []
+        # An ELSE is the CASE's fallback only when no IF is open inside it. Marking
+        # the CASE on any ELSE let a nested IF/ELSE stand in as the fallback — and
+        # since almost every real state branch contains one, the rule went quiet on
+        # exactly the state machines it exists to catch. 'ELSIF' and 'END_IF' are
+        # not word-boundary matches for IF, so they need no special casing; an
+        # entirely inline 'IF .. ELSE .. END_IF' does, since it nets to zero.
+        case_open: list[list] = []          # [start line, has ELSE, IFs open inside]
         for i, line in enumerate(lines):
             u = line.upper()
             for _ in re.finditer(r"\bCASE\b", u):
-                case_open.append((i, False))
-                depth += 1
-            if case_open and re.search(r"^\s*ELSE\b", u):
-                case_open[-1] = (case_open[-1][0], True)
+                case_open.append([i, False, 0])
+            if case_open:
+                inline_if = re.search(r"\bIF\b", u) or re.search(r"\bEND_IF\b", u)
+                if (re.search(r"^\s*ELSE\b", u) and not inline_if
+                        and case_open[-1][2] == 0):
+                    case_open[-1][1] = True
+                case_open[-1][2] += (len(re.findall(r"\bIF\b", u))
+                                     - len(re.findall(r"\bEND_IF\b", u)))
             for _ in re.finditer(r"\bEND_CASE\b", u):
                 if case_open:
-                    start, has_else = case_open.pop()
-                    depth -= 1
+                    start, has_else, _ifs = case_open.pop()
                     if not has_else:
                         sup, _ = suppressed(raw_lines, start, "X3")
                         if not sup:
@@ -514,16 +589,33 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                 if name.upper() in ("THIS", "SUPER") or name not in pointer_names:
                     continue
                 window = "\n".join(lines[max(0, i - 15): i + 1])
-                if re.search(rf"\b{re.escape(name)}\s*(<>|=)\s*0", window):
+                # Accept only the shapes that actually stop the null case reaching
+                # the dereference. 'IF p <> 0 THEN' guards when the dereference is
+                # *inside* that branch - having merely tested the pointer somewhere
+                # above is the same non-guard as testing 'p = 0' and falling
+                # through, so this asks about position, not about the text.
+                if inside_nonnull_branch(lines, i, name):
+                    continue
+                # Same test on the dereference's own line, ahead of it:
+                # 'IF p <> 0 AND_THEN p^.x > 0 THEN'.
+                if re.search(rf"\b{re.escape(name)}\s*<>\s*0", line[:m.start()]):
+                    continue
+                # 'IF p = 0 THEN RETURN; END_IF' guards too - the null case leaves.
+                # A bare 'IF p = 0 THEN Log(); END_IF' does not: it names the null
+                # case without stopping it, and control falls straight through to
+                # the dereference. Reading either comparison as proof was the hole.
+                if re.search(rf"\b{re.escape(name)}\s*=\s*0\s*THEN\b.{{0,60}}?"
+                             rf"\b(RETURN|EXIT|CONTINUE)\b", window, re.I | re.S):
                     continue
                 if re.search(rf"__ISVALIDREF\s*\(\s*{re.escape(name)}", window, re.I):
                     continue
                 sup, _ = suppressed(raw_lines, i, "X5")
                 if not sup:
                     add("X5", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
-                        f"'{name}' dereferenced with no preceding '{name} <> 0' check; "
-                        f"a stale pointer after an online change corrupts memory silently",
-                        unit.impl_line)
+                        f"'{name}' dereferenced with no guard that stops the null case "
+                        f"reaching it - use 'IF {name} <> 0 THEN', or return from the "
+                        f"null branch; a stale pointer after an online change corrupts "
+                        f"memory silently", unit.impl_line)
                 break
 
         # --- CP8 / CP28 equality on REAL or TIME -----------------------------
@@ -697,15 +789,37 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"'{v.name}' is declared in {v.section} but never referenced"))
 
     # --- X7 state machine with no error state -----------------------------------
-    if re.search(r"\bCASE\b", all_impl, re.I):
-        state_words = re.findall(r"\b(\w*(?:ERROR|FAULT|ALARM|ABORT)\w*)\b", all_impl, re.I)
-        if not state_words and re.search(r"\bCASE\s+\w*(STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I):
-            unit = sf.units[0]
-            if "X7" in enabled:
-                found.append(Finding(
-                    "X7", RULES["X7"][0], fname, unit.name, unit.impl_line, "CASE ... OF",
-                    "no error or fault state is reachable from this state machine; a "
-                    "failed step has nowhere to go and no way to report itself"))
+    # Look for an error CASE *label*, not for the word anywhere in the file. The
+    # old search accepted any identifier containing Error/Fault/Alarm/Abort, and
+    # since nearly every FB declares a bError output it almost always succeeded —
+    # so the rule stayed silent on precisely the state machines it targets. A
+    # label is what proves the state exists and can be entered.
+    # A state counts as the error state when its label says so —
+    # 'E_SeqState.Error:' — or when its body raises one. The second signal is
+    # not optional: a machine that numbers its steps has no room to say
+    # 'error' in a label, and '99: qxError := TRUE;' is the whole of what it
+    # can show. Comments are already stripped from all_impl, so '99: // fault'
+    # says nothing by the time this runs.
+    ERR = r"ERROR|FAULT|ALARM|ABORT"
+
+    def has_error_state(block: str) -> bool:
+        parts = re.split(r"^[ \t]*([\w.]+(?:\s*,\s*[\w.]+)*)\s*:(?!=)", block, flags=re.M)
+        return any(re.search(ERR, lab, re.I)
+                   or re.search(rf"\w*(?:{ERR})\w*\s*:=\s*TRUE\b", body, re.I)
+                   for lab, body in zip(parts[1::2], parts[2::2]))
+
+    # Each state machine is judged on its own body. Pooling every label in the
+    # file let an unrelated 'CASE eMode OF ... E_Mode.Error:' — or one in a
+    # method further down — stand in as the error state for a machine that has
+    # none, which is the same false clean the word-anywhere search gave.
+    machines = [case_block(all_impl, m.end()) for m in
+                re.finditer(r"\bCASE\s+\w*(?:STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I)]
+    if machines and not all(has_error_state(b) for b in machines) and "X7" in enabled:
+        unit = sf.units[0]
+        found.append(Finding(
+            "X7", RULES["X7"][0], fname, unit.name, unit.impl_line, "CASE ... OF",
+            "no error or fault state is reachable from this state machine; a "
+            "failed step has nowhere to go and no way to report itself"))
 
     return found
 
@@ -780,12 +894,13 @@ def main() -> int:
         return 2
 
     findings: list[Finding] = []
+    unreadable: list[tuple[Path, str]] = []
     for f in files:
         suf = f.suffix.lower()
         try:
             sf = parse_xml(f) if suf in XML_SUFFIXES else parse_text(f)
         except Exception as exc:                      # keep going over a big tree
-            print(f"  ! {f}: {exc}", file=sys.stderr)
+            unreadable.append((f, f"{type(exc).__name__}: {exc}"))
             continue
         if sf.units:
             findings.extend(check_file(sf, enabled))
@@ -794,15 +909,18 @@ def main() -> int:
     findings = [f for f in findings if SEVERITIES.index(f.severity) <= cut]
     findings.sort(key=lambda f: (SEVERITIES.index(f.severity), f.file, f.line))
 
+    scanned = len(files) - len(unreadable)
+
     if args.json:
         print(json.dumps({
-            "files_scanned": len(files),
+            "files_scanned": scanned,
+            "files_unreadable": [{"file": str(p), "error": e} for p, e in unreadable],
             "findings": [f.as_dict() for f in findings],
             "summary": {s: sum(1 for f in findings if f.severity == s) for s in SEVERITIES},
         }, indent=2))
     else:
         if not findings:
-            print(f"{len(files)} file(s) scanned — no findings.")
+            print(f"{scanned} file(s) scanned — no findings.")
             print("This is a pattern check, not a compile. It does not prove the code builds.")
         else:
             current = None
@@ -814,9 +932,27 @@ def main() -> int:
                 if f.text.strip():
                     print(f"         | {f.text.strip()[:100]}")
             counts = {s: sum(1 for f in findings if f.severity == s) for s in SEVERITIES}
-            print(f"\n{len(files)} file(s) scanned — "
+            print(f"\n{scanned} file(s) scanned — "
                   + ", ".join(f"{counts[s]} {s}" for s in SEVERITIES))
             print("Pattern check only; a clean run does not mean the code compiles.")
+
+    # Outside the --json branch on purpose: a run whose stdout is being piped to
+    # a file is exactly the one where a human needs to see this, and it is what
+    # makes the documented "listed on stderr" true in both modes. The JSON keeps
+    # its own machine-readable copy under files_unreadable.
+    if unreadable:
+        print(f"\n{len(unreadable)} file(s) could not be parsed and were NOT checked:",
+              file=sys.stderr)
+        for p, e in unreadable:
+            print(f"  ! {p}: {e}", file=sys.stderr)
+
+    # A file the reviewer could not read is a tool failure, not a clean result,
+    # so it fails the run on its own - ahead of --fail-on, which grades findings
+    # and has nothing to say about a file that produced none because it was
+    # never analysed. Exit 2 matches the other usage errors and separates
+    # "could not check" from "checked and found something" (1).
+    if unreadable:
+        return 2
 
     if args.fail_on != "never":
         gate = SEVERITIES.index(args.fail_on)

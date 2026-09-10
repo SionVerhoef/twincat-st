@@ -126,6 +126,15 @@ END_IF
 
 **Be precise about what this rule is not.** PLCopen CP20 says an instance should be invoked *at most once per cycle*, and explicitly allows a conditional call. So "call every function block unconditionally, always" is too strong — a stateless helper invoked in one branch of a `CASE` is fine. The rule is narrower and sharper: **while an operation is pending, the block must keep being called.** Practically, put such calls outside the `CASE`, drive them with their inputs, and read their outputs inside it.
 
+**Above the `CASE` or below it?** "Outside" is two different places. Order by data flow: call an instance *after* whatever writes its inputs and *before* whatever reads its outputs.
+
+- The state machine's **sensors** go **above** — edge detectors, and a step timer whose `Q` decides a transition. Put them below and the machine decides on the previous scan's edge and the previous scan's timeout.
+- The blocks the state machine **commands** go **below** — motion, comms, a device FB — called unconditionally with the inputs the `CASE` has just set, so a command decided this scan is issued this scan rather than next.
+
+Both reference projects in `examples/` are built this way. `FB_ATM_Machine` calls all five `R_TRIG`s in its first five lines, before anything reads them. `FB_Cylinder` calls `Extend_TON(IN := _Extending, …)` immediately after the code that sets `_Extending` and immediately before the code that reads `.Q`.
+
+One instance cannot sit on both sides. If a timer's `IN` comes from the same `CASE` that reads its `Q`, there is a one-scan loop by construction — that is normal, not a smell. `templates/FB_Sequence.TcPOU` closes it by holding `IN` low for the single scan on which the state changed, so each step gets a full, fresh timeout without any transition having to remember to reset anything.
+
 **Never share one instance between two concurrent operations** — the second call overwrites the first's inputs in the same scan. One instance per concurrent operation; for N devices use an array of instances and a bounded `FOR`.
 
 Choosing between an `Execute` interface and an `Enable` interface is a design decision with a non-obvious constraint behind it — see `behaviour-model.md`.

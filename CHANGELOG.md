@@ -112,6 +112,124 @@ A third independent test on Windows, against the same project. It confirmed `--s
   A rule that has stopped matching and a rule with nothing to report produce identical output.
   The tester caught this only by printing the population scanned next to the findings count.
 
+### Fixed after the automated PR review
+
+Twelve defects raised on the rebuild PR — four in its review comments, eight more folded
+behind its "suppressed comments" summary — each verified here against a repro before being
+fixed. Every code fix has a regression test, and each test was mutation-checked by
+reverting the fix.
+
+Four of them made a rule report the opposite of the truth, and three of those were in
+rules the skill sells itself on:
+
+- **`X5` treated a null *test* as a null *guard*.** Any comparison against zero in the
+  preceding lines was accepted as proof, so `IF p = 0 THEN Log(); END_IF; x := p^;` — which
+  notices the null case and then lets it through — scanned clean. It now takes only the two
+  shapes that actually stop the null path reaching the dereference: `IF p <> 0 THEN`, or a
+  null branch that `RETURN`s, `EXIT`s or `CONTINUE`s. `X4` already drew this distinction;
+  `X5` had collapsed both operators into one pattern.
+- **An unparseable file scanned green.** A parse error was turned into an empty unit, so the
+  file produced no findings and the run exited 0 — the CI gate passing on code it never
+  read. Unreadable files are now listed on stderr and in the JSON, excluded from
+  `files_scanned`, and exit **2**, which `--fail-on never` cannot suppress: "could not
+  check" is a tool failure, not a clean result.
+- **`reguid` reported success after regenerating nothing.** The documented workflow is copy
+  the template, then `reguid` the copy, so `ok (0 GUIDs regenerated)` said the identity was
+  refreshed when it was not — leaving the copy colliding with the template on the same `Id`,
+  which is exactly the conflict the command exists to prevent. Zero replacements now fails
+  and the file is left untouched.
+- **The shipped TcUnit suite contained a test that could only fail.** `FB_Sequence` hardcoded
+  both step conditions to `IF TRUE`, so the timeout fixture always reached `bDone` and
+  `TestTimeoutRaisesError` always took its `AssertTrue(FALSE)` branch. Found while
+  verifying: it also asserted `nErrorID = 16#8001`, while the block raises `16#8101` — wrong
+  even had the path been reachable. The step conditions are now inputs, which is what lets a
+  test hold a step open and watch it fault, and the suite drives its two fixtures
+  differently so both the completion and the timeout path are genuinely exercised.
+- **`<Action>` bodies were never reviewed, and their variables reported as unused.**
+  `tcpou.py` has always recognised `Action`; `parse_xml` walked every container except
+  that one. The gap cut both ways — a `CP8` float comparison and an `X4` unguarded
+  division inside an action went unreported, while all five declarations the action used
+  came back as `CP24` unused, because from the reviewer's side nothing referenced them.
+- **`X2` reported the correct `udiTimeOut := 500` as high.** It matched pin *names* that
+  sound like timeouts. But `udiTimeOut` is PLCopen's UDINT millisecond pin — documented
+  as such in this skill's own `references/behaviour-model.md` — so a number is right
+  there and `T#500MS` would be the type error. It now keys on things that really are
+  TIME: `PT`, a `t`-prefixed pin, or a variable the scope declares as TIME.
+- **`X3` accepted a nested `IF`'s `ELSE` as the `CASE`'s fallback.** Nesting was not
+  tracked, and since almost every real state branch contains an `IF/ELSE`, the rule was
+  close to inert on the state machines it exists to check.
+- **`X7` was satisfied by a `bError` output.** It searched for any identifier containing
+  Error/Fault/Alarm/Abort anywhere in the file, which nearly every FB supplies, so it
+  missed exactly the defect it claims to detect. It now looks for an error *state*: a
+  label that says so, or a step that raises the fault flag — the second signal is not
+  optional, because a machine that numbers its steps (`99: qxError := TRUE;`) has no room
+  to say "error" in a label, and matching label text alone reported one such machine in
+  `evals/fixture-project` as having no error state at all.
+
+One more came from a human read of the PR rather than the bot, and it is the worst of
+the set because it is the template every FB written with this skill starts from:
+
+- **`FB_Sequence` called its step timer from inside the `CASE` branches** — the shape
+  `references/cyclic-execution-rules.md` Rule 5 prints under a `// WRONG` comment, in the
+  skill's own flagship template. Rule 5 adds that sharing one timer instance across
+  several states is a bug, and `fbStepTimer` was shared by `Step1` and `Step2`; Rule 2
+  says the call site is unconditional and the input is the control. It *worked*, because
+  `M_EnterStep` reset the timer on every transition — but a reader copying the shape
+  gets no such guarantee, and swapping the `TON` for a `TOF` breaks it outright, since a
+  `TOF` must keep being called after `IN` falls. The edge detector and the timer are now
+  called once, unconditionally, above the `CASE`, with `IN` held low for the single scan
+  on which the state changes — so the re-arm is structural rather than something a future
+  transition has to remember. `M_EnterStep` became a bare assignment and is gone.
+  Nothing in `st_review.py` looks for this shape, so `tests/run_tests.py` now asserts the
+  timer has exactly one call site and that it sits above the `CASE`.
+
+Reviewing the fixes themselves turned up five more, three of which were the first
+round's fixes not going far enough:
+
+- **`X5` was cured in one direction only.** Replacing "any comparison against 0" with a
+  window search for `<> 0` left the mirror image wide open: `IF p <> 0 THEN Log();
+  END_IF; p^ := 1;` contains the right test and is still unguarded, because `END_IF`
+  puts the null case back on the path to the dereference — and the `ELSE` branch of a
+  correct test *is* the null path. The rule no longer asks whether the comparison
+  appears nearby but whether the dereference sits **inside** the non-null branch, by
+  walking back through the `IF`/`END_IF` balance. The fixture now holds all three shapes
+  and the test counts them, because an assertion naming the file stays green on one of
+  three.
+- **`X7` pooled every label in the file.** Scoping to labels rather than to any
+  occurrence of the word was right, but the labels were split from the whole
+  implementation, so an unrelated `CASE eMode OF … E_Mode.Error:` — or one in a method
+  further down — stood in as the error state for a machine that had none. Each
+  state-machine `CASE` is now cut out with nesting-aware matching and judged on its own
+  body.
+- **`X2` compared identifiers case-sensitively.** ST identifiers are not:
+  `tDelay : TIME` assigned as `TDELAY := 500` slipped through. The *type* lookup now
+  folds case, which is the sound signal; the `t`-prefix heuristic stays case-sensitive
+  on purpose, since it is a casing convention and `TDELAY` carries none of it. The same
+  assumption is present elsewhere — `tDelay` referenced only as `TDELAY` still draws a
+  false `CP24` — and is filed rather than fixed blind, since folding case across every
+  identifier rule needs corpus validation.
+- **The unreadable-file test accepted any nonzero exit**, where the documented contract
+  is exactly `2`; a regression to the ordinary findings status `1` would have kept it
+  green. And **`SKILL.md` promised a stderr listing that `--json` never produced** — that
+  print sat inside the non-JSON branch. It now runs in both modes, which is the mode
+  that needed it: a run piping stdout to a file is exactly where a human still has to be
+  told a file went unchecked.
+
+And four documents that contradicted the code or each other:
+
+- `references/testing-tcunit.md` stated flatly that each test method declares its own
+  fixtures — which recreates the reset-every-scan bug fixed above, and contradicted its
+  own multi-cycle section further down. It now says which kind of test each scope suits.
+- `examples/tcmatrix-tests/NOTES.md` still described the `FOR`-loop-of-calls test pattern
+  that was removed for not working.
+- `examples/packml-vffs/NOTES.md` said there is no constructor in ST, while
+  `references/twincat.md` documents `FB_init` as TwinCAT's. The real reason that example
+  uses an init state machine is that its work spans scans, which `FB_init` cannot.
+- `examples/README.md` gave commands no working directory could run: `../scripts/...`
+  paired with globs beginning `examples/`. Its blocks, and those in `templates/README.md`,
+  are now `py -3` from the repository root like the rest of the skill — the round-2 fix
+  had reached `SKILL.md` and the top-level README but not these two.
+
 ### Validation
 
 - `tests/run_tests.py`, in CI: every rule must still fire on a defective fixture, the

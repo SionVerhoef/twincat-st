@@ -25,6 +25,7 @@ Standard library only, like everything else here.
 """
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -94,6 +95,71 @@ check("X9 fires on Execute paired with Valid", "FB_ExecuteValid" in x9, repr(sor
 check("X9 fires through an IEC direction prefix", "FB_PrefixedEnableDone" in x9,
       repr(sorted(x9)))
 
+# --- X5 wants a guard, not merely a comparison ------------------------------
+# Any '<>' or '=' against 0 counted as proof the pointer was checked, so
+# 'IF p = 0 THEN Log(); END_IF; x := p^;' — which notices the null case and then
+# lets it through — scanned clean. "All rules fire" cannot catch this on its own:
+# X5 kept firing elsewhere in the fixture the whole time it was blind here.
+
+# Count the shapes, do not just look for the object: the first fix here searched
+# a window for '<> 0' and so cured 'IF p = 0 THEN ... END_IF; p^' while leaving
+# its mirror — 'IF p <> 0 THEN ... END_IF; p^' — and the ELSE branch of a correct
+# test still reporting clean. An object-name assertion stays green on one of three.
+x5_lines = sorted(f["line"] for f in review(FIXTURES / "positive")
+                  if f["rule"] == "X5" and f["object"] == "FB_NullFallThrough")
+check("X5 fires on all three fall-through shapes, not only the '= 0' one",
+      len(x5_lines) == 3, f"fired at lines {x5_lines}, expected 3")
+
+# --- code inside an <Action> is code ----------------------------------------
+# parse_xml walked every container except Action, which tcpou.py has always
+# recognised. The gap cut both ways: defects in the action went unreported, and
+# the declarations the action used came back as CP24 unused, because from the
+# reviewer's side nothing referenced them.
+
+positive = review(FIXTURES / "positive")
+act = [f for f in positive if f["object"] == "Act_Compare"]
+check("a defect inside an <Action> is reported, and against the action",
+      any(f["rule"] == "CP8" for f in act), repr([(f["rule"], f["object"]) for f in act]))
+check("variables an <Action> uses are not called unused",
+      not [f for f in positive
+           if f["rule"] == "CP24" and f["object"] == "FB_ActionDefect"],
+      "the action's code is invisible again")
+
+# --- X3 and X7 look at structure, not at a word anywhere in the file --------
+# X3 accepted a nested IF's ELSE as the CASE's fallback, and X7 accepted any
+# identifier containing Error/Fault/Alarm/Abort — which a bError output supplies
+# in nearly every FB. Both rules stayed quiet on exactly what they exist to find.
+# The negative fixtures hold the other side: a numerically-labelled machine whose
+# step 99 raises the fault flag has an error state, and must not be reported.
+
+x3 = {f["object"] for f in positive if f["rule"] == "X3"}
+check("X3 fires when the only ELSE belongs to a nested IF",
+      "FB_NestedElse" in x3, repr(sorted(x3)))
+x7 = {f["object"] for f in positive if f["rule"] == "X7"}
+check("X7 fires even though the FB declares a bError output",
+      "FB_StateNoError" in x7, repr(sorted(x7)))
+
+# --- X2 keys on the type, not on a name that sounds like a timeout ----------
+# 'udiTimeOut' is PLCopen's UDINT millisecond pin, so a plain number is correct
+# there and T#500MS would be the type error — yet X2 reported it high. 'PT' is
+# TIME on every standard timer and must still be caught.
+
+x2 = {f["object"] for f in positive if f["rule"] == "X2"}
+check("X2 still fires on a bare number given to PT",
+      "FB_AllRules" in x2, repr(sorted(x2)))
+
+# --- both rules scope to what they are actually judging ----------------------
+# X7 pooled every label in the file, so an error label in an unrelated CASE — or
+# in a method further down — stood in for a machine that had none. X2 compared
+# identifiers case-sensitively, which ST is not: a TIME variable assigned under a
+# different spelling of its own name went unchecked.
+
+check("X7 judges each state machine on its own body",
+      "FB_ScopeAndCase" in x7,
+      "an unrelated CASE's error label is covering for a machine without one")
+check("X2 matches a TIME variable whatever case it is spelled in",
+      "FB_ScopeAndCase" in x2, repr(sorted(x2)))
+
 # --- the skill's own known-good code stays clean ----------------------------
 
 for folder in ("templates", "examples"):
@@ -104,6 +170,69 @@ for folder in ("templates", "examples"):
     mixed = [f for f in findings if f["rule"] == "X9"]
     check(f"{folder}/ keeps Execute with Done and Enable with Valid", not mixed,
           "; ".join(f"{f['file']}:{f['line']}" for f in mixed))
+
+# --- a file the reviewer cannot read must not pass ---------------------------
+# A parse error used to be turned into an empty unit, so the file contributed no
+# findings and the run exited 0 — the gate reporting a green check on a file it
+# never analysed. Unreadable is a tool failure, so it fails regardless of
+# --fail-on, which grades findings and has nothing to say about a file that
+# produced none because it was never read.
+
+with tempfile.TemporaryDirectory() as tmp:
+    broken = Path(tmp) / "FB_Broken.TcPOU"
+    broken.write_text('<?xml version="1.0"?>\n<TcPlcObject><POU Name="B">'
+                      '<Declaration><![CDATA[FUNCTION_BLOCK B\n')
+    r = subprocess.run([sys.executable, str(REVIEW), str(broken), "--json",
+                        "--fail-on", "never"], capture_output=True, text=True)
+    report = json.loads(r.stdout)
+    # Exactly 2, not merely nonzero: 2 is the documented contract and is what
+    # separates "could not check" from "checked and found something" (1). A
+    # regression to 1 would keep a `!= 0` assertion green.
+    check("an unparseable file exits 2 even with --fail-on never",
+          r.returncode == 2, f"exit {r.returncode}")
+    check("an unparseable file is named in the report, not silently dropped",
+          [u["file"] for u in report["files_unreadable"]] == [str(broken)],
+          repr(report["files_unreadable"]))
+    check("an unparseable file is not counted as scanned",
+          report["files_scanned"] == 0, repr(report["files_scanned"]))
+
+# --- the shipped TcUnit suite can reach both paths it claims to test ---------
+# FB_Sequence hardcoded both step conditions to 'IF TRUE', so the timeout
+# fixture always completed and the suite shipped a test that could only fail.
+# Nothing here compiles ST, but the three facts the outcome turns on are all
+# readable in the source.
+
+seq = (ROOT / "templates" / "FB_Sequence.TcPOU").read_text(encoding="utf-8-sig")
+suite = (ROOT / "templates" / "FB_ExampleTestSuite.TcPOU").read_text(encoding="utf-8-sig")
+# The template shipped its step timer called from inside the Step1 and Step2
+# branches — the shape references/cyclic-execution-rules.md Rule 5 prints under a
+# WRONG comment, in the skill's own flagship template. Rule 5 also calls sharing
+# one timer instance across states a bug. No rule in st_review.py looks for this,
+# so this check is the only thing keeping the template off the shape its own
+# reference forbids.
+seq_body = seq.split("<Implementation>")[1].split("</Implementation>")[0]
+timer_calls = list(re.finditer(r"\bfbStepTimer\s*\(", seq_body))
+case_at = seq_body.find("CASE ")
+check("FB_Sequence services its step timer from exactly one call site",
+      len(timer_calls) == 1, f"{len(timer_calls)} call sites")
+check("FB_Sequence services its step timer above the CASE, not inside a branch",
+      bool(timer_calls) and case_at > 0 and timer_calls[0].start() < case_at,
+      "a timer called inside the branch that reads it stops being serviced "
+      "the moment the state machine leaves that branch")
+
+check("FB_Sequence's step conditions are not literals",
+      not re.search(r"\bIF\s+(TRUE|FALSE)\s+THEN", seq, re.I),
+      "a literal condition makes the ELSIF timeout branch unreachable")
+step1 = {m.upper() for m in re.findall(r"bStep1Done\s*:=\s*(TRUE|FALSE)", suite, re.I)}
+check("the suite drives its timeout fixture off the completion path",
+      step1 == {"TRUE", "FALSE"},
+      f"step-1 condition is always {step1} — two instances given the same inputs "
+      f"can only take the same path")
+ids = [re.search(r"cErrStep1Timeout\s*:\s*UDINT\s*:=\s*(16#[0-9A-Fa-f]+)", t)
+       for t in (seq, suite)]
+check("the suite expects the timeout id FB_Sequence actually raises",
+      all(ids) and ids[0].group(1) == ids[1].group(1),
+      repr([m.group(1) if m else None for m in ids]))
 
 # --- tcpou.py round trips the bytes it was not asked to change --------------
 
@@ -134,6 +263,34 @@ with tempfile.TemporaryDirectory() as tmp:
         err = r.stderr.decode("utf-8", "replace")
         check(f"'{cmd[0]}' reports a missing path cleanly",
               r.returncode == 1 and "Traceback" not in err, err.strip()[:200])
+
+    # --- reguid regenerating nothing is a failure, not a success ------------
+    # The documented workflow is copy the template, then reguid the copy. Saying
+    # 'ok (0 GUIDs regenerated)' there reports the identity as refreshed when it
+    # was not, leaving the copy colliding with the template on the same Id.
+
+    noid = Path(tmp) / "NoId.TcPOU"
+    noid.write_text('<?xml version="1.0" encoding="utf-8"?>\n<TcPlcObject>'
+                    '<POU Name="NoId"><Declaration><![CDATA[FUNCTION_BLOCK NoId\n'
+                    ']]></Declaration></POU></TcPlcObject>\n')
+    before = noid.read_bytes()
+    r = tcpou("reguid", str(noid))
+    check("'reguid' fails when it regenerated no GUID", r.returncode == 1,
+          r.stdout.decode("utf-8", "replace").strip()[:200])
+    check("'reguid' leaves a file it could not stamp untouched",
+          noid.read_bytes() == before)
+
+    stamped = Path(tmp) / "Stamped.TcPOU"
+    stamped.write_bytes((ROOT / "templates" / "FB_Sequence.TcPOU").read_bytes())
+    r = tcpou("reguid", str(stamped))
+    check("'reguid' still succeeds on a real template copy", r.returncode == 0,
+          r.stdout.decode("utf-8", "replace").strip()[:200])
+    check("'reguid' replaces every Id it found",
+          not (set(re.findall(r'Id="\{[0-9a-fA-F-]{36}\}"',
+                              stamped.read_text(encoding="utf-8-sig")))
+               & set(re.findall(r'Id="\{[0-9a-fA-F-]{36}\}"',
+                                (ROOT / "templates" / "FB_Sequence.TcPOU")
+                                .read_text(encoding="utf-8-sig")))))
 
     # --- what the scaffolder emits passes the reviewer beside it ------------
     # 'new --type fb' paired bEnable with bDone for the skill's whole life: the

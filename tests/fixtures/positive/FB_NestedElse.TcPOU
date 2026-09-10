@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_NestedElse" Id="{2f81d90c-3b47-4a62-95e8-6d0c1ea7b543}" SpecialFunc="None">
+    <Declaration><![CDATA[// X3 marked a CASE as having its fallback on any line beginning ELSE, without
+// tracking IF nesting. Since almost every real state branch contains an IF/ELSE,
+// the rule went quiet on the state machines it exists to catch. The CASE here has
+// no ELSE of its own; the one below belongs to the IF.
+FUNCTION_BLOCK FB_NestedElse
+VAR_OUTPUT
+    bError : BOOL;
+END_VAR
+VAR
+    eState : E_Step;
+    bFlag : BOOL;
+    bOut : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE eState OF                      // X3 - no ELSE on the CASE itself
+    E_Step.One:
+        IF bFlag THEN
+            bOut := TRUE;
+        ELSE
+            bOut := FALSE;
+        END_IF
+
+    E_Step.Fault:
+        bError := TRUE;
+END_CASE
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
