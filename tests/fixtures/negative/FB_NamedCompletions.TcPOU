@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_NamedCompletions" Id="{3e9a1b40-77c2-4f16-9a03-1d5b8c2e4475}" SpecialFunc="None">
+    <Declaration><![CDATA[// X9 must stay quiet here, and this is why the pin matchers are anchored. Every name
+// below contains Enable or Done, but in each one the word is buried in a longer name
+// that describes one specific operation rather than a PLCopen command pin. A substring
+// match fires on all of them: measured on one real project, loosening the matcher added
+// 13 findings, every one of them wrong.
+FUNCTION_BLOCK FB_NamedCompletions
+VAR_INPUT
+    ibDryRunEnabled : BOOL;         // a mode flag, not the PLCopen Enable family
+    bEnableOperatorPanel : BOOL;    // Enable in the middle, not the whole name
+END_VAR
+VAR_OUTPUT
+    obPurgeCycleDone : BOOL;        // one operation finished; says nothing about the FB
+    obSelfTestDone : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[obPurgeCycleDone := ibDryRunEnabled;
+obSelfTestDone := bEnableOperatorPanel AND obPurgeCycleDone;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
