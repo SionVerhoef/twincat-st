@@ -7,17 +7,17 @@
 // on one real project, loosening the matcher added 13 findings, every one of them wrong.
 FUNCTION_BLOCK FB_NamedCompletions
 VAR_INPUT
-    ibSimulationEnabled : BOOL;     // a mode flag, not the PLCopen Enable family
-    CFG_bEnableActivateRemoteButton : BOOL;
+    ibDryRunEnabled : BOOL;         // a mode flag, not the PLCopen Enable family
+    CFG_bEnableOperatorPanel : BOOL;
 END_VAR
 VAR_OUTPUT
-    obHomingDone : BOOL;            // this axis finished homing; says nothing about the FB
-    obInfo_CalibrationDone : BOOL;
+    obPurgeCycleDone : BOOL;        // one operation finished; says nothing about the FB
+    obSelfTestDone : BOOL;
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[obHomingDone := ibSimulationEnabled;
-obInfo_CalibrationDone := CFG_bEnableActivateRemoteButton AND obHomingDone;
+      <ST><![CDATA[obPurgeCycleDone := ibDryRunEnabled;
+obSelfTestDone := CFG_bEnableOperatorPanel AND obPurgeCycleDone;
 ]]></ST>
     </Implementation>
   </POU>

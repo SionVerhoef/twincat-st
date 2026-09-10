@@ -104,8 +104,8 @@ A third independent test on Windows, against the same project. It confirmed `--s
   reported a clean codebase it had never actually looked at. The four `PIN_*` patterns now
   allow an optional direction letter (`^[ioq]?[bx]?...$`), which fires 18 times there with no
   false positives. The anchoring stays, and is now the point: a substring match fires 31 times
-  on the same project and 13 of those are wrong, because `obHomingDone` and
-  `ibSimulationEnabled` name the completion of one specific operation rather than a PLCopen
+  on the same project and 13 of those are wrong, because `obPurgeCycleDone` and
+  `ibDryRunEnabled` name the completion of one specific operation rather than a PLCopen
   command pin. Both halves are fixtures now — a prefixed violation that must fire, a prefixed
   *correct* pairing that must not, and a set of named completions that must not.
 

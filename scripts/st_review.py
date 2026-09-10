@@ -128,7 +128,7 @@ SUPPRESS = re.compile(r"//\s*lint:allow\s+([A-Za-z0-9_,]+)\s*(.*)$", re.I)
 # Beckhoff codebases in the field spell their pins ibEnable and obDone. Without that
 # prefix the rule reads as clean on code it has simply failed to look at: on one real
 # 1374-file project it reported nothing while 108 function blocks carried an Enable pin.
-# Anchoring is what keeps the rule honest — obHomingDone is the named completion of one
+# Anchoring is what keeps the rule honest — obPurgeCycleDone is the named completion of one
 # specific operation, not a PLCopen completion pin, and a substring match cannot tell the
 # two apart. A house name like bExecuteMove is left alone for the same reason: guessing
 # wrong makes the rule argue with code that is right.
