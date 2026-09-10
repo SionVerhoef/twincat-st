@@ -230,6 +230,34 @@ And four documents that contradicted the code or each other:
   are now `py -3` from the repository root like the rest of the skill — the round-2 fix
   had reached `SKILL.md` and the top-level README but not these two.
 
+### Fixed after the fourth external test
+
+A fourth independent test, verifying the `X9` prefix fix against the same project. It
+confirmed that change on its own terms — exact agreement with the predicted hit set, no
+regressions across the other nineteen rules — and turned up one unrelated pre-existing bug.
+
+- **A plain-text source holding several POUs was parsed as one POU.** `parse_text()`
+  split the file at its *last* `END_VAR`, which is only correct when there is a single
+  POU in it. With more than one, every body except the last ended up inside the merged
+  declaration and was never scanned as implementation — a `CP8` float comparison in the
+  first block is reported when that block sits alone in a file and silently disappears
+  when a second block is appended below it. The merged scope also let one block's
+  `Enable` pair with an unrelated block's `Done`, so `X9` fired on a file where no
+  single function block mixed the two models, and every finding was attributed to the
+  first POU's name whichever block it came from.
+
+  Not reachable through `.TcPOU` — TwinCAT writes one POU per file, the XML path always
+  partitioned correctly, and 1374 real files never showed it. CODESYS V3 text exports
+  and library sources are not so tidy, and CODESYS is a supported target.
+
+  The parser now emits one unit per POU header, and a method's owner is the *nearest
+  preceding* POU rather than the first one in the file. Both halves are needed: with the
+  split alone, an `LREAL` in the first block still leaks into the second and turns the
+  silent miss into a confident false `high`. Nothing about this was specific to `X9` —
+  every rule reading unit-scoped variables inherited it, and `X9` was just the one that
+  made it visible.
+
+
 ### Validation
 
 - `tests/run_tests.py`, in CI: every rule must still fire on a defective fixture, the
