@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_PrefixedEnableDone" Id="{3e9a1b40-77c2-4f16-9a03-1d5b8c2e4473}" SpecialFunc="None">
+    <Declaration><![CDATA[// X9 through an IEC direction prefix. Same defect as FB_EnableDone, spelled the way
+// a large share of Beckhoff house styles spell it: the direction letter comes ahead
+// of the type letter. X9 read this shape as clean for its whole first release --
+// zero findings on a 1374-file project where 108 function blocks carried an Enable.
+FUNCTION_BLOCK FB_PrefixedEnableDone
+VAR_INPUT
+    ibEnable : BOOL;                // X9 - Enable pairs with Valid, not Done
+END_VAR
+VAR_OUTPUT
+    obDone : BOOL;
+    obBusy : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[obBusy := ibEnable AND NOT obDone;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

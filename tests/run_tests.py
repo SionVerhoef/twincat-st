@@ -10,7 +10,8 @@ defect this skill leads with. This is the other half of the gate:
   * nothing fires on tests/fixtures/negative/, which collects the shapes that
     were false positives until they were fixed
   * X6 separates an FB input from a METHOD parameter by severity
-  * X9 catches both directions of a mixed PLCopen behaviour model
+  * X9 catches both directions of a mixed PLCopen behaviour model, including
+    pins spelled with an IEC direction prefix (ibEnable/obDone)
   * a text source holding several POUs is parsed as several POUs — merging
     them hid every body but the last and crossed their variable scopes
   * what tcpou.py scaffolds passes the reviewer tcpou.py ships beside — the two
@@ -92,6 +93,8 @@ check("X6 is low on a METHOD parameter", x6.get("HandleValue") == "low", repr(x6
 x9 = {f["object"] for f in review(FIXTURES / "positive") if f["rule"] == "X9"}
 check("X9 fires on Enable paired with Done", "FB_EnableDone" in x9, repr(sorted(x9)))
 check("X9 fires on Execute paired with Valid", "FB_ExecuteValid" in x9, repr(sorted(x9)))
+check("X9 fires through an IEC direction prefix", "FB_PrefixedEnableDone" in x9,
+      repr(sorted(x9)))
 
 # --- a text source holding several POUs is not one POU ----------------------
 # parse_text used to split the whole file at its last END_VAR, which assumes one
