@@ -49,14 +49,38 @@ because **the project you are editing wins** — see `references/naming-conventi
 that way. Do not promote one employer's internal standard to the only correct answer, and do
 not write a rule that is really a preference without saying so.
 
+## What you may use, and what you may not
+
+**Research is not redistribution.** Read any source you lawfully can — PLCopen specs, Beckhoff
+InfoSys, vendor sample projects. Copyright protects expression, not facts, rules, procedures or
+APIs. So state that PLCopen N5 forbids a local name shadowing a global one; do not paste the
+guideline's own paragraph explaining why, or a close paraphrase of it. That is what makes
+`references/plcopen-rules.md` both legal and specific.
+
+Before reproducing any source material here, check that material's own licence:
+
+- **Permissive** (MIT, 0BSD, BSD-2, Apache-2) — may ship. Copy the upstream `LICENSE` into the
+  folder and add an `ATTRIBUTIONS.md` row in the same commit.
+- **Copyleft** (GPL/LGPL) — do not vendor; it would relicense this whole skill. Ask first.
+- **Proprietary / all rights reserved** (InfoSys, blogs, forums) — research source only. Cite
+  and link; reproduce no passages, tables, diagrams or screenshots.
+- **Specs and standards** (PLCopen, IEC, OMAC) — the technical rule can be stated independently;
+  the document's own text, tables, diagrams and examples still cannot. Rule identifiers and
+  severities are facts about a published standard and may be cited as such.
+
+Read the licence from the upstream `LICENSE` file, never a GitHub badge — `NOASSERTION` across
+Beckhoff's GitHub estate generally resolves to Zero-Clause BSD. A citation is not permission.
+Copyright clearance is not permission to scrape either — check a site's terms before automated
+fetching. Spec PDFs, sample archives and other research copies stay on your machine and are
+never committed here. `ATTRIBUTIONS.md` is the authority and carries the full table.
+
 ## Before adding any real code
 
 `examples/README.md` carries the redaction checklist and the rules for a `house/` folder. Read
 it first. Two gates, both hard:
 
-1. **Licence** — files ship inside the skill, so they must be redistributable. Copyleft or
-   vendor-sample code relicenses or contaminates the whole repo. Record provenance in
-   `ATTRIBUTIONS.md`, read from the upstream `LICENSE` file rather than a badge.
+1. **Licence** — see *What you may use* above. Files ship inside the skill, so they must
+   be redistributable, and provenance goes into `ATTRIBUTIONS.md` in the same commit.
 2. **Redaction** — as above. Your own house code needs no licence file, but still needs this.
 
 ## If something private has already been committed
