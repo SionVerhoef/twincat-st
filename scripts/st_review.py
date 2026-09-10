@@ -384,6 +384,53 @@ def guard_pattern(expr: str) -> str:
     return e
 
 
+def case_block(text: str, start: int) -> str:
+    """One CASE body: from `start` (just past its `OF`) to its matching END_CASE.
+
+    Counts nested CASE/END_CASE pairs so a state machine containing one does not
+    end up truncated at the inner terminator.
+    """
+    depth = 1
+    for m in re.finditer(r"\b(CASE|END_CASE)\b", text[start:], re.I):
+        depth += 1 if m.group(1).upper() == "CASE" else -1
+        if depth == 0:
+            return text[start:start + m.start()]
+    return text[start:]
+
+
+def inside_nonnull_branch(lines: list[str], idx: int, name: str) -> bool:
+    """True when line `idx` sits inside a still-open `IF <name> <> 0 THEN` block.
+
+    Searching a window for the comparison is not enough, in either direction.
+    `IF p <> 0 THEN Log(); END_IF; p^ := 1;` contains the test and is still
+    unguarded, exactly as `IF p = 0 THEN Log(); END_IF` is: once `END_IF` closes
+    the block the null case rejoins the flow and walks into the dereference.
+
+    So walk backwards keeping an END_IF/IF balance and consider only blocks that
+    are still open at `idx`. An `ELSE` seen at that level before the `IF` means
+    this line is on the *other* branch - the null one - which guards nothing.
+    """
+    depth = 0
+    in_else = False
+    for j in range(idx - 1, max(-1, idx - 41), -1):
+        raw = lines[j]
+        u = raw.upper()
+        depth += len(re.findall(r"\bEND_IF\b", u))
+        if depth == 0 and re.match(r"^\s*(ELSE|ELSIF)\b", u):
+            in_else = True
+        # 'ELSIF' and 'END_IF' are not word-boundary matches for IF, so a plain
+        # \bIF\b finds only the block openers.
+        for m in re.finditer(r"\bIF\b", u):
+            if depth > 0:
+                depth -= 1
+                continue
+            if not in_else and re.search(rf"\b{re.escape(name)}\s*<>\s*0",
+                                         raw[m.end():]):
+                return True
+            in_else = False        # consumed by this IF; keep walking outward
+    return False
+
+
 # --------------------------------------------------------------------------- checks
 
 def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
@@ -421,6 +468,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                       if base_type(v.type) in REAL_TYPES and not is_pointerish(v.type)}
         time_names = {v.name for v in scope_vars
                       if base_type(v.type) in TIME_TYPES and not is_pointerish(v.type)}
+        time_names_upper = {n.upper() for n in time_names}
 
         impl = strip_noise(unit.impl)
         decl = strip_noise(unit.decl)
@@ -457,8 +505,12 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         for i, line in enumerate(lines):
             for m in re.finditer(r"\b([A-Za-z_]\w*)\s*:=\s*([^,;)\s]+)", line):
                 pin, val = m.group(1), m.group(2).strip()
+                # ST identifiers are case-insensitive, so the *type* lookup has to
+                # fold case: 'tDelay : TIME' assigned as 'TDELAY := 500' is the
+                # same variable. The 't' prefix stays case-sensitive on purpose —
+                # it is a casing convention, and 'TDELAY' carries none of it.
                 if not (pin.upper() == "PT" or re.match(r"^t[A-Z_]", pin)
-                        or pin in time_names):
+                        or pin.upper() in time_names_upper):
                     continue
                 if re.fullmatch(NUM, val):
                     add("X2", unit, i + 1, line,
@@ -537,10 +589,16 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                 if name.upper() in ("THIS", "SUPER") or name not in pointer_names:
                     continue
                 window = "\n".join(lines[max(0, i - 15): i + 1])
-                # Accept the two shapes that actually protect the dereference, not
-                # merely any comparison against 0. 'IF p <> 0 THEN' guards, because
-                # the null case never enters the branch.
-                if re.search(rf"\b{re.escape(name)}\s*<>\s*0", window):
+                # Accept only the shapes that actually stop the null case reaching
+                # the dereference. 'IF p <> 0 THEN' guards when the dereference is
+                # *inside* that branch - having merely tested the pointer somewhere
+                # above is the same non-guard as testing 'p = 0' and falling
+                # through, so this asks about position, not about the text.
+                if inside_nonnull_branch(lines, i, name):
+                    continue
+                # Same test on the dereference's own line, ahead of it:
+                # 'IF p <> 0 AND_THEN p^.x > 0 THEN'.
+                if re.search(rf"\b{re.escape(name)}\s*<>\s*0", line[:m.start()]):
                     continue
                 # 'IF p = 0 THEN RETURN; END_IF' guards too - the null case leaves.
                 # A bare 'IF p = 0 THEN Log(); END_IF' does not: it names the null
@@ -736,27 +794,32 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # since nearly every FB declares a bError output it almost always succeeded —
     # so the rule stayed silent on precisely the state machines it targets. A
     # label is what proves the state exists and can be entered.
-    if re.search(r"\bCASE\s+\w*(STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I):
-        # A state counts as the error state when its label says so —
-        # 'E_SeqState.Error:' — or when its body raises one. The second signal is
-        # not optional: a machine that numbers its steps has no room to say
-        # 'error' in a label, and '99: qxError := TRUE;' is the whole of what it
-        # can show. Comments are already stripped from all_impl, so '99: // fault'
-        # says nothing by the time this runs. Each body is cut at END_CASE so a
-        # method further down the file cannot lend the machine an error state.
-        ERR = r"ERROR|FAULT|ALARM|ABORT"
-        parts = re.split(r"^[ \t]*([\w.]+(?:\s*,\s*[\w.]+)*)\s*:(?!=)", all_impl, flags=re.M)
-        states = [(lab, re.split(r"\bEND_CASE\b", body, maxsplit=1, flags=re.I)[0])
-                  for lab, body in zip(parts[1::2], parts[2::2])]
-        if not any(re.search(ERR, lab, re.I)
+    # A state counts as the error state when its label says so —
+    # 'E_SeqState.Error:' — or when its body raises one. The second signal is
+    # not optional: a machine that numbers its steps has no room to say
+    # 'error' in a label, and '99: qxError := TRUE;' is the whole of what it
+    # can show. Comments are already stripped from all_impl, so '99: // fault'
+    # says nothing by the time this runs.
+    ERR = r"ERROR|FAULT|ALARM|ABORT"
+
+    def has_error_state(block: str) -> bool:
+        parts = re.split(r"^[ \t]*([\w.]+(?:\s*,\s*[\w.]+)*)\s*:(?!=)", block, flags=re.M)
+        return any(re.search(ERR, lab, re.I)
                    or re.search(rf"\w*(?:{ERR})\w*\s*:=\s*TRUE\b", body, re.I)
-                   for lab, body in states):
-            unit = sf.units[0]
-            if "X7" in enabled:
-                found.append(Finding(
-                    "X7", RULES["X7"][0], fname, unit.name, unit.impl_line, "CASE ... OF",
-                    "no error or fault state is reachable from this state machine; a "
-                    "failed step has nowhere to go and no way to report itself"))
+                   for lab, body in zip(parts[1::2], parts[2::2]))
+
+    # Each state machine is judged on its own body. Pooling every label in the
+    # file let an unrelated 'CASE eMode OF ... E_Mode.Error:' — or one in a
+    # method further down — stand in as the error state for a machine that has
+    # none, which is the same false clean the word-anywhere search gave.
+    machines = [case_block(all_impl, m.end()) for m in
+                re.finditer(r"\bCASE\s+\w*(?:STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I)]
+    if machines and not all(has_error_state(b) for b in machines) and "X7" in enabled:
+        unit = sf.units[0]
+        found.append(Finding(
+            "X7", RULES["X7"][0], fname, unit.name, unit.impl_line, "CASE ... OF",
+            "no error or fault state is reachable from this state machine; a "
+            "failed step has nowhere to go and no way to report itself"))
 
     return found
 
@@ -873,11 +936,15 @@ def main() -> int:
                   + ", ".join(f"{counts[s]} {s}" for s in SEVERITIES))
             print("Pattern check only; a clean run does not mean the code compiles.")
 
-        if unreadable:
-            print(f"\n{len(unreadable)} file(s) could not be parsed and were NOT checked:",
-                  file=sys.stderr)
-            for p, e in unreadable:
-                print(f"  ! {p}: {e}", file=sys.stderr)
+    # Outside the --json branch on purpose: a run whose stdout is being piped to
+    # a file is exactly the one where a human needs to see this, and it is what
+    # makes the documented "listed on stderr" true in both modes. The JSON keeps
+    # its own machine-readable copy under files_unreadable.
+    if unreadable:
+        print(f"\n{len(unreadable)} file(s) could not be parsed and were NOT checked:",
+              file=sys.stderr)
+        for p, e in unreadable:
+            print(f"  ! {p}: {e}", file=sys.stderr)
 
     # A file the reviewer could not read is a tool failure, not a clean result,
     # so it fails the run on its own - ahead of --fail-on, which grades findings

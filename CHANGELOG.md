@@ -183,6 +183,38 @@ the set because it is the template every FB written with this skill starts from:
   Nothing in `st_review.py` looks for this shape, so `tests/run_tests.py` now asserts the
   timer has exactly one call site and that it sits above the `CASE`.
 
+Reviewing the fixes themselves turned up five more, three of which were the first
+round's fixes not going far enough:
+
+- **`X5` was cured in one direction only.** Replacing "any comparison against 0" with a
+  window search for `<> 0` left the mirror image wide open: `IF p <> 0 THEN Log();
+  END_IF; p^ := 1;` contains the right test and is still unguarded, because `END_IF`
+  puts the null case back on the path to the dereference — and the `ELSE` branch of a
+  correct test *is* the null path. The rule no longer asks whether the comparison
+  appears nearby but whether the dereference sits **inside** the non-null branch, by
+  walking back through the `IF`/`END_IF` balance. The fixture now holds all three shapes
+  and the test counts them, because an assertion naming the file stays green on one of
+  three.
+- **`X7` pooled every label in the file.** Scoping to labels rather than to any
+  occurrence of the word was right, but the labels were split from the whole
+  implementation, so an unrelated `CASE eMode OF … E_Mode.Error:` — or one in a method
+  further down — stood in as the error state for a machine that had none. Each
+  state-machine `CASE` is now cut out with nesting-aware matching and judged on its own
+  body.
+- **`X2` compared identifiers case-sensitively.** ST identifiers are not:
+  `tDelay : TIME` assigned as `TDELAY := 500` slipped through. The *type* lookup now
+  folds case, which is the sound signal; the `t`-prefix heuristic stays case-sensitive
+  on purpose, since it is a casing convention and `TDELAY` carries none of it. The same
+  assumption is present elsewhere — `tDelay` referenced only as `TDELAY` still draws a
+  false `CP24` — and is filed rather than fixed blind, since folding case across every
+  identifier rule needs corpus validation.
+- **The unreadable-file test accepted any nonzero exit**, where the documented contract
+  is exactly `2`; a regression to the ordinary findings status `1` would have kept it
+  green. And **`SKILL.md` promised a stderr listing that `--json` never produced** — that
+  print sat inside the non-JSON branch. It now runs in both modes, which is the mode
+  that needed it: a run piping stdout to a file is exactly where a human still has to be
+  told a file went unchecked.
+
 And four documents that contradicted the code or each other:
 
 - `references/testing-tcunit.md` stated flatly that each test method declares its own

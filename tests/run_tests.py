@@ -101,9 +101,14 @@ check("X9 fires through an IEC direction prefix", "FB_PrefixedEnableDone" in x9,
 # lets it through — scanned clean. "All rules fire" cannot catch this on its own:
 # X5 kept firing elsewhere in the fixture the whole time it was blind here.
 
-x5 = {f["object"] for f in review(FIXTURES / "positive") if f["rule"] == "X5"}
-check("X5 fires when a null test falls through to the dereference",
-      "FB_NullFallThrough" in x5, repr(sorted(x5)))
+# Count the shapes, do not just look for the object: the first fix here searched
+# a window for '<> 0' and so cured 'IF p = 0 THEN ... END_IF; p^' while leaving
+# its mirror — 'IF p <> 0 THEN ... END_IF; p^' — and the ELSE branch of a correct
+# test still reporting clean. An object-name assertion stays green on one of three.
+x5_lines = sorted(f["line"] for f in review(FIXTURES / "positive")
+                  if f["rule"] == "X5" and f["object"] == "FB_NullFallThrough")
+check("X5 fires on all three fall-through shapes, not only the '= 0' one",
+      len(x5_lines) == 3, f"fired at lines {x5_lines}, expected 3")
 
 # --- code inside an <Action> is code ----------------------------------------
 # parse_xml walked every container except Action, which tcpou.py has always
@@ -143,6 +148,18 @@ x2 = {f["object"] for f in positive if f["rule"] == "X2"}
 check("X2 still fires on a bare number given to PT",
       "FB_AllRules" in x2, repr(sorted(x2)))
 
+# --- both rules scope to what they are actually judging ----------------------
+# X7 pooled every label in the file, so an error label in an unrelated CASE — or
+# in a method further down — stood in for a machine that had none. X2 compared
+# identifiers case-sensitively, which ST is not: a TIME variable assigned under a
+# different spelling of its own name went unchecked.
+
+check("X7 judges each state machine on its own body",
+      "FB_ScopeAndCase" in x7,
+      "an unrelated CASE's error label is covering for a machine without one")
+check("X2 matches a TIME variable whatever case it is spelled in",
+      "FB_ScopeAndCase" in x2, repr(sorted(x2)))
+
 # --- the skill's own known-good code stays clean ----------------------------
 
 for folder in ("templates", "examples"):
@@ -168,8 +185,11 @@ with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(REVIEW), str(broken), "--json",
                         "--fail-on", "never"], capture_output=True, text=True)
     report = json.loads(r.stdout)
-    check("an unparseable file fails the run even with --fail-on never",
-          r.returncode != 0, f"exit {r.returncode}")
+    # Exactly 2, not merely nonzero: 2 is the documented contract and is what
+    # separates "could not check" from "checked and found something" (1). A
+    # regression to 1 would keep a `!= 0` assertion green.
+    check("an unparseable file exits 2 even with --fail-on never",
+          r.returncode == 2, f"exit {r.returncode}")
     check("an unparseable file is named in the report, not silently dropped",
           [u["file"] for u in report["files_unreadable"]] == [str(broken)],
           repr(report["files_unreadable"]))
