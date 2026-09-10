@@ -19,6 +19,13 @@
     steps carries its elapsed time from one into the next. Rule 2 puts the same
     thing positively - the input is the control, not the call site.
 
+    ABOVE it specifically, because these two are the machine's *sensors*: the
+    CASE reads fbExecTrig.Q and fbStepTimer.Q to decide a transition, so calling
+    them below would make it decide on the previous scan's edge and the previous
+    scan's timeout. A block this FB *commands* - a motion block, a device FB -
+    goes the other side, below the CASE, called unconditionally with the inputs
+    the CASE has just set, so a command decided this scan is issued this scan.
+
     WHY THE STEP CONDITIONS ARE INPUTS
     A step's done-condition is the one thing a test has to control: hardwire it
     and the timeout branch becomes unreachable, so the error path - the code most
