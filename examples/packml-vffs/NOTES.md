@@ -22,7 +22,7 @@ Everything else is declarations. This is the strongest available evidence for th
 `FUNCTION_BLOCK ABSTRACT FB_EquipmentModuleTemplate EXTENDS FB_PackML_Base`. Worth reading for:
 
 - **The method contract a module must fill in** — `Initialize`, `CyclicLogic`, `CreateEvents`, `Monitoring`. Concrete modules override these; the base drives them.
-- **`Initialize` is a real init state machine** (2,256 chars), not a constructor. There is no constructor in ST — this is what initialisation actually looks like, and `CyclicLogic` gates on `_InitComplete` until it finishes.
+- **`Initialize` is a real init state machine** (2,256 chars), not a constructor. TwinCAT does have one — `FB_init`, see `references/twincat.md` — but it runs before the first cycle and must finish inside it, so work that spans scans cannot live there. That is the reason for the state machine, and `CyclicLogic` gates on `_InitComplete` until it finishes.
 - **Alarms via a helper** — `RaiseAlarm2Args` wraps `F_RaiseAlarmWithStringParameters`. This is the house error-reporting seam: one place that knows how alarms are raised, so modules do not each invent one.
 
 ### `FB_Cylinder.TcPOU` + `I_Cylinder.TcIO` — a device FB and its contract

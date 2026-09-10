@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_NullFallThrough" Id="{6b1c8a90-4f2d-4c77-9a3e-5d81b0c2e714}" SpecialFunc="None">
+    <Declaration><![CDATA[// X5 accepted any comparison against 0 as proof the pointer was checked, so a
+// null test that does not actually stop the null case scanned clean. Both
+// directions fall through, which is the point: the fix for '= 0' was first
+// written as a window search for '<> 0' and left the mirror image open.
+// The shapes that really guard live in the negative fixture.
+FUNCTION_BLOCK FB_NullFallThrough
+VAR
+    pBuf  : POINTER TO DINT;
+    pAlso : POINTER TO DINT;
+    pElse : POINTER TO DINT;
+    nSeen : DINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// The null case is noticed and then not stopped. Control leaves the IF and
+// reaches the dereference on exactly the path the test was looking for.
+IF pBuf = 0 THEN
+    nSeen := nSeen + 1;
+END_IF
+
+pBuf^ := nSeen;
+
+// The mirror: the pointer is tested for non-null, but the dereference sits
+// after END_IF rather than inside the branch, so the null path reaches it too.
+IF pAlso <> 0 THEN
+    nSeen := nSeen + 1;
+END_IF
+
+pAlso^ := nSeen;
+
+// And the ELSE branch of a correct test is the null path by definition.
+IF pElse <> 0 THEN
+    nSeen := nSeen + 1;
+ELSE
+    pElse^ := nSeen;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

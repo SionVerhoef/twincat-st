@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_NumericFaultState" Id="{9d47c2b8-5e13-40fa-8c76-2b91e0d3a465}" SpecialFunc="None">
+    <Declaration><![CDATA[// The overcorrection guard for X7 and X2. A machine that numbers its steps has
+// no room to say "error" in a label, so step 99 raising the fault flag is the
+// whole of what it can show — reading only label text would report this as
+// having no error state. And udiTimeOut is PLCopen's UDINT millisecond pin
+// (references/behaviour-model.md), so a plain number is correct there.
+FUNCTION_BLOCK FB_NumericFaultState
+VAR_INPUT
+    ixStart : BOOL;
+END_VAR
+VAR_OUTPUT
+    qxError : BOOL;
+END_VAR
+VAR
+    nStep : INT;
+    fbOp : FB_Op;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fbOp(udiTimeOut := 500);
+
+CASE nStep OF
+    0:
+        IF ixStart THEN
+            nStep := 10;
+        END_IF
+
+    10:
+        IF NOT ixStart THEN
+            nStep := 0;
+        END_IF
+
+    99:
+        qxError := TRUE;
+        IF NOT ixStart THEN
+            qxError := FALSE;
+            nStep := 0;
+        END_IF
+ELSE
+    nStep := 99;
+END_CASE
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_ScopeAndCase" Id="{4c9a1e73-8d26-4b05-a7f1-3e62d05b8c19}" SpecialFunc="None">
+    <Declaration><![CDATA[// Two scoping defects that a whole-file search cannot see.
+//
+// X7 pooled every label in the file, so an error label belonging to some other
+// CASE stood in as the error state for a machine that had none.
+//
+// X2 compared identifiers case-sensitively, but ST identifiers are not: a TIME
+// variable assigned under a different spelling of its own name went unchecked.
+FUNCTION_BLOCK FB_ScopeAndCase
+VAR
+    eState : E_Step;
+    eMode  : E_Mode;
+    tDelay : TIME;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[tDelay := T#1S;
+TDELAY := 500;                      // X2 - same variable, different spelling
+
+// X7 - this state machine has no error state of its own.
+CASE eState OF
+    E_Step.One:
+        eState := E_Step.Two;
+    E_Step.Two:
+        eState := E_Step.One;
+ELSE
+    eState := E_Step.One;
+END_CASE
+
+// An unrelated CASE that does have one. It must not cover for the machine above.
+CASE eMode OF
+    E_Mode.Run:
+        eMode := E_Mode.Run;
+    E_Mode.Error:
+        eMode := E_Mode.Run;
+ELSE
+    eMode := E_Mode.Run;
+END_CASE
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

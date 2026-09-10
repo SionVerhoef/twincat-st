@@ -20,6 +20,8 @@ END_VAR
 VAR
     fbTimer : TON;
     refCfg : REFERENCE TO ST_Cfg;
+    pGuarded : POINTER TO DINT;
+    pEarly : POINTER TO DINT;
 END_VAR
 ]]></Declaration>
     <Implementation>
@@ -49,6 +51,17 @@ fbTimer(IN := bGo, PT := T#1S);
 IF __ISVALIDREF(refCfg) THEN
     fResult := fResult + TO_LREAL(refCfg.nDiv);
 END_IF
+
+// X5: the two shapes that genuinely stop the null case reaching a dereference.
+// Narrowing the rule to these must not start reporting them.
+IF pGuarded <> 0 THEN
+    pGuarded^ := 1;
+END_IF
+
+IF pEarly = 0 THEN
+    RETURN;
+END_IF
+pEarly^ := 2;
 ]]></ST>
     </Implementation>
   </POU>
