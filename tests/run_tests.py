@@ -12,6 +12,8 @@ defect this skill leads with. This is the other half of the gate:
   * X6 separates an FB input from a METHOD parameter by severity
   * X9 catches both directions of a mixed PLCopen behaviour model, including
     pins spelled with an IEC direction prefix (ibEnable/obDone)
+  * a variable is the same variable under any spelling of its name, and however
+    its declaration is aligned — ST identifiers are case-insensitive
   * a text source holding several POUs is parsed as several POUs — merging
     them hid every body but the last and crossed their variable scopes
   * what tcpou.py scaffolds passes the reviewer tcpou.py ships beside — the two
@@ -161,6 +163,26 @@ check("X7 judges each state machine on its own body",
       "an unrelated CASE's error label is covering for a machine without one")
 check("X2 matches a TIME variable whatever case it is spelled in",
       "FB_ScopeAndCase" in x2, repr(sorted(x2)))
+
+# --- a variable is the same variable under any spelling or alignment ---------
+# CP24 stripped a declaration by the literal 'name :', so a column-aligned one
+# stayed in the text and the variable looked referenced. And every rule keyed on
+# a declared name compared it as written, which ST does not: a use under another
+# spelling was invisible to CP8, X5, CP20 and X6, and called CP24 'unused'. The
+# negative fixture FB_CaseFoldedClean holds the false-positive half.
+
+cased = {(f["rule"], f["source"].split(":")[0].strip())
+         for f in positive if f["object"] == "FB_AlignedAndCased"}
+for rule, name, what in [
+    ("CP24", "nUnusedAligned", "an unused variable whose declaration is column-aligned"),
+    ("CP8", "IF factual = nCount THEN", "a REAL compared under another spelling"),
+    ("X5", "pdata^", "a pointer dereferenced under another spelling"),
+    ("E3", "IF pdata > nCount", "a pointer ordered under another spelling"),
+    ("CP20", "fbDelay(IN", "an FB instance called twice under two spellings"),
+    ("X6", "refValue", "a reference used only under another spelling"),
+]:
+    hit = any(r == rule and t.startswith(name) for r, t in cased)
+    check(f"{rule} fires on {what}", hit, repr(sorted(cased)))
 
 # --- a text source holding several POUs is not one POU ----------------------
 # parse_text used to split the whole file at its last END_VAR, which assumes one

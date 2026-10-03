@@ -185,6 +185,7 @@ class Variable:
     section: str
     line: int
     unit: str
+    constant: bool = False
 
 
 @dataclass
@@ -328,6 +329,7 @@ def parse_variables(unit: Unit) -> list[Variable]:
     """Pull declarations out of a unit's VAR sections."""
     out: list[Variable] = []
     section = None
+    constant = False
     clean = strip_noise(unit.decl)
     buf, buf_line = "", 0
     for n, line in enumerate(clean.splitlines(), start=1):
@@ -337,6 +339,9 @@ def parse_variables(unit: Unit) -> list[Variable]:
         m = VAR_SECTION.match(line)
         if m:
             section = m.group(1).upper()
+            # Kept apart from the section name, which callers compare exactly:
+            # 'VAR_GLOBAL CONSTANT' is still VAR_GLOBAL to CP24.
+            constant = bool(re.search(r"\bCONSTANT\b", line, re.I))
             buf = ""
             continue
         if section is None:
@@ -352,7 +357,7 @@ def parse_variables(unit: Unit) -> list[Variable]:
             typ = re.sub(r"\s+", " ", dm.group(2)).strip()
             for nm in (x.strip() for x in dm.group(1).split(",")):
                 if nm:
-                    out.append(Variable(nm, typ, section, buf_line, unit.name))
+                    out.append(Variable(nm, typ, section, buf_line, unit.name, constant))
         buf = ""
     return out
 
@@ -444,7 +449,7 @@ def inside_nonnull_branch(lines: list[str], idx: int, name: str) -> bool:
                 depth -= 1
                 continue
             if not in_else and re.search(rf"\b{re.escape(name)}\s*<>\s*0",
-                                         raw[m.end():]):
+                                         raw[m.end():], re.I):
                 return True
             in_else = False        # consumed by this IF; keep walking outward
     return False
@@ -489,14 +494,16 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         scope_vars = (list(own_vars[owner_idx])
                       if unit_idx != owner_idx and owner_idx < len(own_vars) else [])
         scope_vars += own_vars[unit_idx] if unit_idx < len(own_vars) else []
-        pointer_names = {v.name for v in scope_vars if is_pointerish(v.type)}
+        # ST identifiers are case-insensitive, so every name set below is held
+        # upper-cased and looked up the same way: 'pData' used as 'PDATA^' is the
+        # same pointer, and treating it as another name hid it from every rule.
+        pointer_names = {v.name.upper() for v in scope_vars if is_pointerish(v.type)}
         # base_type() strips 'POINTER TO', so guard against calling a POINTER TO
         # LREAL a float — 'IF pData = 0' is a null check, not a float comparison.
-        real_names = {v.name for v in scope_vars
+        real_names = {v.name.upper() for v in scope_vars
                       if base_type(v.type) in REAL_TYPES and not is_pointerish(v.type)}
-        time_names = {v.name for v in scope_vars
+        time_names = {v.name.upper() for v in scope_vars
                       if base_type(v.type) in TIME_TYPES and not is_pointerish(v.type)}
-        time_names_upper = {n.upper() for n in time_names}
 
         impl = strip_noise(unit.impl)
         decl = strip_noise(unit.decl)
@@ -538,7 +545,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                 # same variable. The 't' prefix stays case-sensitive on purpose —
                 # it is a casing convention, and 'TDELAY' carries none of it.
                 if not (pin.upper() == "PT" or re.match(r"^t[A-Z_]", pin)
-                        or pin.upper() in time_names_upper):
+                        or pin.upper() in time_names):
                     continue
                 if re.fullmatch(NUM, val):
                     add("X2", unit, i + 1, line,
@@ -576,7 +583,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                                 "rather than silently ignored", unit.impl_line)
 
         # --- X4 unguarded division ------------------------------------------
-        const_names = {v.name for v in scope_vars if "CONSTANT" in v.section}
+        const_names = {v.name.upper() for v in scope_vars if v.constant}
         for i, line in enumerate(lines):
             for m in DIVISOR.finditer(line):
                 expr = re.sub(r"\s+", "", m.group(1))
@@ -588,7 +595,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                         continue      # a call whose result has no name to guard
                     expr = arg
                 root = re.match(r"[A-Za-z_]\w*", expr).group(0)
-                if root.upper() in KEYWORDS or root in const_names:
+                if root.upper() in KEYWORDS or root.upper() in const_names:
                     continue
                 # Match the guard against the whole divisor expression. Matching only
                 # the root reported 'stCfg.nDiv' as unguarded while the line above it
@@ -614,7 +621,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         for i, line in enumerate(lines):
             for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\^", line):
                 name = m.group(1)
-                if name.upper() in ("THIS", "SUPER") or name not in pointer_names:
+                if name.upper() in ("THIS", "SUPER") or name.upper() not in pointer_names:
                     continue
                 window = "\n".join(lines[max(0, i - 15): i + 1])
                 # Accept only the shapes that actually stop the null case reaching
@@ -626,7 +633,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     continue
                 # Same test on the dereference's own line, ahead of it:
                 # 'IF p <> 0 AND_THEN p^.x > 0 THEN'.
-                if re.search(rf"\b{re.escape(name)}\s*<>\s*0", line[:m.start()]):
+                if re.search(rf"\b{re.escape(name)}\s*<>\s*0", line[:m.start()], re.I):
                     continue
                 # 'IF p = 0 THEN RETURN; END_IF' guards too - the null case leaves.
                 # A bare 'IF p = 0 THEN Log(); END_IF' does not: it names the null
@@ -658,11 +665,11 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     continue          # ':=' assignment, not a comparison
                 lroot, rroot = lhs.split(".")[0], rhs.split(".")[0]
                 float_lit = bool(re.fullmatch(r"\d+\.\d+|\.\d+", rhs))
-                if lroot in real_names or rroot in real_names or float_lit:
+                if lroot.upper() in real_names or rroot.upper() in real_names or float_lit:
                     add("CP8", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
                         f"'{lhs} {op} {rhs}' compares floating point exactly; compare "
                         f"against a tolerance instead", unit.impl_line)
-                elif lroot in time_names or rroot in time_names:
+                elif lroot.upper() in time_names or rroot.upper() in time_names:
                     add("CP28", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
                         f"'{lhs} {op} {rhs}' compares TIME exactly; a scan will step over "
                         f"the exact value", unit.impl_line)
@@ -680,7 +687,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         # --- E3 ordering comparison on a pointer -------------------------------
         for i, line in enumerate(lines):
             for m in re.finditer(r"\b([A-Za-z_]\w*)\s*(<=|>=|<|>)\s*([A-Za-z_]\w*)", line):
-                if m.group(1) in pointer_names or m.group(3) in pointer_names:
+                if m.group(1).upper() in pointer_names or m.group(3).upper() in pointer_names:
                     add("E3", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
                         "only = and <> are defined on pointers; ordering relies on "
                         "undocumented memory layout", unit.impl_line)
@@ -711,9 +718,9 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
             if re.match(r"^(FB_|TON|TOF|TP|R_TRIG|F_TRIG|CTU|CTD|MC_)", v.type, re.I)
         }
         for inst in sorted(fb_instances):
-            calls = len(re.findall(rf"(?<![.\w]){re.escape(inst)}\s*\(", impl))
+            calls = len(re.findall(rf"(?<![.\w]){re.escape(inst)}\s*\(", impl, re.I))
             if calls > 1:
-                idx = next((i for i, l in enumerate(lines) if re.search(rf"(?<![.\w]){re.escape(inst)}\s*\(", l)), 0)
+                idx = next((i for i, l in enumerate(lines) if re.search(rf"(?<![.\w]){re.escape(inst)}\s*\(", l, re.I)), 0)
                 add("CP20", unit, idx + 1, raw_lines[idx] if idx < len(raw_lines) else inst,
                     f"'{inst}' is called from {calls} sites in this body; confirm at most "
                     f"one runs per scan, or the later call overwrites the earlier one's "
@@ -776,7 +783,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # --- X6 REFERENCE TO never validated --------------------------------------
     for v in ref_vars:
         if not re.search(rf"__ISVALIDREF\s*\(\s*{re.escape(v.name)}", all_impl, re.I):
-            if re.search(rf"(?<![.\w]){re.escape(v.name)}\b", all_impl):
+            if re.search(rf"(?<![.\w]){re.escape(v.name)}\b", all_impl, re.I):
                 unit = next((u for u in sf.units if u.name == v.unit), sf.units[0])
                 # A METHOD parameter is bound at every call site — the compiler will
                 # not let a caller omit it — so it cannot be the unwired-input defect
@@ -804,11 +811,15 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         # nothing to reference. Only scalars are safe to call dead on sight.
         if re.match(r"^(FB_|.*_Test$)", v.type.strip(), re.I):
             continue
-        uses = len(re.findall(rf"(?<![.\w]){re.escape(v.name)}\b", all_impl))
+        name = rf"(?<![.\w]){re.escape(v.name)}\b"
+        uses = len(re.findall(name, all_impl, re.I))
         # A name also appearing in another unit's declaration (a method parameter,
-        # say) is out of scope for this crude count, so only flag a clean zero.
-        if uses == 0 and not re.search(rf"(?<![.\w]){re.escape(v.name)}\b",
-                                       all_decl.replace(v.name + " :", "", 1)):
+        # say) is out of scope for this crude count, so only flag a clean zero. The
+        # variable's own declaration is removed first, at any alignment: a literal
+        # 'name :' missed 'name    : INT', the column-aligned style most code uses,
+        # and the unremoved declaration then counted as a reference to itself.
+        others = re.sub(name + r"\s*:(?!=)", "", all_decl, count=1, flags=re.I)
+        if uses == 0 and not re.search(name, others, re.I):
             unit = next((u for u in sf.units if u.name == v.unit), sf.units[0])
             if "CP24" in enabled:
                 found.append(Finding(

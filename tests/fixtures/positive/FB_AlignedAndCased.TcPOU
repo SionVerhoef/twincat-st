@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_AlignedAndCased" Id="{f2271632-49e5-4e0b-873c-7cc627083960}" SpecialFunc="None">
+    <Declaration><![CDATA[// Two ways the reviewer lost track of a variable's own name.
+//
+// CP24 stripped a declaration by the literal 'name :', so a column-aligned one -
+// the usual style - stayed in the text, the name looked referenced, and an unused
+// variable went unreported.
+//
+// ST identifiers are case-insensitive, but the rules compared them as written: a
+// variable used only under another spelling of its name escaped every type-keyed
+// rule below.
+FUNCTION_BLOCK FB_AlignedAndCased
+VAR
+    nUnusedAligned    : INT;        // CP24 - declared, never referenced
+    fActual           : LREAL;
+    nCount            : DINT;
+    pData             : POINTER TO INT;
+    fbDelay           : TON;
+    refValue          : REFERENCE TO INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[nCount := nCount + 1;
+fActual := 1.0;
+pData := 0;
+IF factual = nCount THEN            // CP8 - fActual is LREAL whatever its spelling
+    nCount := 0;
+END_IF
+pdata^ := 1;                        // X5 - pData is a pointer whatever its spelling
+IF pdata > nCount THEN              // E3 - an ordering comparison on that pointer
+    nCount := 1;
+END_IF
+fbDelay(IN := TRUE, PT := T#1S);
+fbdelay(IN := FALSE, PT := T#1S);   // CP20 - the same instance, called twice
+refvalue := 1;                      // X6 - used, never checked with __ISVALIDREF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
