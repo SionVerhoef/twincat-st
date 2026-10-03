@@ -51,9 +51,11 @@ that reason; on Linux or macOS read them as `python3`.
 
 ## The claim
 
-Syntax is not where model-written PLC code fails. **Execution model is.** A capable model will write a blocking `WHILE` loop into a cyclically-scanned real-time task, or set `PT := 500` where the type is `TIME`, or freeze a PLCopen motion block by guarding its call behind an `IF`. None of these are syntax errors and a compiler accepts all of them.
+Syntax is not where model-written PLC code fails. **Execution model is.** A model can write a blocking `WHILE` loop into a cyclically-scanned real-time task, or set `PT := 500` where the type is `TIME`, or freeze a PLCopen motion block by guarding its call behind an `IF`. None of these are syntax errors and a compiler accepts all of them.
 
-So this skill leads with the execution model, and it makes the review step **a program rather than a checklist**.
+How much the skill adds there is measured, and it is less than that framing suggests. In the first eval round a capable model without the skill already avoided most of these — given defective code to review, it caught every defect the skill did. What the skill measurably added was narrower: facts a model does not reliably have (an edge-triggered `Execute` costs two PLC cycles, which decides between the two PLCopen interfaces), refusing to answer in the wrong dialect, and saying plainly what was not compiled. See [`evals/results-iteration-1.md`](evals/results-iteration-1.md); a harder second round is built but not yet run.
+
+So this skill leads with the execution model as reinforcement rather than rescue, and it makes the review step **a program rather than a checklist** — `st_review.py` finds those patterns whether or not the model would have.
 
 ## What is here
 
