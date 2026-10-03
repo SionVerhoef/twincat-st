@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-10-03
 
 First public version, extracted from a private repository.
 
@@ -257,6 +257,25 @@ regressions across the other nineteen rules — and turned up one unrelated pre-
   every rule reading unit-scoped variables inherited it, and `X9` was just the one that
   made it visible.
 
+### Fixed before release
+
+- **`CP24` missed every column-aligned declaration.** It removed a variable's own
+  declaration by the literal `name :` before looking for other mentions, so
+  `nUnused    : INT;` — the aligned style most real code uses — stayed in the text and
+  counted as a reference to itself. The unused variable went unreported. Measured on
+  `examples/`, two tab-aligned locals in the PackML template that were never reported now
+  are.
+- **Identifiers were compared case-sensitively, which ST does not do.** A variable used
+  only under another spelling of its name — `pData` dereferenced as `pdata^` — was
+  invisible to `X5`, `CP8`/`CP28`, `E3`, `CP20` and `X6`, and `CP24` called it unused.
+  Every rule keyed on a declared name now folds case. The `ib`/`ob` pin-prefix matchers of
+  `X9` and the `t` prefix of `X2` stay case-sensitive on purpose: they test a casing
+  convention, not an identity.
+- **`X4` reported every division by a named constant.** The section parser kept only
+  `VAR`, never `CONSTANT`, so the exemption for a constant divisor could not fire.
+- **The README's headline claim is now stated against the eval data** rather than ahead of
+  it: the first eval round found the execution-model material reinforcing what a capable
+  model already did, and the measured gains narrower than the framing implied.
 
 ### Validation
 

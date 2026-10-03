@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_CaseFoldedClean" Id="{24da4fed-e63e-44c1-9645-ea132aaa2bc2}" SpecialFunc="None">
+    <Declaration><![CDATA[// ST identifiers are case-insensitive. Each variable here is used only under
+// another spelling of its own name, which is the same variable to the compiler and
+// must be to the reviewer: none of them is unused, and the divisor is a constant.
+FUNCTION_BLOCK FB_CaseFoldedClean
+VAR
+    nCount    : DINT;
+    nResult   : DINT;
+END_VAR
+VAR CONSTANT
+    cnDivisor : DINT := 4;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[ncount := ncount + 1;
+nresult := ncount / cndivisor;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
