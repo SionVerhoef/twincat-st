@@ -26,12 +26,11 @@ These are copyrighted documents. The rules were read and restated in original wo
 
 ## Files redistributed in `examples/`
 
-Everything outside `examples/` was written for this skill. `examples/` ships ten unmodified source files from three permissively-licensed projects, so that the skill can show real code rather than describe it. Each folder carries a verbatim copy of its upstream `LICENSE` — MIT and BSD-2 both require the notice to travel with the files, and a link back to GitHub does not satisfy either.
+Everything outside `examples/` was written for this skill. `examples/` ships eight unmodified source files from two permissively-licensed projects, so that the skill can show real code rather than describe it. Each folder carries a verbatim copy of its upstream `LICENSE` — MIT and BSD-2 both require the notice to travel with the files, and a link back to GitHub does not satisfy either.
 
 | Folder | Files | Upstream | Licence | Copyright |
 |---|---|---|---|---|
 | `examples/packml-vffs/` | `MAIN.TcPOU`, `FB_EquipmentModuleTemplate.TcPOU`, `FB_Cylinder.TcPOU`, `I_Cylinder.TcIO`, `ST_Cylinder_Config.TcDUT` | [Beckhoff-USA-Community/PackML_PLC_Example](https://github.com/Beckhoff-USA-Community/PackML_PLC_Example) | MIT | © 2023 Beckhoff Automation LLC |
-| `examples/tcmatrix-tests/` | `FB_MatrixInvert_Test.TcPOU`, `PRG_TEST.TcPOU` | [BurksEngineering/TcMatrix](https://github.com/BurksEngineering/TcMatrix) | MIT | © 2021 BurksEngineering |
 | `examples/design-patterns-state/` | `I_State.TcIO`, `FB_ATM_Machine.TcPOU`, `Param.TcGVL` | [0w8States/PLC-Design-Patterns](https://github.com/0w8States/PLC-Design-Patterns) | BSD 2-Clause | © 2021 John Helfrich |
 
 The `NOTES.md` in each folder is original commentary written for this skill, not part of the upstream project.

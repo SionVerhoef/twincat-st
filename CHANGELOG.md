@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **`examples/` drops the TcMatrix test suite.** Everything it showed — the `TcUnit.RUN()`
+  runner, `When…Expect…` naming, arrange/act/assert sections, testing the error path — is
+  already in `references/testing-tcunit.md` and `templates/FB_ExampleTestSuite.TcPOU`, so it
+  cost reading time and taught nothing new. Eight files from two projects remain.
+- CI's branding guard checks by hash, so the public workflow no longer names what it guards
+  against.
+
 ## 0.1.0 — 2026-10-03
 
 First public version, extracted from a private repository.
