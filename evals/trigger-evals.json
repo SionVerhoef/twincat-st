@@ -4,19 +4,7 @@
     "should_trigger": true
   },
   {
-    "query": "Can you review POUs/Conveyor/FB_Conveyor.TcPOU before I commit it? I'm mostly worried the infeed sequence in the Execute method can hang if the photo eye never comes on.",
-    "should_trigger": true
-  },
-  {
     "query": "CODESYS 3.5 SP19: I have FB_AxisBase with METHOD ABSTRACT MoveTo and two FBs that EXTENDS it. How do I call the base FB_init from the derived one without initialising things twice? Does SUPER^ work inside FB_init?",
-    "should_trigger": true
-  },
-  {
-    "query": "this repo has Line1.tsproj and PLC1/PLC1.plcproj at the root. add a function block that debounces a digital input with a configurable on/off delay and put it wherever the other FBs live",
-    "should_trigger": true
-  },
-  {
-    "query": "there are about 40 .TcPOU files under src/Pumps — somewhere in there the pump changeover can get stuck between pumps and nobody knows why. can you find it?",
     "should_trigger": true
   },
   {
@@ -41,6 +29,18 @@
   },
   {
     "query": "write a function block in structured text that ramps a setpoint toward a target with a max rate in units per second. it runs in a 10 ms cyclic task, so it can't just loop until it gets there",
+    "should_trigger": true
+  },
+  {
+    "query": "our PLC watchdog keeps tripping and I think it's this homing bit: WHILE NOT bHomeSwitch DO bMotorRev := TRUE; END_WHILE; bMotorRev := FALSE; — how should this be written so it doesn't block the task?",
+    "should_trigger": true
+  },
+  {
+    "query": "is tcunit actually worth setting up for a twincat project? i'd mostly want to test a couple of FBs (a valve and a simple sequencer) without any hardware attached. what does a minimal test look like",
+    "should_trigger": true
+  },
+  {
+    "query": "I'm writing a custom gripper function block in CODESYS and want it to behave like the PLCopen motion blocks: Execute in, Done/Busy/Error/ErrorID out. What are the exact rules for when Done goes high and how long it stays there if Execute drops early?",
     "should_trigger": true
   },
   {
