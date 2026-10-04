@@ -70,6 +70,8 @@ RULES: dict[str, tuple[str, str]] = {
     "X8": ("medium", "FB_init does real work without an online-change (bInCopyCode) guard"),
     "X9": ("medium", "FB mixes the two PLCopen behaviour models — Enable with Done, "
                      "or Execute with Valid"),
+    "X10": ("high", "line inside VAR ... END_VAR that is neither a declaration nor a "
+                    "comment — it will not compile"),
     "CP8": ("high", "equality/inequality comparison on REAL/LREAL"),
     "CP13": ("high", "POU calls itself — recursion is not allowed"),
     "CP14": ("high", "RETURN before the end of the POU — single point of exit"),
@@ -116,6 +118,14 @@ VAR_SECTION = re.compile(
     re.I,
 )
 END_VAR = re.compile(r"^\s*END_VAR\s*$", re.I)
+# What X10 accepts as a declaration statement. Wider than DECL_LINE, which only
+# needs the shapes it extracts variables from: an I/O-mapped 'bIn AT %I* : BOOL;'
+# and a 'REF=' initialiser are valid declarations the parser does not read, and a
+# pragma may sit in front of any of them. Prose fails it because its second word
+# follows the first with a space, where a declaration has ',', 'AT' or ':'.
+PRAGMA = re.compile(r"\{[^}]*\}")
+DECL_STATEMENT = re.compile(
+    r"^\s*[A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*\s*(?:\bAT\s*%[^:\s]*\s*)?:[^;]*;", re.S)
 DECL_LINE = re.compile(r"^\s*([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*:\s*([^:=;]+?)\s*(?::=.*)?;", re.S)
 POU_HEADER = re.compile(
     r"^\s*(FUNCTION_BLOCK|FUNCTION|PROGRAM|METHOD|INTERFACE|PROPERTY)\s+"
@@ -325,8 +335,21 @@ def parse_text(path: Path) -> SourceFile:
     return sf
 
 
-def parse_variables(unit: Unit) -> list[Variable]:
-    """Pull declarations out of a unit's VAR sections."""
+def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
+    """Pull declarations out of a unit's VAR sections.
+
+    When `stray` is given, each statement inside a VAR section that is not a
+    declaration is appended to it as (1-based line, raw text) — rule X10. A
+    multi-line comment with '//' on its first line only leaves exactly that.
+    """
+    raw_decl = unit.decl.splitlines()
+
+    def flag(text: str, at: int) -> None:
+        # A lone ';' is an empty statement the compiler accepts; only text counts.
+        if stray is not None and PRAGMA.sub(" ", text).strip().strip(";").strip():
+            if not DECL_STATEMENT.match(PRAGMA.sub(" ", text)):
+                stray.append((at, raw_decl[at - 1] if at <= len(raw_decl) else text))
+
     out: list[Variable] = []
     section = None
     constant = False
@@ -334,6 +357,8 @@ def parse_variables(unit: Unit) -> list[Variable]:
     buf, buf_line = "", 0
     for n, line in enumerate(clean.splitlines(), start=1):
         if END_VAR.match(line):
+            if section is not None and buf.strip():
+                flag(buf + ";", buf_line)       # trailing text with no statement after it
             section, buf = None, ""
             continue
         m = VAR_SECTION.match(line)
@@ -347,11 +372,12 @@ def parse_variables(unit: Unit) -> list[Variable]:
         if section is None:
             continue
         # A declaration may wrap across lines; accumulate until the semicolon.
-        if not buf:
+        if not buf.strip():
             buf_line = n
         buf += " " + line
         if ";" not in buf:
             continue
+        flag(buf.strip(), buf_line)
         dm = DECL_LINE.match(buf.strip() if buf.strip().endswith(";") else buf.strip() + ";")
         if dm:
             typ = re.sub(r"\s+", " ", dm.group(2)).strip()
@@ -465,7 +491,9 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # usage has to be judged against every implementation in the file.
     all_impl = strip_noise("\n".join(u.impl for u in sf.units))
     all_decl = strip_noise("\n".join(u.decl for u in sf.units))
-    own_vars: list[list[Variable]] = [parse_variables(u) for u in sf.units]
+    own_strays: list[list[tuple[int, str]]] = [[] for _ in sf.units]
+    own_vars: list[list[Variable]] = [parse_variables(u, own_strays[i])
+                                      for i, u in enumerate(sf.units)]
     file_vars: list[Variable] = [v for group in own_vars for v in group]
     ref_vars = [v for v in file_vars if re.match(r"^\s*REFERENCE\s+TO", v.type, re.I)]
 
@@ -511,6 +539,12 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         decl_lines = decl.splitlines()
         raw_lines = unit.impl.splitlines()
         upper = impl.upper()
+
+        # --- X10 a stray line in a VAR block -------------------------------
+        for line_no, text in own_strays[unit_idx]:
+            add("X10", unit, line_no, text,
+                "not a declaration and not a comment; the compiler will reject this "
+                "VAR block (a comment continued without its '//'?)", unit.decl_line)
 
         # --- X0 / suppression hygiene ------------------------------------
         for i, line in enumerate(raw_lines):
@@ -762,8 +796,10 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         # block behind an enable gate is a real design, and the text cannot say otherwise.
         if re.search(r"^\s*FUNCTION_BLOCK\b", decl, re.I | re.M):
             declared = own_vars[unit_idx] if unit_idx < len(own_vars) else []
-            ins = [v for v in declared if v.section == "VAR_INPUT"]
-            outs = [v for v in declared if v.section == "VAR_OUTPUT"]
+            # A behaviour-model pin is BOOL by definition. Without this, a house that
+            # spells an INT with an 'i' prefix had 'iEnable : INT' read as a trigger.
+            ins = [v for v in declared if v.section == "VAR_INPUT" and v.type.upper() == "BOOL"]
+            outs = [v for v in declared if v.section == "VAR_OUTPUT" and v.type.upper() == "BOOL"]
             execute = next((v for v in ins if PIN_EXECUTE.match(v.name)), None)
             enable = next((v for v in ins if PIN_ENABLE.match(v.name)), None)
             done = next((v for v in outs if PIN_DONE.match(v.name)), None)
@@ -851,14 +887,22 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # file let an unrelated 'CASE eMode OF ... E_Mode.Error:' — or one in a
     # method further down — stand in as the error state for a machine that has
     # none, which is the same false clean the word-anywhere search gave.
-    machines = [case_block(all_impl, m.end()) for m in
-                re.finditer(r"\bCASE\s+\w*(?:STATE|STEP|SEQ)\w*\s+OF", all_impl, re.I)]
-    if machines and not all(has_error_state(b) for b in machines) and "X7" in enabled:
-        unit = sf.units[0]
-        found.append(Finding(
-            "X7", RULES["X7"][0], fname, unit.name, unit.impl_line, "CASE ... OF",
-            "no error or fault state is reachable from this state machine; a "
-            "failed step has nowhere to go and no way to report itself"))
+    # Reported against the unit whose implementation holds the machine, at its CASE
+    # line. Searching the joined text found it but always named the first unit, so
+    # a machine in a METHOD was blamed on the POU body around it.
+    for unit in sf.units:
+        impl = strip_noise(unit.impl)
+        bad = next((m for m in re.finditer(r"\bCASE\s+\w*(?:STATE|STEP|SEQ)\w*\s+OF",
+                                           impl, re.I)
+                    if not has_error_state(case_block(impl, m.end()))), None)
+        if bad and "X7" in enabled:
+            raw_lines = unit.impl.splitlines()
+            idx = impl.count("\n", 0, bad.start())
+            found.append(Finding(
+                "X7", RULES["X7"][0], fname, unit.name, unit.impl_line + idx,
+                raw_lines[idx] if idx < len(raw_lines) else "CASE ... OF",
+                "no error or fault state is reachable from this state machine; a "
+                "failed step has nowhere to go and no way to report itself"))
 
     return found
 

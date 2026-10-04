@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_DeclarationShapes" Id="{1a810644-60a3-4aa9-bbe8-bb32a07c02c9}" SpecialFunc="None">
+    <Declaration><![CDATA[// Valid declarations X10 must not mistake for stray text: a pragma in front of a
+// declaration, an I/O-mapped variable, a REF= initialiser, and a comment spread
+// over several lines the proper way.
+//
+// And X9 must stay quiet: iEnable is an INT in a house that spells INTs with 'i',
+// not a PLCopen Enable pin, so it does not pair with bDone.
+FUNCTION_BLOCK FB_DeclarationShapes
+VAR_INPUT
+    iEnable : INT;                  // a count, not a trigger
+END_VAR
+VAR_OUTPUT
+    bDone : BOOL;
+END_VAR
+VAR
+    {attribute 'hide'}
+    nHidden : INT;
+    bSensor AT %I* : BOOL;
+    nTarget : INT;
+    refTarget : REFERENCE TO INT REF= nTarget;
+    (* A block comment
+       over two lines. *)
+    nCount : INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[nHidden := iEnable;
+nCount := nHidden + nTarget;
+bDone := bSensor AND nCount > 0;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
