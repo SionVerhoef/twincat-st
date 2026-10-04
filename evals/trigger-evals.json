@@ -1,0 +1,90 @@
+[
+  {
+    "query": "my TON never fires in twincat. i have tonDelay(IN := bStart, PT := 500); and bDone := tonDelay.Q; but Q stays false forever even with bStart true. what am i missing",
+    "should_trigger": true
+  },
+  {
+    "query": "Can you review POUs/Conveyor/FB_Conveyor.TcPOU before I commit it? I'm mostly worried the infeed sequence in the Execute method can hang if the photo eye never comes on.",
+    "should_trigger": true
+  },
+  {
+    "query": "CODESYS 3.5 SP19: I have FB_AxisBase with METHOD ABSTRACT MoveTo and two FBs that EXTENDS it. How do I call the base FB_init from the derived one without initialising things twice? Does SUPER^ work inside FB_init?",
+    "should_trigger": true
+  },
+  {
+    "query": "this repo has Line1.tsproj and PLC1/PLC1.plcproj at the root. add a function block that debounces a digital input with a configurable on/off delay and put it wherever the other FBs live",
+    "should_trigger": true
+  },
+  {
+    "query": "there are about 40 .TcPOU files under src/Pumps — somewhere in there the pump changeover can get stuck between pumps and nobody knows why. can you find it?",
+    "should_trigger": true
+  },
+  {
+    "query": "We're moving an old machine to a Beckhoff CX. One rung is XIC Start, XIO Stop, OTE Motor with a Motor contact in parallel with Start as a seal-in. What's the clean structured text version, and is there a scan-order trap I should know about?",
+    "should_trigger": true
+  },
+  {
+    "query": "MC_MoveAbsolute on my AX5000 axis completes once and then never moves again. I set bMove := TRUE from the HMI each time. fbMove(Axis := stAxis, Execute := bMove, Position := fTarget, Velocity := 100); — why does the second command do nothing?",
+    "should_trigger": true
+  },
+  {
+    "query": "Write me a PackML state machine skeleton as a function block for TwinCAT 3 (4024): Stopped, Resetting, Idle, Starting, Execute, Completing, Complete, Holding/Held, Suspending/Suspended, Stopping, Aborting/Aborted, Clearing. Commands in, current state out.",
+    "should_trigger": true
+  },
+  {
+    "query": "how do i write a TcUnit test for FB_Valve that checks it raises the open-timeout fault if the open feedback never arrives? the timeout is a TON inside the FB",
+    "should_trigger": true
+  },
+  {
+    "query": "After an online change in XAE my FB_init doesn't run again and a POINTER TO ST_Recipe inside one of my FBs points at garbage. Why, and what's the right pattern?",
+    "should_trigger": true
+  },
+  {
+    "query": "write a function block in structured text that ramps a setpoint toward a target with a max rate in units per second. it runs in a 10 ms cyclic task, so it can't just loop until it gets there",
+    "should_trigger": true
+  },
+  {
+    "query": "TIA Portal V18, S7-1500: I'm writing an SCL function block with a CASE #statStep OF sequence. How do I declare an IEC_TIMER as a multi-instance in the Static section and call it from SCL?",
+    "should_trigger": false
+  },
+  {
+    "query": "In a Studio 5000 structured text routine on a ControlLogix, how do I use a TON? Do I still set .PRE in milliseconds and check .DN, and do I need TONR instead in ST?",
+    "should_trigger": false
+  },
+  {
+    "query": "OpenPLC runtime on a Raspberry Pi. The editor's compiler (matiec) rejects METHOD inside my FUNCTION_BLOCK with a syntax error. Is there a flag to enable object-oriented ST, or a workaround?",
+    "should_trigger": false
+  },
+  {
+    "query": "write me a state machine for a vending machine in C for an STM32 — states idle, coin inserted, selecting, dispensing, out of stock — driven from a 1 ms SysTick interrupt",
+    "should_trigger": false
+  },
+  {
+    "query": "Python script for a Raspberry Pi that polls a Modbus TCP temperature sensor every 100 ms with pymodbus and appends readings to a CSV. Should I use asyncio or a thread?",
+    "should_trigger": false
+  },
+  {
+    "query": "Wiring question: EK1100 coupler, then EL1008, EL2008 and an EL9410. Do the outputs on the EL2008 need their own 24V on the power contacts, and where does the EL9410 go in the terminal row?",
+    "should_trigger": false
+  },
+  {
+    "query": "I got an ESI xml file from the vendor of a third-party EtherCAT drive. Where do I copy it so the I/O scan in the TwinCAT System Manager recognises the device instead of showing it as unknown?",
+    "should_trigger": false
+  },
+  {
+    "query": "For 16 digital inputs, is one EL1809 cheaper than two EL1008s once you count the bus slots, and which one usually has the shorter lead time from distributors?",
+    "should_trigger": false
+  },
+  {
+    "query": "I recorded a TwinCAT Scope trace (.tcscopex) of an axis during a 300 mm move. Following error spikes to 2 mm right at the end of acceleration. From the recorded channels, does this look like a tuning problem or something mechanical?",
+    "should_trigger": false
+  },
+  {
+    "query": "for a training handout i need to draw a classic start/stop seal-in circuit in ladder logic, plus the same thing as an FBD with an SR block. just the diagrams and a sentence on each, no code",
+    "should_trigger": false
+  },
+  {
+    "query": "the repo has a .tsproj in it but ignore that — I only need .github/workflows/ci.yml to cache pip dependencies for our python test tooling. right now every run reinstalls everything and takes 4 minutes.",
+    "should_trigger": false
+  }
+]
