@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="PRG_External" Id="{98f51d7c-b01f-4155-8cb7-7ad69ee6755d}" SpecialFunc="None">
+    <Declaration><![CDATA[// CP6 is about functions and function blocks. A PROGRAM binding a global with
+// VAR_EXTERNAL is not hiding a dependency from any caller.
+PROGRAM PRG_External
+VAR_EXTERNAL
+    gnShared : INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[gnShared := gnShared + 1;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_DirectionAndLoops" Id="{687f8cdc-afb4-454d-be79-077f88423777}" SpecialFunc="None">
+    <Declaration><![CDATA[// Parameter direction and FOR-loop rules, each broken once.
+FUNCTION_BLOCK FB_DirectionAndLoops
+VAR_INPUT
+    nLimit : INT;               // CP17 - written below
+END_VAR
+VAR_OUTPUT
+    bFound : BOOL;              // CP17 - read, never written
+END_VAR
+VAR_EXTERNAL
+    gnShared : INT;             // CP6 - a global reached from inside an FB
+END_VAR
+VAR
+    i     : INT;
+    aData : ARRAY[0..9] OF INT;
+    nHit  : INT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF nLimit > 9 THEN
+    nLimit := 9;                // CP17 - the block writes its own input
+END_IF
+FOR i := 0 TO nLimit DO
+    IF aData[i] = gnShared THEN
+        i := nLimit;            // L12 - leaves the loop by writing its variable
+    END_IF
+END_FOR
+nHit := i;                      // L13 - reads the loop variable after the loop
+IF bFound THEN
+    nHit := 0;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

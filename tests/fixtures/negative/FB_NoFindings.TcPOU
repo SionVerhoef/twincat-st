@@ -42,7 +42,7 @@ fResult := fA / TO_LREAL(nRaw);
 
 // CP8: an ordering comparison is fine, and ':=' is an assignment, not a test.
 bBigger := fA > fB;
-fA := fB;
+fResult := fB;
 
 // X2: a TIME literal is what the preset wants.
 fbTimer(IN := bGo, PT := T#1S);
