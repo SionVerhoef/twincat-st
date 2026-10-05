@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <GVL Name="GVL_Line" Id="{1179cbd3-7f69-4bae-a092-be979d073c97}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+    bAutoMode      : BOOL;
+    bResetRequest  : BOOL;
+    stActiveRecipe : ST_Recipe;
+    nCycleTimeMs   : UDINT;     // measured machine cycle, 0 until the first cycle completes
+    nCapsDone      : UDINT;
+END_VAR
+]]></Declaration>
+  </GVL>
+</TcPlcObject>

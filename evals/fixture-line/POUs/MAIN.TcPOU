@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{d757552f-cf1f-43f5-9da6-13a3ce96c1a5}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    fbInfeed   : FB_Infeed;
+    fbCapper   : FB_Capper;
+    fbTransfer : FB_Transfer;
+    fbScale    : FB_Scale;
+    fbRecipe   : FB_RecipeHandler;
+    fbLabeler  : FB_Labeler;
+    nPerMinute : UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fbInfeed(bStart := GVL_Line.bAutoMode);
+fbCapper(bStart := fbInfeed.bBottleInPlace);
+fbTransfer(bRequest := fbCapper.bDone, fTarget := 250.0);
+fbScale();
+fbLabeler(nLabels := GVL_Line.nCapsDone);
+nPerMinute := F_Throughput(nCaps := GVL_Line.nCapsDone,
+                           nCycleTimeMs := GVL_Line.nCycleTimeMs);
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

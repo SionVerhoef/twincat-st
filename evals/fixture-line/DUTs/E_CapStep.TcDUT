@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <DUT Name="E_CapStep" Id="{d99212cb-a8cc-4eeb-9657-431901f551b6}">
+    <Declaration><![CDATA[TYPE E_CapStep :
+(
+    Idle   := 0,
+    Lower  := 10,
+    Torque := 20,
+    Raise  := 30,
+    Done   := 40,
+    Fault  := 99
+) INT;
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

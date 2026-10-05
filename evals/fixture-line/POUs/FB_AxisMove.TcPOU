@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_AxisMove" Id="{2986ae6c-28d1-4407-97ce-75dcdff3486f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_AxisMove
+VAR_INPUT
+    bExecute  : BOOL;       // rising edge starts a move
+    fPosition : LREAL;      // mm
+END_VAR
+VAR_OUTPUT
+    bBusy  : BOOL;
+    bDone  : BOOL;
+    bError : BOOL;
+END_VAR
+VAR
+    rtExecute : R_TRIG;
+    fActual   : LREAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[rtExecute(CLK := bExecute);
+IF rtExecute.Q THEN
+    bBusy := TRUE;
+    bDone := FALSE;
+    bError := FALSE;
+END_IF
+IF bBusy THEN
+    fActual := fPosition;   // drive interface omitted: the move completes here
+    bBusy := FALSE;
+    bDone := TRUE;
+END_IF
+IF NOT bExecute THEN
+    bDone := FALSE;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

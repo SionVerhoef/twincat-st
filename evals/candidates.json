@@ -1,0 +1,31 @@
+{
+  "skill_name": "twincat-st",
+  "notes": "Candidate evals, not part of the matrix. Iteration 2's baseline scored 81% and tied every file-level check, so a task earns a place in evals.json only after a baseline-only scouting run shows the model failing it unaided: run_cells.py <dir> --spec evals/candidates.json --arms without_skill --reps 1, then read the answers. All three use fixture-line/, a 12-object capping line. Four of its six planted defects are what st_review.py reports (X1 in an ACTION, CP8 in a property getter, X5 in a METHOD, X4 in a FUNCTION); two need reasoning about the scan — a step timer that is only ever called inside its own state, and an edge-triggered FB called behind an IF. FB_Labeler is a decoy: guarded division, checked pointer.",
+  "run": {"arms": ["with_skill", "without_skill"]},
+  "evals": [
+    {
+      "name": "review-line-project",
+      "scored": "discriminating",
+      "workspace": true,
+      "fixture": "fixture-line",
+      "prompt": "workspace/ is the PLC project for our capping line. We commission it next week. Review it and list everything you would expect to cause trouble on the machine, and say exactly where each problem is. Don't change any files.",
+      "expected_output": "Finds all six: the REPEAT in FB_Infeed's Act_Purge action (blocks the scan until pressure is OK — watchdog), REAL equality in FB_Scale.IsSettled's getter, the unchecked pSource^ in FB_RecipeHandler.Apply, the division by nCycleTimeMs in F_Throughput (zero until the first cycle), FB_Capper's fbStepTimer only called inside the Torque step (never sees IN = FALSE, so the second cap times out at once), and FB_Transfer calling fbMove only inside IF bRequest (fbMove never sees bExecute fall, so it moves once). Does not report FB_Labeler. Leaves every file unchanged."
+    },
+    {
+      "name": "capper-second-cycle",
+      "scored": "discriminating",
+      "workspace": true,
+      "fixture": "fixture-line",
+      "prompt": "Problem on the capping line (project in workspace/): after a reset the first bottle caps fine, but from the second bottle on the capper faults with error 16#0201, torque not reached in time, the moment it starts tightening. The torque on the drive looks normal. Find the cause and fix it in the project.",
+      "expected_output": "Identifies that FB_Capper calls fbStepTimer only inside the Torque step with IN := TRUE, so the timer never sees IN go FALSE between cycles; on re-entry it is already elapsed. Fixes it by calling the timer every scan with IN tied to the step (or resetting it with IN := FALSE on leaving), in FB_Capper.TcPOU only, keeping GUIDs, BOM and line endings."
+    },
+    {
+      "name": "transfer-moves-once",
+      "scored": "discriminating",
+      "workspace": true,
+      "fixture": "fixture-line",
+      "prompt": "The transfer axis on the capping line (project in workspace/) does its move the first time after power-up and then never again. No error, and Busy never comes on for the later moves. Find out why and fix it.",
+      "expected_output": "Identifies that FB_Transfer calls fbMove only inside IF bRequest, so fbMove's R_TRIG on bExecute never sees the input fall and no later rising edge is detected. Fixes it by calling fbMove every scan with bExecute := bRequest, in FB_Transfer.TcPOU only, keeping GUIDs, BOM and line endings."
+    }
+  ]
+}
