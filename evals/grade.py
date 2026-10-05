@@ -378,6 +378,10 @@ def main():
             cells = reps_of(RUN / name / arm)
             scores = []
             for rep in cells:
+                # Laid out but never run: no answer, and no record from run_cells.py.
+                # Its untouched workspace would otherwise score as a real zero.
+                if not (rep / "answer.md").exists() and not (rep / "run.json").exists():
+                    continue
                 cell = Cell(rep)
                 if not cell.exists:
                     continue
@@ -432,10 +436,12 @@ def main():
         for label, ok in res:
             print(f"   {'✓' if ok else '✗'} {label}")
 
-    out = RUN.parent / "summary.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    json.dump(results, open(out, "w"), indent=2)
-    print(f"\nsummary written to {out}")
+    # Inside the run, not beside it: beside a run under /tmp is a file every
+    # other run would overwrite.
+    if RUN.is_dir():
+        out = RUN / "summary.json"
+        json.dump(results, open(out, "w"), indent=2)
+        print(f"\nsummary written to {out}")
 
 
 if __name__ == "__main__":
