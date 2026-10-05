@@ -184,6 +184,22 @@ for rule, name, what in [
     hit = any(r == rule and t.startswith(name) for r, t in cased)
     check(f"{rule} fires on {what}", hit, repr(sorted(cased)))
 
+# --- a finding names the line and the unit it is actually about --------------
+# X10: prose left in a VAR block by a comment that lost its '//' compiled nowhere
+# and was reported nowhere. X7 found a state machine in a METHOD but named the POU
+# body, because it searched every unit's code joined together. The negative
+# fixture FB_DeclarationShapes holds the valid shapes X10 must not flag, and the
+# non-BOOL 'iEnable' that X9 must not read as a PLCopen pin.
+
+stray = [f for f in positive if f["rule"] == "X10"]
+check("X10 fires on the prose line, and only there",
+      [(f["object"], f["source"][:20]) for f in stray]
+      == [("FB_StrayAndMethodMachine", "which is advanced on")], repr(stray))
+check("X7 names the METHOD holding the state machine, not the POU around it",
+      {f["object"] for f in positive if f["rule"] == "X7"
+       and f["file"].endswith("FB_StrayAndMethodMachine.TcPOU")} == {"Run"},
+      repr([f for f in positive if f["rule"] == "X7"]))
+
 # --- a text source holding several POUs is not one POU ----------------------
 # parse_text used to split the whole file at its last END_VAR, which assumes one
 # POU per file. TwinCAT writes one POU per file so no .TcPOU ever showed it, but a

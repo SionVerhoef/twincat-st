@@ -8,6 +8,21 @@
   cost reading time and taught nothing new. Eight files from two projects remain.
 - CI's branding guard checks by hash, so the public workflow no longer names what it guards
   against.
+- **New rule `X10`: a line inside `VAR … END_VAR` that is neither a declaration nor a
+  comment.** A comment continued onto a second line without its `//` leaves bare prose there;
+  the compiler rejects it and the reviewer used to say nothing. Pragmas, `AT %I*` mappings,
+  `REF=` initialisers and empty statements are accepted. Zero findings across a 1,230-file
+  corpus of public TwinCAT projects.
+- **`X7` names the unit that holds the state machine.** It searched every unit's code joined
+  together and always reported the first, so a machine in a `METHOD` was blamed on the POU
+  body. On the same corpus 167 of 171 findings now name a different, correct unit; a file
+  with several such machines reports each.
+- **`X9` only reads `BOOL` pins as behaviour-model pins.** A house that spells an `INT` with an
+  `i` prefix had `iEnable : INT` treated as an `Enable` trigger.
+- Declarations preceded by a blank line were located one line early in `X6` and `CP24`
+  findings.
+- `SKILL.md` documents `--shape cyclic --extends FB_YourBase` for an FB that inherits its
+  command interface from a framework base.
 
 ## 0.1.0 — 2026-10-03
 

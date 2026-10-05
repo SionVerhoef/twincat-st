@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_StrayAndMethodMachine" Id="{ec38ade9-f893-41f2-9d9f-b534119981ee}" SpecialFunc="None">
+    <Declaration><![CDATA[// Two defects a reviewer reading the whole file as one text got wrong.
+//
+// X10: a comment continued onto a second line without its '//' leaves bare prose
+// inside the VAR block. The compiler rejects it; the reviewer said nothing.
+//
+// X7: the state machine below lives in the Run method. It was reported, but
+// against the POU body, which holds no CASE at all.
+FUNCTION_BLOCK FB_StrayAndMethodMachine
+VAR
+    nStep : INT;                    // the step of the sequence in Run,
+    which is advanced only from there
+    bStart : BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[Run();
+]]></ST>
+    </Implementation>
+    <Method Name="Run" Id="{33ae5502-890d-4eab-a436-e4d2a2fd8642}">
+      <Declaration><![CDATA[METHOD Run : BOOL
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[CASE nStep OF                       // X7 - no error state, and it is Run's
+    0:
+        IF bStart THEN
+            nStep := 10;
+        END_IF
+    10:
+        nStep := 0;
+ELSE
+    nStep := 0;
+END_CASE
+]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>
