@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **`examples/` drops the TcMatrix test suite.** Everything it showed — the `TcUnit.RUN()`
+  runner, `When…Expect…` naming, arrange/act/assert sections, testing the error path — is
+  already in `references/testing-tcunit.md` and `templates/FB_ExampleTestSuite.TcPOU`, so it
+  cost reading time and taught nothing new. Eight files from two projects remain.
+- CI's branding guard checks by hash, so the public workflow no longer names what it guards
+  against.
 - **New rule `X10`: a line inside `VAR … END_VAR` that is neither a declaration nor a
   comment.** A comment continued onto a second line without its `//` leaves bare prose there;
   the compiler rejects it and the reviewer used to say nothing. Pragmas, `AT %I*` mappings,

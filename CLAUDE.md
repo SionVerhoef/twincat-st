@@ -44,8 +44,8 @@ This is a general-purpose skill, and its users work in shops that do not share o
 style. Every rule, convention and example must make sense to a reader with no connection to
 the project it came from.
 
-`examples/` deliberately carries three projects using three different naming conventions,
-because **the project you are editing wins** — see `references/naming-conventions.md`. Keep it
+`examples/` deliberately carries projects whose naming conventions differ from each other and
+from the skill's own default, because **the project you are editing wins** — see `references/naming-conventions.md`. Keep it
 that way. Do not promote one employer's internal standard to the only correct answer, and do
 not write a rule that is really a preference without saying so.
 
