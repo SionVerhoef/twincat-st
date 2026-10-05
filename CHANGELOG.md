@@ -2,9 +2,24 @@
 
 ## Unreleased
 
+- **The skill now loads when it should.** The `SKILL.md` description was 1,181 characters,
+  over the 1,024 a description may carry, so its end — where the dialect refusals and the
+  safety line sat — was at risk of being cut. Rewritten to 1,009 and tested with skill-creator's trigger
+  harness: all 22 queries in `evals/trigger-evals.json` pass, including simple one-line
+  questions (`PT := 500`, a level-driven `Execute`) the old one missed, and no query outside
+  scope loads it.
+- **Iteration-2 evals, against v0.1.0** (`evals/results-iteration-2.md`). Opus 5.5 without the
+  skill already did nearly everything the evals asked; the skill's gain was in how answers
+  present themselves, not in the code. The README's claim now says so.
+- **Scouting by model** (`evals/results-scouting.md`). Without the skill Sonnet 5.5 scores like
+  Opus; Haiku 4.5 drops to 72%, failing on safety, timeouts and `Valid` — where the skill
+  aims. Three harder candidate tasks on a new 12-object fixture (`evals/candidates.json`,
+  `evals/fixture-line/`) did not separate Opus from its baseline and stay out of the matrix.
 - **An eval round is one command.** `evals/run_cells.py` snapshots the skill, runs each cell
   in an isolated headless session, grades, and reports cost plus an audit of what each cell
-  touched; it resumes an interrupted round. `evals/run_trigger.py` wraps skill-creator's
+  touched; it resumes an interrupted round, and `--spec`/`--arms` scout a candidate task on
+  one arm only. `prepare_run.py` writes an absolute path to the skill, so cells run outside
+  the repository, and takes a per-eval `fixture`. `evals/run_trigger.py` wraps skill-creator's
   trigger scripts so parallel calls cannot see each other's temporary skill — the fault that
   scored the first optimizer run at 0% recall. `grade.py` no longer scores cells that never
   ran, and writes its summary inside the run.
