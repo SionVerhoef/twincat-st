@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Scale" Id="{11ccd30e-da70-4526-852d-ad83462883d6}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Scale
+VAR_INPUT
+    nRaw : DINT;            // counts from the load cell terminal
+END_VAR
+VAR
+    fWeight     : LREAL;    // g
+    fLastWeight : LREAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[fLastWeight := fWeight;
+fWeight := DINT_TO_LREAL(nRaw) * 0.01;
+]]></ST>
+    </Implementation>
+    <Property Name="IsSettled" Id="{ca61f444-9247-4388-8494-115e6f29389a}">
+      <Declaration><![CDATA[PROPERTY IsSettled : BOOL
+]]></Declaration>
+      <Get Name="Get" Id="{ae162878-a7d8-4aa0-b391-f563ff084c0d}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[IsSettled := (fWeight = fLastWeight);
+]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+  </POU>
+</TcPlcObject>

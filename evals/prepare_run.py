@@ -3,6 +3,7 @@
 exact prompt and, where the eval needs one, a pristine copy of the fixture project.
 
     python3 evals/prepare_run.py [run-dir] [--reps N] [--skill PATH/TO/SKILL.md]
+                                 [--spec evals/candidates.json]
 
 Then run one agent per cell. Each agent works in its own `workspace/` (when there is
 one) and writes its reply to `answer.md` beside it. Finally:
@@ -76,7 +77,12 @@ def main():
         del args[i:i + 2]
     run = Path(args[0]) if args else HERE / "runs" / "iteration-2"
 
-    spec = json.loads((HERE / "evals.json").read_text(encoding="utf-8"))
+    spec_path = HERE / "evals.json"
+    if "--spec" in args:
+        i = args.index("--spec")
+        spec_path = Path(args[i + 1]).resolve()
+        del args[i:i + 2]
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
     arms = spec.get("run", {}).get("arms", ["with_skill", "without_skill"])
     manifest = []
     for ev in spec["evals"]:
@@ -88,7 +94,8 @@ def main():
                     ws = cell / "workspace"
                     if ws.exists():
                         shutil.rmtree(ws)
-                    shutil.copytree(FIXTURE, ws)
+                    # An eval may name its own project; the default is the original.
+                    shutil.copytree(HERE / ev.get("fixture", FIXTURE.name), ws)
                     (ws / "README.md").unlink(missing_ok=True)   # not part of the project
                 (cell / "PROMPT.md").write_text(CELL_TEMPLATE.format(
                     eval_name=ev["name"], arm=arm, rep=f"rep{n}",

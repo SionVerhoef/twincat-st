@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Labeler" Id="{5a440053-e5a6-4ae4-853e-d3bc8412c14d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Labeler
+VAR_INPUT
+    nLabels : UDINT;
+    pRoll   : POINTER TO UDINT;     // remaining labels on the roll, from the HMI
+END_VAR
+VAR_OUTPUT
+    nRollsUsed : UDINT;
+    bRollLow   : BOOL;
+END_VAR
+VAR CONSTANT
+    cLabelsPerRoll : UDINT := 2000;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[nRollsUsed := nLabels / cLabelsPerRoll;
+IF pRoll <> 0 THEN
+    bRollLow := pRoll^ < 100;
+END_IF
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

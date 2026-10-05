@@ -1,0 +1,74 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Capper" Id="{1a4b3cb2-275d-4b44-b671-680310411bbe}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Capper
+VAR_INPUT
+    bStart     : BOOL;
+    bCapSeated : BOOL;
+    fTorque    : LREAL;     // Nm, from the spindle drive
+END_VAR
+VAR_OUTPUT
+    bHeadDown  : BOOL;
+    bSpindleOn : BOOL;
+    bDone      : BOOL;
+    bError     : BOOL;
+    nErrorId   : UDINT;
+END_VAR
+VAR
+    eStep       : E_CapStep;
+    fbStepTimer : TON;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE eStep OF
+    E_CapStep.Idle:
+        bDone := FALSE;
+        IF bStart THEN
+            eStep := E_CapStep.Lower;
+        END_IF
+
+    E_CapStep.Lower:
+        bHeadDown := TRUE;
+        IF bCapSeated THEN
+            eStep := E_CapStep.Torque;
+        END_IF
+
+    E_CapStep.Torque:
+        bSpindleOn := TRUE;
+        fbStepTimer(IN := TRUE, PT := GVL_Line.stActiveRecipe.tTorqueTime);
+        IF fTorque >= GVL_Line.stActiveRecipe.fTargetTorque THEN
+            bSpindleOn := FALSE;
+            eStep := E_CapStep.Raise;
+        ELSIF fbStepTimer.Q THEN
+            bSpindleOn := FALSE;
+            nErrorId := 16#0201;            // torque not reached in time
+            eStep := E_CapStep.Fault;
+        END_IF
+
+    E_CapStep.Raise:
+        bHeadDown := FALSE;
+        GVL_Line.nCapsDone := GVL_Line.nCapsDone + 1;
+        eStep := E_CapStep.Done;
+
+    E_CapStep.Done:
+        bDone := TRUE;
+        IF NOT bStart THEN
+            eStep := E_CapStep.Idle;
+        END_IF
+
+    E_CapStep.Fault:
+        bError := TRUE;
+        bSpindleOn := FALSE;
+        bHeadDown := FALSE;
+        IF GVL_Line.bResetRequest THEN
+            bError := FALSE;
+            nErrorId := 0;
+            eStep := E_CapStep.Idle;
+        END_IF
+ELSE
+    eStep := E_CapStep.Fault;
+END_CASE
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

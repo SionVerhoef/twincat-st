@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <DUT Name="ST_Recipe" Id="{abb5b48b-e8fd-4251-8652-6026408727bd}">
+    <Declaration><![CDATA[TYPE ST_Recipe :
+STRUCT
+    fTargetTorque : LREAL;      // Nm
+    tTorqueTime   : TIME;       // longest a cap may take to reach torque
+    nCapsPerTray  : UINT;
+END_STRUCT
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Infeed" Id="{3e603a0d-b2b9-4e86-881d-add6dc3ab11f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Infeed
+VAR_INPUT
+    bStart          : BOOL;
+    bLinePressureOk : BOOL;
+    bBottleSensor   : BOOL;
+END_VAR
+VAR_OUTPUT
+    bBottleInPlace : BOOL;
+    bPurgeValve    : BOOL;
+END_VAR
+VAR
+    rtStart     : R_TRIG;
+    nPurgeCount : UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[rtStart(CLK := bStart);
+IF rtStart.Q THEN
+    Act_Purge();        // blow the line clear before the first bottle
+END_IF
+bBottleInPlace := bStart AND bBottleSensor;
+]]></ST>
+    </Implementation>
+    <Action Name="Act_Purge" Id="{4fa27cd5-fb0c-4b74-ae3f-7e086a036266}">
+      <Implementation>
+        <ST><![CDATA[REPEAT
+    bPurgeValve := TRUE;
+    nPurgeCount := nPurgeCount + 1;
+UNTIL bLinePressureOk
+END_REPEAT
+bPurgeValve := FALSE;
+]]></ST>
+      </Implementation>
+    </Action>
+  </POU>
+</TcPlcObject>

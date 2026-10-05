@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="F_Throughput" Id="{b04ec53f-be06-4952-b240-d2b3b69ffc8f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION F_Throughput : UDINT
+VAR_INPUT
+    nCaps        : UDINT;
+    nCycleTimeMs : UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[F_Throughput := nCaps * 60000 / nCycleTimeMs;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

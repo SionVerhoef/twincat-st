@@ -3,11 +3,14 @@
 isolated headless Claude Code session per cell, grade, and report cost.
 
     python3 evals/run_cells.py <run-dir> --model <id> [--ref HEAD] [--reps 3]
-                               [--parallel 3] [--only EVAL[,EVAL]] [--report-only]
+                               [--parallel 3] [--only EVAL[,EVAL]] [--arms ARM[,ARM]]
+                               [--spec evals/candidates.json] [--report-only]
 
 <run-dir> must be outside any git repository. Running it again skips every cell that
 already has a run.json, so an interrupted round resumes where it stopped; --only and
---reps narrow a first smoke test (`--reps 1 --only blocking-wait-trap`).
+--reps narrow a first smoke test (`--reps 1 --only blocking-wait-trap`). Scouting a
+candidate task is `--spec evals/candidates.json --arms without_skill --reps 1`: only a
+task the model fails unaided is worth a place in the matrix.
 
 Each cell is isolated the way it is because iteration 2 found out what happens
 otherwise:
@@ -177,6 +180,8 @@ def main() -> int:
     p.add_argument("--reps", type=int, default=3)
     p.add_argument("--parallel", type=int, default=3)
     p.add_argument("--only", default="", help="comma-separated eval names")
+    p.add_argument("--arms", default="", help="comma-separated arms, e.g. without_skill")
+    p.add_argument("--spec", type=Path, help="eval spec instead of evals/evals.json")
     p.add_argument("--report-only", action="store_true")
     a = p.parse_args()
 
@@ -194,10 +199,13 @@ def main() -> int:
     # fixture, so running it again would wipe what finished cells left behind.
     if not (run / "MANIFEST.json").exists():
         subprocess.run([sys.executable, str(HERE / "prepare_run.py"), str(run),
-                        "--reps", str(a.reps), "--skill", str(skill / "SKILL.md")], check=True)
+                        "--reps", str(a.reps), "--skill", str(skill / "SKILL.md")]
+                       + (["--spec", str(a.spec.resolve())] if a.spec else []), check=True)
     manifest = json.loads((run / "MANIFEST.json").read_text())
     only = {x for x in a.only.split(",") if x}
-    cells = [run / m["cell"] for m in manifest if not only or m["eval"] in only]
+    arms = {x for x in a.arms.split(",") if x}
+    cells = [run / m["cell"] for m in manifest
+             if (not only or m["eval"] in only) and (not arms or m["arm"] in arms)]
 
     if not a.report_only:
         print(f"skill {commit[:7]} ({a.ref}), model {a.model}, {len(cells)} cells, "

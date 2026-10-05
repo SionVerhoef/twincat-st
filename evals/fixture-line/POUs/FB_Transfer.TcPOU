@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Transfer" Id="{d351f267-81c7-4ef4-9073-e2c8c558124b}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Transfer
+VAR_INPUT
+    bRequest : BOOL;
+    fTarget  : LREAL;       // mm
+END_VAR
+VAR_OUTPUT
+    bInPosition : BOOL;
+END_VAR
+VAR
+    fbMove : FB_AxisMove;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF bRequest THEN
+    fbMove(bExecute := TRUE, fPosition := fTarget);
+END_IF
+bInPosition := fbMove.bDone;
+]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

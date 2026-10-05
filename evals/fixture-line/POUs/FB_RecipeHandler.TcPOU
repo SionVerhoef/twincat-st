@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_RecipeHandler" Id="{1c5e16f2-3b9d-4e5b-a20c-2586b57ae556}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RecipeHandler
+VAR_INPUT
+    pSource : POINTER TO ST_Recipe;     // set by the HMI when a recipe is selected
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="Apply" Id="{903a5091-6983-4eed-8845-13b75b1365d9}">
+      <Declaration><![CDATA[METHOD Apply : BOOL
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[GVL_Line.stActiveRecipe := pSource^;
+Apply := TRUE;
+]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>
