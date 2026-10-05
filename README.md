@@ -148,6 +148,6 @@ The highest-value next step is filling `examples/` with real house code; see `ex
 
 MIT — see `LICENSE`.
 
-The ten files under `examples/` are redistributed from three upstream projects and keep their
-own licences (MIT, MIT, BSD-2-Clause); each folder carries a verbatim `LICENSE` copy, as those
+The eight files under `examples/` are redistributed from two upstream projects and keep their
+own licences (MIT, BSD-2-Clause); each folder carries a verbatim `LICENSE` copy, as those
 licences require. `ATTRIBUTIONS.md` has the full inventory, and the rule for adding more.

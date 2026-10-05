@@ -52,11 +52,29 @@ jobs:
 
       - name: standalone contract
         # Nothing may point outside this repository, and no private-repo branding
-        # may leak into it. The bracket around the first letter stops each pattern
-        # matching this file, which would fail the check against its own source.
+        # may leak into it. The branding is checked by hash, so this public file
+        # does not name what it guards against. The bracket around a first letter
+        # stops a pattern matching this file, which would fail the check against
+        # its own source.
         run: |
           ! grep -rn '\.\./\.\.' --include='*.md' --include='*.py' . || exit 1
-          ! grep -rniE '[s]olvera|certified [b]eckhoff' . || exit 1
+          ! grep -rniE 'certified [b]eckhoff' . || exit 1
+          python3 - <<'EOF'
+          import hashlib, re, subprocess, sys
+          BANNED = {"6272c1931f96e1a759918020305cd6298ecc297d437fdb8fbdd04415a83e1af8"}
+          hits = []
+          for path in subprocess.run(["git", "ls-files"], capture_output=True,
+                                     text=True, check=True).stdout.splitlines():
+              try:
+                  text = open(path, encoding="utf-8", errors="ignore").read().lower()
+              except OSError:
+                  continue
+              for word in set(re.findall(r"[a-z0-9]+", text)):
+                  if hashlib.sha256(word.encode()).hexdigest() in BANNED:
+                      hits.append(path)
+          if hits:
+              sys.exit("private branding found in: " + ", ".join(sorted(set(hits))))
+          EOF
           ! grep -rnE '/[h]ome/|/[p]rojects/|[C]:\\Users' \
               --include='*.md' --include='*.py' --include='*.yml' . || exit 1
           # No guard against naming twincat-scope: that companion is published, so

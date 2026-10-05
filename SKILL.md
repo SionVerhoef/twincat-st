@@ -40,7 +40,7 @@ Establish, and state what you assumed if you could not:
 - whether any part of this is a safety function (if yes → rule 1)
 - what must survive a restart (→ `RETAIN` / `PERSISTENT`, see `references/cyclic-execution-rules.md`)
 
-**Read `examples/` when style is the question** — new code going into an existing codebase, an unfamiliar convention, or "make this look like ours". It holds real working code from three published projects, and pattern-matching against working code beats following a written convention. It is also the most expensive thing here to read, so skip it for a contained change to code you can already see. If the team has added their own house code there, that outranks everything, including this skill.
+**Read `examples/` when style is the question** — new code going into an existing codebase, an unfamiliar convention, or "make this look like ours". It holds real working code from two published projects, and pattern-matching against working code beats following a written convention. It is also the most expensive thing here to read, so skip it for a contained change to code you can already see. If the team has added their own house code there, that outranks everything, including this skill.
 
 ### 2. Choose the shape before the syntax
 
@@ -148,7 +148,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
 | `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
-| `examples/` | Real working code from three published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
+| `examples/` | Real working code from two published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 
 Both scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
 

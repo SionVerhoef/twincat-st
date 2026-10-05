@@ -2,21 +2,22 @@
 
 Real, working Structured Text to pattern-match against. Prose conventions are a weak signal; a model that has read three real function blocks writes code that looks like it belongs in a real codebase.
 
-Ten files across three projects, each folder carrying its upstream `LICENSE` and a `NOTES.md` explaining what to take from it — and where it disagrees with this skill.
+Eight files across two projects, each folder carrying its upstream `LICENSE` and a `NOTES.md` explaining what to take from it — and where it disagrees with this skill.
 
 | Folder | Source | Licence | Shows |
 |---|---|---|---|
 | [`packml-vffs/`](packml-vffs/) | [Beckhoff-USA-Community/PackML_PLC_Example](https://github.com/Beckhoff-USA-Community/PackML_PLC_Example) | MIT | A real packaging machine: `MAIN` as pure wiring, an `ABSTRACT` module base with init and alarms, a device FB implementing an interface, direct I/O mapping, the config/status/command DUT split |
-| [`tcmatrix-tests/`](tcmatrix-tests/) | [BurksEngineering/TcMatrix](https://github.com/BurksEngineering/TcMatrix) | MIT | TcUnit structure: the `TcUnit.RUN()` runner, `When…Expect…` test naming, arrange/act/assert sections, testing the error path |
 | [`design-patterns-state/`](design-patterns-state/) | [0w8States/PLC-Design-Patterns](https://github.com/0w8States/PLC-Design-Patterns) | BSD-2 | The State pattern as the OOP alternative to `CASE eState OF`, with an honest when-to-use-which table. Plus a minimal `qualified_only` GVL |
 
-**Read the `NOTES.md` in each folder, not just the code.** The notes carry the reasoning — including the places where these projects use three *different* naming conventions, none of them the one in `references/naming-conventions.md`. That is the point, not an oversight: the rule is *the project you are editing wins*, and these files are what that looks like.
+**Read the `NOTES.md` in each folder, not just the code.** The notes carry the reasoning — including the places where these projects use *different* naming conventions from each other, and neither uses the one in `references/naming-conventions.md`. That is the point, not an oversight: the rule is *the project you are editing wins*, and these files are what that looks like.
 
-## Why only these three
+## Why only these two
 
 These files ship inside the skill, so the licence has to permit redistribution. That rules out most of the best material: vendor samples and standards are copyrighted, and copyleft code would relicense the whole skill. Beckhoff's own OOP Extended Sample is arguably the strongest reference architecture available and it cannot ship here — you can read it, and `references/patterns.md` describes what it does, but the files stay where they are.
 
-What is left is the permissively-licensed end of the ecosystem, which is where these three come from. Licences were read from each repository's actual `LICENSE` file, not from a GitHub badge. See `../ATTRIBUTIONS.md`.
+What is left is the permissively-licensed end of the ecosystem, which is where these two come from. Licences were read from each repository's actual `LICENSE` file, not from a GitHub badge. See `../ATTRIBUTIONS.md`.
+
+A third project, a TcUnit-tested maths library, shipped in 0.1.0 and was removed after it: everything it showed — the runner, `When…Expect…` naming, arrange/act/assert sections, testing the error path — is already in `references/testing-tcunit.md` and `templates/FB_ExampleTestSuite.TcPOU`, so it cost reading time and taught nothing new.
 
 ## The gap these do not fill
 
@@ -44,7 +45,7 @@ Redaction is fine — replacing a customer name with `Customer_A` costs nothing 
 
 ### Where to put it
 
-A `house/` folder alongside the three above, with a `NOTES.md` saying what the machine does and anything non-obvious:
+A `house/` folder alongside the two above, with a `NOTES.md` saying what the machine does and anything non-obvious:
 
 ```
 examples/house/
@@ -68,4 +69,4 @@ py -3 scripts/tcpou.py check examples/*/*.TcPOU examples/*/*.TcIO examples/*/*.T
 py -3 scripts/tcpou.py show examples/packml-vffs/FB_Cylinder.TcPOU
 ```
 
-All ten report `ok`. Two notes are expected and correct: every file uses **LF** line endings rather than CRLF, and the `design-patterns-state/` files were saved by TwinCAT **4022**, not 4024.
+All eight report `ok`. Two notes are expected and correct: every file uses **LF** line endings rather than CRLF, and the `design-patterns-state/` files were saved by TwinCAT **4022**, not 4024.
