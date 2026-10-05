@@ -41,7 +41,7 @@ Two defaults worth internalising: **`LREAL` for anything physical** — a 32-bit
 
 A `FUNCTION` cannot contain an FB instance and cannot remember anything. If you need a timer or an edge, it must be a `FUNCTION_BLOCK`.
 
-Note PLCopen **CP16**: a task calls `PROGRAM` POUs, never a function block directly. Binding a task straight to an FB instance makes execution control ambiguous and is not portable.
+Note PLCopen **CP16**: a task calls `PROGRAM` POUs, never a function block directly. A task bound straight to an FB instance leaves it unclear who drives that instance and when, and vendors handle it differently.
 
 ## Variable sections
 
@@ -103,7 +103,7 @@ Assignment is `:=`. Comparison is `=`, not `==`. Output binding in a call is `=>
 Operators: `AND OR XOR NOT`, `+ - * / MOD`, `**`, `<> < <= > >=`.
 Comments: `// line`, `(* block *)`, `/* block */`.
 
-Two PLCopen notes: don't modify the `FOR` variable inside the loop and don't rely on its value afterwards (L22, L13); parenthesise to make precedence explicit rather than trusting the reader to know the table (L15).
+Two PLCopen notes: don't modify the `FOR` variable inside the loop and don't rely on its value afterwards (L12, L13); parenthesise to make precedence explicit rather than trusting the reader to know the table (L15).
 
 ## Calling function blocks
 
