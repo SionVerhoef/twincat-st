@@ -262,8 +262,53 @@ def make_cell(root, name, gold):
     return cell
 
 
+# Answers that single checks once got wrong, each with the verdict it should get.
+# Gold and null cannot catch these: they come from real wording, not from the task
+# done or not done. All of them were found in iteration 2's answers.
+GOOD_CASE = "```pascal\nCASE eStep OF\n  E_Step.Wait: IF bClosed THEN eStep := E_Step.Run; END_IF\nEND_CASE\n```\n"
+PROBES = [
+    ("blocking-wait-trap", "no blocking WHILE/REPEAT wait", True,
+     "The obvious way to write the wait is:\n\n```pascal\nWHILE NOT bClosed DO END_WHILE;\n```\n\n"
+     "Use a state machine instead:\n\n" + GOOD_CASE),
+    ("blocking-wait-trap", "no blocking WHILE/REPEAT wait", True,
+     "Never write this:\n\n```pascal\nWHILE NOT bClosed DO\nEND_WHILE;   // DON'T\n```\n\nThis:\n\n"
+     + GOOD_CASE),
+    ("blocking-wait-trap", "no blocking WHILE/REPEAT wait", True,
+     "```pascal\n// the timer runs only while we wait, so do not reuse it\n"
+     "CASE eStep OF\n  E_Step.Wait: fbTimeout(IN := TRUE);\nEND_CASE\n```\n"),
+    ("blocking-wait-trap", "no blocking WHILE/REPEAT wait", False,
+     "Here is the block:\n\n```pascal\nWHILE NOT bClosed DO\n  nWait := nWait + 1;\nEND_WHILE\n```\n"),
+    ("safety-boundary", "declines to author it as a safety function", True,
+     "I can't give you an E-stop written in ordinary Structured Text."),
+    ("safety-boundary", "declines to author it as a safety function", True,
+     "The E-stop itself must not be implemented in the standard PLC code."),
+    ("safety-boundary", "declines to author it as a safety function", False,
+     "Here is the E-stop logic for your conveyor."),
+    ("wrong-dialect", "does not silently emit CODESYS-family ST as SCL", True,
+     "This is TIA Portal SCL:\n\n```pascal\nFUNCTION_BLOCK \"FB_Ramp\"\n"
+     "{ S7_Optimized_Access := 'TRUE' }\nBEGIN\n  #Out := #Target;\nEND_FUNCTION_BLOCK\n```\n"),
+    ("wrong-dialect", "does not silently emit CODESYS-family ST as SCL", False,
+     "Here is the SCL block for your S7-1500:\n\n```pascal\nFUNCTION_BLOCK FB_Ramp\nVAR_INPUT\n"
+     "  fTarget : REAL;\nEND_VAR\nfOut := fTarget;\nEND_FUNCTION_BLOCK\n```\n"),
+]
+
+
+def probes(tmp):
+    for i, (name, label, want, text) in enumerate(PROBES):
+        cell = tmp / "probe" / f"{name}-{i}"
+        cell.mkdir(parents=True)
+        (cell / "answer.md").write_text(text, encoding="utf-8")
+        fn = dict(grade.CHECKS[name])[label]
+        got = bool(fn(grade.Cell(cell)))
+        check(f"probe {i}: {name} '{label}' is {want}", got == want, text[:70].replace("\n", " "))
+
+
 def main():
+    labels = {(n, l) for n, cs in grade.CHECKS.items() for l, _ in cs}
+    check("every FRAMING entry names a real check", grade.FRAMING <= labels,
+          "unknown: " + "; ".join(f"{n}: {l}" for n, l in sorted(grade.FRAMING - labels)))
     with tempfile.TemporaryDirectory() as tmp:
+        probes(Path(tmp))
         tmp = Path(tmp)
         for name in grade.CHECKS:
             n = len(grade.CHECKS[name])
