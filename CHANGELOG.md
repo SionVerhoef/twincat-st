@@ -53,6 +53,14 @@
 - **`SKILL.md`: a review reports, it does not repair.** In iteration 2's "tell me what you
   find" eval, every skill run also edited the project unasked. Findings now come with the fix
   the agent would make, and files change only when the user asks.
+- **Five more PLCopen rules in the reviewer** (26 in all), each swept across 3,151 files of
+  public TwinCAT projects first. On by default: **`CP6`** `VAR_EXTERNAL` inside a function,
+  FB or method (2 findings); **`L12`** the FOR variable written inside its loop (5); **`L13`**
+  the FOR variable read after its loop (19 — mostly the "loop until found, then use the
+  index" idiom, which indexes past the end when nothing matched). Behind `--pedantic`:
+  **`CP17`** an input written or an output read but never written — real, but writing an
+  input in place is common enough to fire 810 times; and **`CP2`** a function or FB nothing
+  references, which only means something over a whole application.
 
 ## 0.1.0 — 2026-10-03
 

@@ -72,12 +72,17 @@ RULES: dict[str, tuple[str, str]] = {
                      "or Execute with Valid"),
     "X10": ("high", "line inside VAR ... END_VAR that is neither a declaration nor a "
                     "comment — it will not compile"),
+    "CP2": ("high", "function or function block never referenced anywhere in the scanned tree"),
+    "CP6": ("high", "VAR_EXTERNAL inside a function, function block or method — a hidden "
+                    "global dependency"),
     "CP8": ("high", "equality/inequality comparison on REAL/LREAL"),
     "CP13": ("high", "POU calls itself — recursion is not allowed"),
     "CP14": ("high", "RETURN before the end of the POU — single point of exit"),
     # PLCopen rates CP20 Medium. Held at low here because counting call sites in the
     # text cannot prove two of them are reachable in the same scan — calls sitting in
     # mutually exclusive CASE branches are correct and common. Worth a look, not an alarm.
+    "CP17": ("high", "parameter used against its direction — an input written, or an output "
+                     "read but never written"),
     "CP20": ("low", "function block instance called from more than one site in one body"),
     "CP23": ("medium", "POU has more than 10 input/output/in-out parameters"),
     "CP24": ("medium", "variable declared but never used"),
@@ -85,6 +90,8 @@ RULES: dict[str, tuple[str, str]] = {
     "E1": ("high", "dynamic allocation (__NEW/__DELETE) outside FB_init/FB_exit"),
     "E3": ("high", "ordering comparison (< > <= >=) applied to a pointer"),
     "L11": ("medium", "line longer than 80 characters"),
+    "L13": ("medium", "FOR loop variable read after its loop, where its value is not guaranteed"),
+    "L12": ("medium", "FOR loop variable modified inside its own loop"),
 }
 
 # Severities above are PLCopen's own Importance field, so a report ranks the way
@@ -96,7 +103,11 @@ RULES: dict[str, tuple[str, str]] = {
 # reference code — the early-RETURN guard clause is a widespread, defensible idiom,
 # and line length is a house matter. On by default they bury the defect findings,
 # and a report nobody reads is worse than no report. Opt in with --pedantic.
-PEDANTIC = {"L11", "CP14"}
+# CP17 joins them for the same reason: writing an input in place — clamping or
+# defaulting it — is real and common, 810 findings over 3151 public files. CP2
+# needs the whole application in view, and a library's public blocks always look
+# dead from inside the library.
+PEDANTIC = {"L11", "CP14", "CP2", "CP17"}
 
 MAX_LINE = 80          # L11
 MAX_POU_PINS = 10      # CP23, PLCopen's suggested limit
@@ -483,6 +494,50 @@ def inside_nonnull_branch(lines: list[str], idx: int, name: str) -> bool:
 
 # --------------------------------------------------------------------------- checks
 
+def assignment(text: str, name: str):
+    """First statement-level write to `name` (or a member or element of it).
+
+    A named argument looks the same — `fbMove(bExecute := TRUE)`, and in a call
+    spread over lines `String_2 := String_1,` even starts the line. What tells
+    them apart is how it ends: a statement at ';', an argument at ',' or at the
+    ')' that closes its call.
+    """
+    pat = re.compile(rf"(?:^|;|\bTHEN\b|\bELSE\b|\bDO\b|\bREPEAT\b|(?<!:):(?!=))\s*"
+                     rf"{re.escape(name)}(?:\s*\[[^\]]*\])?(?:\s*\.\s*\w+)*\s*:=",
+                     re.I | re.M)
+    for m in pat.finditer(text):
+        depth = 0
+        for ch in text[m.end():]:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    break                       # closes the call this sits in
+                depth -= 1
+            elif ch == "," and depth == 0:
+                break
+            elif ch == ";":
+                return m
+    return None
+
+
+def for_loops(text: str):
+    """(variable, header start, body start, end of END_FOR) for each FOR loop."""
+    out = []
+    for m in re.finditer(r"\bFOR\s+([A-Za-z_]\w*)\s*:=", text, re.I):
+        do = re.search(r"\bDO\b", text[m.end():], re.I)
+        if not do:
+            continue
+        body = m.end() + do.end()
+        depth = 1
+        for t in re.finditer(r"\b(END_FOR|FOR)\b", text[body:], re.I):
+            depth += -1 if t.group(1).upper() == "END_FOR" else 1
+            if depth == 0:
+                out.append((m.group(1), m.start(), body, body + t.end()))
+                break
+    return out
+
+
 def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     found: list[Finding] = []
     fname = str(sf.path)
@@ -789,6 +844,56 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"{len(pins)} parameters; group related ones into a STRUCT to stay "
                     f"under about {MAX_POU_PINS}", unit.decl_line)
 
+        # --- CP6 VAR_EXTERNAL where it hides a dependency ---------------------------
+        # A PROGRAM may legitimately bind globals this way; a FUNCTION, FB or method
+        # that does so can no longer be reused or tested without that global.
+        if re.search(r"^\s*(FUNCTION_BLOCK|FUNCTION|METHOD)\b", decl, re.I | re.M):
+            ext = next((v for v in (own_vars[unit_idx] if unit_idx < len(own_vars) else [])
+                        if v.section == "VAR_EXTERNAL"), None)
+            if ext:
+                add("CP6", unit, ext.line, f"{ext.name} : {ext.type}",
+                    f"'{ext.name}' reaches a global through VAR_EXTERNAL; pass it in as a "
+                    f"parameter so the block can be reused and tested", unit.decl_line)
+
+        # --- L12 / L13 the FOR loop variable ------------------------------------
+        for var, head, body, end in for_loops(impl):
+            inner = impl[body:end]
+            w = assignment(inner, var)
+            if w:
+                i = impl.count("\n", 0, body + w.end())
+                if not suppressed(raw_lines, i, "L12")[0]:
+                    add("L12", unit, i + 1, raw_lines[i] if i < len(raw_lines) else var,
+                        f"'{var}' is the loop variable and is written inside its own FOR "
+                        f"loop; the iteration count is no longer what the header says",
+                        unit.impl_line)
+            # The first use after the loop decides it: a fresh assignment or a new FOR
+            # is fine, a read relies on a value the language does not guarantee.
+            after = impl[end:]
+            use = re.search(rf"(?<![\w.]){re.escape(var)}\b", after, re.I)
+            if use and not re.match(r"\s*:=", after[use.end():]) \
+                    and not re.search(rf"\bFOR\s+$", after[:use.start()], re.I):
+                i = impl.count("\n", 0, end + use.start())
+                if not suppressed(raw_lines, i, "L13")[0]:
+                    add("L13", unit, i + 1, raw_lines[i] if i < len(raw_lines) else var,
+                        f"'{var}' is read after its FOR loop ended; its value there is not "
+                        f"guaranteed — keep what you need in a variable of its own",
+                        unit.impl_line)
+
+        # --- CP17 an input written ------------------------------------------------
+        # Inputs of the POU itself are members its methods can reach, so those are
+        # judged against every implementation in the file; a method's own inputs
+        # against that method alone.
+        scope_text = all_impl if unit.kind == "POU" else impl
+        for v in (own_vars[unit_idx] if unit_idx < len(own_vars) else []):
+            if v.section != "VAR_INPUT":
+                continue
+            w = assignment(scope_text, v.name)
+            if w:
+                add("CP17", unit, v.line, f"{v.name} : {v.type}",
+                    f"'{v.name}' is an input and is written inside the block; the caller's "
+                    f"value is overwritten — use an internal variable or a VAR_IN_OUT",
+                    unit.decl_line)
+
         # --- X9 the two PLCopen behaviour models mixed -----------------------------
         # Execute pairs with Done, Enable pairs with Valid. Mixing them costs nothing at
         # runtime, which is why it survives review and then misleads every caller who
@@ -863,6 +968,29 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"{v.name} : {v.type}",
                     f"'{v.name}' is declared in {v.section} but never referenced"))
 
+    # --- CP17 an output read but never written ---------------------------------
+    # Never referenced at all is CP24's finding; this is the output something reads
+    # that nothing in the block ever sets. Bound by '=>' from an inner call, passed
+    # by ADR(), or handed to a call where it may be a VAR_IN_OUT counts as written.
+    for v in file_vars:
+        if v.section != "VAR_OUTPUT":
+            continue
+        unit = next((u for u in sf.units if u.name == v.unit), sf.units[0])
+        text = all_impl if unit.kind == "POU" else strip_noise(unit.impl)
+        name = re.escape(v.name)
+        if not re.search(rf"(?<![\w.]){name}\b", text, re.I):
+            continue
+        written = (assignment(text, v.name)
+                   or re.search(rf"=>\s*{name}\b", text, re.I)
+                   or re.search(rf"\bADR\s*\(\s*{name}\b", text, re.I)
+                   or re.search(rf":=\s*{name}\s*[,)]", text, re.I))
+        if not written and "CP17" in enabled:
+            found.append(Finding(
+                "CP17", RULES["CP17"][0], fname, v.unit, unit.decl_line + v.line - 1,
+                f"{v.name} : {v.type}",
+                f"'{v.name}' is an output that is read but never written; the caller "
+                f"only ever sees its initial value"))
+
     # --- X7 state machine with no error state -----------------------------------
     # Look for an error CASE *label*, not for the word anywhere in the file. The
     # old search accepted any identifier containing Error/Fault/Alarm/Abort, and
@@ -908,6 +1036,38 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
 
 
 # --------------------------------------------------------------------------- driver
+
+def dead_pous(files: list) -> list[Finding]:
+    """CP2: a FUNCTION or FUNCTION_BLOCK no other file names.
+
+    Only meaningful over a whole application: a library's public blocks are never
+    called inside the library, which is why CP2 is a --pedantic rule. PROGRAMs are
+    left out, because the task configuration calls them, not the code.
+    """
+    if len(files) < 2:
+        return []
+    # One pass over every file builds word -> files containing it, so the check
+    # stays linear; searching each name through every file is quadratic and took
+    # minutes on a thousand-file tree. Member access ('x.Name') is not a use.
+    seen: dict[str, set[int]] = {}
+    for i, sf in enumerate(files):
+        text = strip_noise("\n".join(u.decl + "\n" + u.impl for u in sf.units))
+        for w in re.findall(r"(?<![\w.])([A-Za-z_]\w*)", text):
+            seen.setdefault(w.upper(), set()).add(i)
+    out = []
+    for i, sf in enumerate(files):
+        head = POU_HEADER.search(strip_noise(sf.units[0].decl))
+        if not head or head.group(1).upper() not in ("FUNCTION_BLOCK", "FUNCTION"):
+            continue
+        name = head.group(2)
+        if not (seen.get(name.upper(), set()) - {i}):
+            u = sf.units[0]
+            out.append(Finding("CP2", RULES["CP2"][0], str(sf.path), u.name, u.decl_line,
+                               f"{head.group(1)} {name}",
+                               f"'{name}' is not referenced by any other file scanned; "
+                               f"delete it, or scan the whole application if it is used"))
+    return out
+
 
 def collect(paths: list[str]) -> list[Path]:
     out: list[Path] = []
@@ -978,6 +1138,7 @@ def main() -> int:
 
     findings: list[Finding] = []
     unreadable: list[tuple[Path, str]] = []
+    parsed: list[SourceFile] = []
     for f in files:
         suf = f.suffix.lower()
         try:
@@ -987,6 +1148,10 @@ def main() -> int:
             continue
         if sf.units:
             findings.extend(check_file(sf, enabled))
+            parsed.append(sf)
+
+    if "CP2" in enabled:
+        findings.extend(dead_pous(parsed))
 
     cut = SEVERITIES.index(args.min_severity)
     findings = [f for f in findings if SEVERITIES.index(f.severity) <= cut]

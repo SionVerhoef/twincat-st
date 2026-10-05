@@ -65,7 +65,7 @@ So this skill leads with the execution model as reinforcement rather than rescue
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 21 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 26 rules, PLCopen-keyed
 │   └── tcpou.py                        surgical .TcPOU editing, reguid, .plcproj registration
 ├── references/
 │   ├── cyclic-execution-rules.md       CORE — the execution model + review rubric
@@ -107,7 +107,7 @@ Exit status is 1 when anything at or above `--fail-on` (default `high`) is found
 
 ### How it was validated
 
-- **Detection:** `tests/run_tests.py` asserts every one of the 21 rules still fires on a
+- **Detection:** `tests/run_tests.py` asserts every one of the 26 rules still fires on a
   deliberately defective fixture, and that the reviewer stays silent on a second fixture
   collecting every shape that was once a false positive. Both run in CI. Checking only that
   good code stays clean cannot catch a rule that has quietly stopped detecting anything —
