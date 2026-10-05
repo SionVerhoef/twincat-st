@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **An eval round is one command.** `evals/run_cells.py` snapshots the skill, runs each cell
+  in an isolated headless session, grades, and reports cost plus an audit of what each cell
+  touched; it resumes an interrupted round. `evals/run_trigger.py` wraps skill-creator's
+  trigger scripts so parallel calls cannot see each other's temporary skill — the fault that
+  scored the first optimizer run at 0% recall. `grade.py` no longer scores cells that never
+  ran, and writes its summary inside the run.
 - **`examples/` drops the TcMatrix test suite.** Everything it showed — the `TcUnit.RUN()`
   runner, `When…Expect…` naming, arrange/act/assert sections, testing the error path — is
   already in `references/testing-tcunit.md` and `templates/FB_ExampleTestSuite.TcPOU`, so it

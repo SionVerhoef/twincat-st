@@ -6,11 +6,20 @@ knowledge — and the difference is the only number worth anything. A skill that
 while the baseline also scores 100% has measured nothing.
 
 ```bash
-python3 evals/selftest.py                    # calibrate the grader (CI runs this)
-python3 evals/prepare_run.py runs/it2        # lay out the cells
-#   ... run one agent per cell, each writing answer.md ...
-python3 evals/grade.py runs/it2              # score
+python3 evals/selftest.py                                   # calibrate the grader (CI runs this)
+python3 evals/run_cells.py /tmp/it3 --model <id> --reps 1 --only wrong-dialect   # smoke test
+python3 evals/run_cells.py /tmp/it3 --model <id>            # the full round: lay out, run, grade, report
 ```
+
+`run_cells.py` snapshots the skill at `--ref` (default `HEAD`), lays the cells out with
+`prepare_run.py`, runs each in its own isolated headless Claude Code session, grades with
+`grade.py`, and writes `REPORT.txt`: cost per arm, and an audit flagging any baseline cell
+that read the skill, any skill cell that did not, and any write outside a cell. The run
+directory must be outside every git repository. Rerunning the same command resumes, skipping
+cells that already finished. Its docstring says why each isolation flag is there.
+
+To run cells by other means, `prepare_run.py <run-dir>` lays them out, one agent per cell
+writes `answer.md`, and `grade.py <run-dir>` scores whatever has an answer.
 
 ## What iteration 2 changed, and why
 
@@ -93,3 +102,15 @@ measured here: a request that points at project files makes the model look aroun
 That clause is checked by hand, in a real project directory. The set keeps one negative that
 mentions a `.tsproj` while asking about something unrelated, as a check that the clause does
 not over-trigger.
+
+Run it through the wrapper, never the stock scripts directly:
+
+```bash
+export SKILL_CREATOR_DIR=<path to the skill-creator skill folder>
+python3 evals/run_trigger.py check    --model <id> --timeout 180 --num-workers 5
+python3 evals/run_trigger.py optimize --model <id> --timeout 180 --num-workers 5 --max-iterations 2
+```
+
+`check` scores the current description; `optimize` searches for a better one and never edits
+`SKILL.md`. The stock scripts put every parallel call's temporary skill in one shared folder,
+which scored the first full run here at 0% recall; `run_trigger.py` gives each call its own.
