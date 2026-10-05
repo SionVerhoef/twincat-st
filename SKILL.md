@@ -70,6 +70,8 @@ Match the surrounding project's conventions even where they differ from `referen
 
 ### 4. Review — with the tool, not by eye
 
+**A request to review is not a request to repair.** Asked to review, check, or "tell me what you find", report each finding with its location, rule id and the fix you would make — and leave the files as they are. Edit only when the user asks for fixes, or after asking whether they want them. A PLC project is often about to go onto a machine; changes nobody asked for are changes nobody re-tested.
+
 Run the reviewer on anything you wrote or were asked to review:
 
 ```bash
