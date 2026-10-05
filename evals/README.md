@@ -76,4 +76,5 @@ shipped tools can do what the evals ask.
 - Cost: 8 evals × 2 arms × 3 reps is 48 agent runs, roughly 1.4M tokens at iteration-1 rates.
   Drop to 2 reps, or 1 for the guardrail, if that is too much.
 
-`results-iteration-1.md` is the previous run, kept as the historical record.
+`results-iteration-2.md` is the current run, against v0.1.0. `results-iteration-1.md` is
+the previous one, kept as the historical record.

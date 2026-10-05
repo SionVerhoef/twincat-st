@@ -2,7 +2,7 @@
 """Lay out a run directory: one folder per eval / arm / repetition, each with the
 exact prompt and, where the eval needs one, a pristine copy of the fixture project.
 
-    python3 evals/prepare_run.py [run-dir] [--reps N]
+    python3 evals/prepare_run.py [run-dir] [--reps N] [--skill PATH/TO/SKILL.md]
 
 Then run one agent per cell. Each agent works in its own `workspace/` (when there is
 one) and writes its reply to `answer.md` beside it. Finally:
@@ -12,6 +12,11 @@ one) and writes its reply to `answer.md` beside it. Finally:
 Why the arms are worded the way they are: the point is to measure the skill, so the
 baseline arm must be prevented from reading it while still being told it is a TwinCAT
 question. Telling the baseline nothing at all measures prompt luck instead.
+
+The prompts name SKILL.md by absolute path: cells should live outside this repository,
+where a bare `SKILL.md` does not resolve. Pass `--skill` to point at an exported copy
+(e.g. a `git archive` of the release tag, minus `evals/`) so the with-skill agent cannot
+wander into the grader.
 
 Standard library only.
 """
@@ -64,12 +69,15 @@ def main():
         i = args.index("--reps")
         reps = int(args[i + 1])
         del args[i:i + 2]
+    skill = str(ROOT / "SKILL.md")
+    if "--skill" in args:
+        i = args.index("--skill")
+        skill = str(Path(args[i + 1]).resolve())
+        del args[i:i + 2]
     run = Path(args[0]) if args else HERE / "runs" / "iteration-2"
 
     spec = json.loads((HERE / "evals.json").read_text(encoding="utf-8"))
     arms = spec.get("run", {}).get("arms", ["with_skill", "without_skill"])
-    skill = "SKILL.md"
-
     manifest = []
     for ev in spec["evals"]:
         for arm in arms:
