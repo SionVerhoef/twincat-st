@@ -8,6 +8,12 @@
   trigger scripts so parallel calls cannot see each other's temporary skill — the fault that
   scored the first optimizer run at 0% recall. `grade.py` no longer scores cells that never
   ran, and writes its summary inside the run.
+- **The grader's headline is split into engineering outcome and answer framing**, and three
+  checks that misfired in iteration 2 are fixed: the WHILE check failed answers for the loop
+  they showed *not* to write, safety refusals worded "can't give" went uncounted, and correct,
+  labelled TIA Portal SCL was scored as CODESYS code passed off as SCL. `selftest.py` now
+  also runs probe answers for each of those shapes. Re-graded, iteration 2 reads +4.7, of
+  which +1.0 is engineering — see `evals/results-iteration-2.md`.
 - **`examples/` drops the TcMatrix test suite.** Everything it showed — the `TcUnit.RUN()`
   runner, `When…Expect…` naming, arrange/act/assert sections, testing the error path — is
   already in `references/testing-tcunit.md` and `templates/FB_ExampleTestSuite.TcPOU`, so it

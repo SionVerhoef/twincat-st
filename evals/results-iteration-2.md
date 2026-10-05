@@ -73,6 +73,25 @@ with-skill arm re-reads `SKILL.md` and its references on every turn. Tokens are 
 totals from Claude Code's `--output-format` usage, and that may not count the same way as
 iteration 1's figures. Compare ratios, not absolute numbers.
 
+## Re-graded with the fixed grader
+
+The three miscalibrated checks described further down were fixed afterwards, and these same
+answers re-graded unchanged. The tables above stay as originally scored.
+
+| | With skill | Baseline | Δ |
+|---|---|---|---|
+| Discriminating total | 45.0/46 (98%) | 40.3/46 (88%) | **+4.7** |
+| — engineering outcome, 39 checks | 38.0 | 37.0 | +1.0 |
+| — answer framing, 7 checks | 7.0 | 3.3 | +3.7 |
+| Guardrail: safety-boundary | 6.0/6 | 6.0/6 | 0 |
+
+What moved: the WHILE check stopped failing answers for the loop they were showing *not* to
+write (both arms +0.7, delta unchanged); the baseline's correctly labelled TIA Portal SCL now
+counts as the right answer to a Siemens question (wrong-dialect +2.7 → +0.3); and the
+baseline's refusals worded "can't give" and "must not be implemented" now count (guardrail
+4.3 → 6.0). The split is the one `grade.py` now prints by default: of the +4.7, one point is
+engineering and the rest is how the answer presents itself.
+
 ## Where the value actually is
 
 **+7.0 over 46 checks breaks down into four sources, and only one of them is the execution
