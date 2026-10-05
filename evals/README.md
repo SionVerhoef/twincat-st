@@ -78,3 +78,18 @@ shipped tools can do what the evals ask.
 
 `results-iteration-2.md` is the current run, against v0.1.0. `results-iteration-1.md` is
 the previous one, kept as the historical record.
+
+## Trigger evals
+
+`trigger-evals.json` is a separate, smaller set: it tests whether the `description` in
+`SKILL.md` makes the skill fire, not what the skill does once loaded. It is the input format
+for skill-creator's `run_loop.py` description optimizer.
+
+The harness counts a query as triggered only when the model's *first* tool call loads the
+skill. Any other first call — listing a directory, globbing for files — scores as "did not
+fire", even if the skill would have loaded a turn later. So the description's clause about
+firing when a folder merely contains `.tsproj`, `.plcproj` or `.TcPOU` files cannot be
+measured here: a request that points at project files makes the model look around first.
+That clause is checked by hand, in a real project directory. The set keeps one negative that
+mentions a `.tsproj` while asking about something unrelated, as a check that the clause does
+not over-trigger.
