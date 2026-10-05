@@ -23,6 +23,9 @@
   findings.
 - `SKILL.md` documents `--shape cyclic --extends FB_YourBase` for an FB that inherits its
   command interface from a framework base.
+- **`SKILL.md`: a review reports, it does not repair.** In iteration 2's "tell me what you
+  find" eval, every skill run also edited the project unasked. Findings now come with the fix
+  the agent would make, and files change only when the user asks.
 
 ## 0.1.0 — 2026-10-03
 
