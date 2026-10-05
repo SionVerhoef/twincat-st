@@ -70,7 +70,7 @@ From the corpus and PLCopen's guidance, the ones that recur in real machine code
 | **Observer** | Several consumers need to hear about an event without the producer knowing them. |
 | **Factory** | Selecting an implementation at startup — real device vs simulation. |
 
-**Modules and commands** is PLCopen's own framing and is worth knowing: a *module* is a part of the machine (actuator, sensor, assembly) implementing `IModule`; a *command* is a discrete action against one, implementing `ICommand` and following the edge-triggered behaviour model. It reconciles classic PLCopen motion blocks with an object-oriented application, since a block can be used both ways.
+**Modules and commands** is PLCopen's own framing and is worth knowing: a *module* is a part of the machine (actuator, sensor, assembly) implementing `IModule`; a *command* is a discrete action against one, implementing `ICommand` and following the edge-triggered behaviour model. The payoff is that an existing `MC_*` block keeps working as a plain FB call while an OOP application drives the same block through `ICommand`.
 
 Don't apply a pattern because it has a name. A `CASE` statement with four states is better than four FBs and an interface. Reach for State when the `CASE` is genuinely unmanageable, not before.
 

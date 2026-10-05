@@ -57,27 +57,27 @@ The substantive family. Everything here is High unless marked.
 | CP4 | High | Directly-addressed memory must not overlap. Two names over one address is an aliasing bug you cannot see. | ○ |
 | CP5 | High | Design the application before writing it: modularise, encapsulate, group related data into structures and arrays, keep FB internals private. | ○ |
 | CP6 | High | Avoid `VAR_EXTERNAL` inside functions and function blocks — a hidden global dependency destroys reusability and testability. | ◐ |
-| CP7 | High | **Test the error information a call returns.** If a block has `Error`/`ErrorID`, read them and change behaviour. An unread error means either the developer missed a case or the error genuinely cannot matter — and the reader cannot tell which. | ○ |
+| CP7 | High | **Test the error information a call returns.** If a block has `Error`/`ErrorID`, read them and change behaviour. Code that ignores them gives a reviewer nothing to go on: an oversight and a deliberate "this can't happen" look identical. | ○ |
 | CP8 | High | Never compare floating point with `=` or `<>`. Compare against a tolerance. | ● |
 | CP28 | High | Same for `TIME` and physical measures — a scan steps *over* an exact value rather than landing on it. Use `>=`. | ● |
 | CP9 | High | Bound POU complexity and split what exceeds it. PLCopen declines to mandate one metric; the point is that you *have* a limit. | ○ |
 | CP10 | High | Don't write the same variable from more than one task. | ○ |
 | CP11 | High | Synchronise data shared across tasks. Multi-word data crossing a task boundary can be read mid-update; transfer it as one structure under a handshake. | ○ |
-| CP12 | High | Write each physical output exactly once per cycle, ideally in one place at the end. Output logic scattered through the program is both non-deterministic and unmaintainable. | ○ |
+| CP12 | High | Write each physical output exactly once per cycle, ideally in one place at the end. With several writes, the output image holds whichever ran last, and finding out which means tracing every one of them. | ○ |
 | CP13 | High | No recursion, direct or indirect. Stack depth is not bounded and vendor support varies. | ● |
 | CP14 | High | Single point of exit — avoid `RETURN` before the end of a POU. *The reviewer holds this back behind `--pedantic`: the early-return guard clause is widespread and defensible, and enforcing it by default buries real defects.* | ● |
 | CP15 | High | Read a variable written by another task only once per cycle; copy it locally and use the copy, or different parts of the scan see different values. | ○ |
-| CP16 | High | Tasks call **PROGRAM** POUs only, never a function block directly. Binding a task to an FB instance makes execution control ambiguous and is not portable. | ○ |
+| CP16 | High | Tasks call **PROGRAM** POUs only, never a function block directly. A task bound to an FB instance leaves it unclear who drives that instance and when, and vendors handle it differently. | ○ |
 | CP17 | High | Parameter direction must match use: inputs are read and not written, outputs are written, in-outs are both. | ◐ |
 | CP18 | High | Limit globals. They are justified for exchanging data between programs or tasks, with the system, and with physical I/O — otherwise prefer locals. | ○ |
 | CP19 | Medium | Avoid jump and return constructs; never jump backwards. | ◐ |
-| CP20 | Medium | Call a function-block instance once per cycle. **The call may be conditional** — the rule is about one *invocation*, not about calling unconditionally. *The reviewer reports this at low severity because text cannot prove two call sites are reachable in the same scan.* See the note below. | ● |
+| CP20 | Medium | Call a function-block instance once per cycle. **Calling it inside an `IF` is fine** — the rule limits how many times it runs, not whether it runs. *The reviewer reports this at low severity because text cannot prove two call sites are reachable in the same scan.* See the note below. | ● |
 | CP21 | Medium | Use `VAR_TEMP` for genuinely temporary values such as loop counters, so they cannot carry state between calls by accident. | ○ |
 | CP22 | Medium | Choose the data type for the range and the operations: smallest type that fits, unsigned for unsigned data, enumerations and subranges where they apply, and don't use one type everywhere to dodge conversions. | ○ |
 | CP23 | Medium | Cap the parameter count — PLCopen suggests around **10** inputs/outputs/in-outs. Beyond that, group them into a `STRUCT` or move configuration into `FB_init`. | ● |
 | CP24 | Medium | Don't declare variables you never use. | ● |
-| CP25 | Medium | *(numbering note: this id sits with the "unused/declaration" group; treat it with CP24.)* | ○ |
-| CP26 | Low | Make type conversions explicit (`DINT_TO_REAL(x)`), never implicit. | ○ |
+| CP25 | Medium | Make type conversions explicit (`DINT_TO_REAL(x)`), never implicit. | ○ |
+| CP26 | Low | A global variable is written by one `PROGRAM` only. | ○ |
 | CP27 | Low | Avoid deprecated language features. | ○ |
 
 ### CP20 is narrower than "always call unconditionally"
@@ -99,13 +99,12 @@ Only the ST-relevant rules are listed; L2, L3, L5–L9 govern FBD, Ladder and SF
 | L4 | Low | Define general ST formatting rules. | ○ |
 | L10 | Medium | Avoid `CONTINUE` and `EXIT` — they make a loop's exit conditions non-local. | ○ |
 | L11 | Medium | Maximum line length **80** characters; break long calls one parameter per line. *Reviewer: `--pedantic`.* | ● |
-| L12 | Medium | *(layout family — see the source.)* | ○ |
+| L12 | Medium | Don't modify the loop variable inside a `FOR` loop. *(The source's contents table prints this id as L22; the rule body says L12.)* | ○ |
 | L13 | Medium | Don't use the `FOR` loop variable after the loop; its final value is not guaranteed. | ○ |
-| L22 | Medium | Don't modify the loop variable inside a `FOR` loop. | ○ |
 | L14 | Medium | Pass parameters explicitly and readably — name them at the call site rather than relying on position. | ○ |
 | L15 | Medium | Parenthesise to make precedence explicit rather than relying on the reader knowing the table. | ○ |
 | L16 | Low | Define whether tabs or spaces are used. | ○ |
-| L17 | Low | Give every `IF` an `ELSE`. Defensive; PLCopen treats it as a requirement for safety-critical software and optional elsewhere. The same instinct applied to `CASE` is rule `X3` in the reviewer, where it matters more — an unhandled state is a stuck machine. | ◐ |
+| L17 | Low | Give every `IF` an `ELSE`. Defensive; PLCopen rates it Low in general and High for safety-critical code. The same instinct applied to `CASE` is rule `X3` in the reviewer, where it matters more — an unhandled state is a stuck machine. | ◐ |
 
 ## Vendor extensions — E1…E3
 

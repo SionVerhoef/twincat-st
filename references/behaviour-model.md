@@ -19,7 +19,7 @@ Getting this right is why a block composes with the rest of the system instead o
 
 There is one hard constraint, and it is not obvious:
 
-> **Detecting a rising edge inside a function block costs two PLC cycles.** So if the requirement is to accept a new value *every* cycle, an edge-triggered interface cannot do it. Use a level-controlled one.
+> **An edge-triggered block needs two scans per request** — one to see `Execute` rise, and another to see it fall before the next rise can count. It cannot take a fresh value on every scan; a level-controlled block can.
 
 That single fact settles most of the design arguments. A block that processes a stream of samples, runs a control loop, or must react within one scan is level-controlled. A block that performs a discrete operation with a beginning and an end is edge-triggered.
 
@@ -65,7 +65,7 @@ Two distinct timeout concepts, both from the spec, and they solve different prob
 | Input | Meaning |
 |---|---|
 | `udiTimeOut` | Total time the operation may stay busy. Exceeded → `Error`. This is the one that stops a dead sensor hanging a sequence forever. |
-| `udiTimeLimit` | Time this block may consume **per invocation**. Lets a long job be spread over several cycles without overrunning the task. |
+| `udiTimeLimit` | Time this block may consume **per invocation**. The block stops when its budget is spent and picks up again on the next call, so a long job never overruns the task. |
 
 `TimeLimit` is the sanctioned answer to "this work does not fit in one scan": do a slice, return, continue next cycle. It is a much better answer than a loop, and it is the part of the spec people miss.
 
