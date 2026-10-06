@@ -59,3 +59,7 @@ The skill's engineering value, if it has any, shows on smaller models. The next 
 is the full matrix — both arms, three repetitions — on Haiku 4.5, to see whether the skill
 closes these gaps. Opus and Sonnet are not worth a further engineering round on these tasks;
 for them the case rests on the framing gains and on `st_review.py` as a CI gate.
+
+**Measured since** — on the four evals Haiku failed, both arms, three repetitions: the skill
+closes the gaps, +5.3 on the engineering checks and the safety guardrail from 1.3 to 6 of 6.
+See `results-haiku.md`.
