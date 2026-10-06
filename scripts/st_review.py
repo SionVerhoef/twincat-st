@@ -43,6 +43,7 @@ import json
 import re
 import sys
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -942,6 +943,15 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                         f"'{v.name}' is used but never checked with __ISVALIDREF; " + why))
 
     # --- CP24 unused variables -------------------------------------------------
+    # Counted once per file, then looked up. One search per variable over the whole
+    # file was quadratic: a 186 KB TcUnit suite with 547 variables took 13 s. The
+    # counts are what those searches found — a whole identifier, not after a '.',
+    # case-folded as ST is — plus how often a name stands right before a ':' in a
+    # declaration, which is the variable's own declaration being discounted.
+    word = r"(?<![.\w])([A-Za-z_]\w*)\b"
+    impl_count = Counter(w.upper() for w in re.findall(word, all_impl))
+    decl_count = Counter(w.upper() for w in re.findall(word, all_decl))
+    decl_head = Counter(w.upper() for w in re.findall(word + r"\s*:(?!=)", all_decl))
     for v in file_vars:
         if v.section in ("VAR_EXTERNAL", "VAR_GLOBAL"):
             continue
@@ -952,15 +962,14 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         # nothing to reference. Only scalars are safe to call dead on sight.
         if re.match(r"^(FB_|.*_Test$)", v.type.strip(), re.I):
             continue
-        name = rf"(?<![.\w]){re.escape(v.name)}\b"
-        uses = len(re.findall(name, all_impl, re.I))
+        key = v.name.upper()
         # A name also appearing in another unit's declaration (a method parameter,
         # say) is out of scope for this crude count, so only flag a clean zero. The
-        # variable's own declaration is removed first, at any alignment: a literal
+        # variable's own declaration is discounted first, at any alignment: a literal
         # 'name :' missed 'name    : INT', the column-aligned style most code uses,
-        # and the unremoved declaration then counted as a reference to itself.
-        others = re.sub(name + r"\s*:(?!=)", "", all_decl, count=1, flags=re.I)
-        if uses == 0 and not re.search(name, others, re.I):
+        # and the undiscounted declaration then counted as a reference to itself.
+        elsewhere = decl_count[key] - (1 if decl_head[key] else 0)
+        if impl_count[key] == 0 and elsewhere <= 0:
             unit = next((u for u in sf.units if u.name == v.unit), sf.units[0])
             if "CP24" in enabled:
                 found.append(Finding(

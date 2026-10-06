@@ -62,6 +62,11 @@
   input in place is common enough to fire 810 times; and **`CP2`** a function or FB nothing
   references, which only means something over a whole application.
 
+- **The reviewer is fast on large files.** `CP24` searched the whole file once per variable,
+  so a 186 KB TcUnit suite took 13–23 s and a 3,000-file tree about an hour. It now counts
+  every identifier once and looks names up: that suite takes about 1 s, the same tree 2.5
+  minutes, with identical findings.
+
 ## 0.1.0 — 2026-10-03
 
 First public version, extracted from a private repository.
