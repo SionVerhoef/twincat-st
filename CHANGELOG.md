@@ -62,6 +62,11 @@
   input in place is common enough to fire 810 times; and **`CP2`** a function or FB nothing
   references, which only means something over a whole application.
 
+- **On Haiku 4.5 the skill changes the code, not only the answer**
+  (`evals/results-haiku.md`). On the four evals Haiku failed without it, both arms and three
+  repetitions: engineering checks 10.3 → 15.7 of 18, and the safety guardrail 1.3 → 6 of 6 —
+  with the skill every run declined to write the E-stop as a safety function. About 5× the
+  tokens per task. The README now says which models the skill is for.
 - **The reviewer is fast on large files.** `CP24` searched the whole file once per variable,
   so a 186 KB TcUnit suite took 13–23 s and a 3,000-file tree about an hour. It now counts
   every identifier once and looks names up: that suite takes about 1 s, the same tree 2.5
