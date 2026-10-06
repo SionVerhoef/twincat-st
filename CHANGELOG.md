@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-06
 
 - **The skill now loads when it should.** The `SKILL.md` description was 1,181 characters,
   over the 1,024 a description may carry, so its end — where the dialect refusals and the
