@@ -52,11 +52,11 @@ The substantive family. Everything here is High unless marked.
 | Id | Sev | Rule | Tool |
 |---|---|---|---|
 | CP1 | High | Reach a structure member by name, never by memory offset. | ○ |
-| CP2 | High | All code is reachable and used. Dead POUs are a maintenance trap and may silently become live. | ○ |
+| CP2 | High | All code is reachable and used. Dead POUs are a maintenance trap and may silently become live. *Reviewer: `--pedantic`, and only over the whole application — a library's public blocks look unused from inside it.* | ● |
 | CP3 | High | Every variable is initialised before it is read. Initial values apply on download and cold reset — **not** on a warm start — so code relying on "it starts at zero" is wrong. | ○ |
 | CP4 | High | Directly-addressed memory must not overlap. Two names over one address is an aliasing bug you cannot see. | ○ |
 | CP5 | High | Design the application before writing it: modularise, encapsulate, group related data into structures and arrays, keep FB internals private. | ○ |
-| CP6 | High | Avoid `VAR_EXTERNAL` inside functions and function blocks — a hidden global dependency destroys reusability and testability. | ◐ |
+| CP6 | High | Avoid `VAR_EXTERNAL` inside functions and function blocks — a hidden global dependency destroys reusability and testability. | ● |
 | CP7 | High | **Test the error information a call returns.** If a block has `Error`/`ErrorID`, read them and change behaviour. Code that ignores them gives a reviewer nothing to go on: an oversight and a deliberate "this can't happen" look identical. | ○ |
 | CP8 | High | Never compare floating point with `=` or `<>`. Compare against a tolerance. | ● |
 | CP28 | High | Same for `TIME` and physical measures — a scan steps *over* an exact value rather than landing on it. Use `>=`. | ● |
@@ -68,7 +68,7 @@ The substantive family. Everything here is High unless marked.
 | CP14 | High | Single point of exit — avoid `RETURN` before the end of a POU. *The reviewer holds this back behind `--pedantic`: the early-return guard clause is widespread and defensible, and enforcing it by default buries real defects.* | ● |
 | CP15 | High | Read a variable written by another task only once per cycle; copy it locally and use the copy, or different parts of the scan see different values. | ○ |
 | CP16 | High | Tasks call **PROGRAM** POUs only, never a function block directly. A task bound to an FB instance leaves it unclear who drives that instance and when, and vendors handle it differently. | ○ |
-| CP17 | High | Parameter direction must match use: inputs are read and not written, outputs are written, in-outs are both. | ◐ |
+| CP17 | High | Parameter direction must match use: inputs are read and not written, outputs are written, in-outs are both. *Reviewer: `--pedantic` — writing an input in place is common enough to bury real defects; in-outs are not checked.* | ◐ |
 | CP18 | High | Limit globals. They are justified for exchanging data between programs or tasks, with the system, and with physical I/O — otherwise prefer locals. | ○ |
 | CP19 | Medium | Avoid jump and return constructs; never jump backwards. | ◐ |
 | CP20 | Medium | Call a function-block instance once per cycle. **Calling it inside an `IF` is fine** — the rule limits how many times it runs, not whether it runs. *The reviewer reports this at low severity because text cannot prove two call sites are reachable in the same scan.* See the note below. | ● |
@@ -99,8 +99,8 @@ Only the ST-relevant rules are listed; L2, L3, L5–L9 govern FBD, Ladder and SF
 | L4 | Low | Define general ST formatting rules. | ○ |
 | L10 | Medium | Avoid `CONTINUE` and `EXIT` — they make a loop's exit conditions non-local. | ○ |
 | L11 | Medium | Maximum line length **80** characters; break long calls one parameter per line. *Reviewer: `--pedantic`.* | ● |
-| L12 | Medium | Don't modify the loop variable inside a `FOR` loop. *(The source's contents table prints this id as L22; the rule body says L12.)* | ○ |
-| L13 | Medium | Don't use the `FOR` loop variable after the loop; its final value is not guaranteed. | ○ |
+| L12 | Medium | Don't modify the loop variable inside a `FOR` loop. *(The source's contents table prints this id as L22; the rule body says L12.)* | ● |
+| L13 | Medium | Don't use the `FOR` loop variable after the loop; its final value is not guaranteed. | ● |
 | L14 | Medium | Pass parameters explicitly and readably — name them at the call site rather than relying on position. | ○ |
 | L15 | Medium | Parenthesise to make precedence explicit rather than relying on the reader knowing the table. | ○ |
 | L16 | Low | Define whether tabs or spaces are used. | ○ |
