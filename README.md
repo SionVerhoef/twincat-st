@@ -8,6 +8,10 @@ Companion skill: **[twincat-scope](https://github.com/SionVerhoef/twincat-scope)
 triages TwinCAT 3 Scope measurements — what the code written here actually does on the machine.
 They are independent; install either alone.
 
+> **Reference material only. Not for safety functions.** All generated code must be reviewed
+> and validated by a qualified engineer against the drive and platform documentation before
+> it runs on a machine.
+
 > **Not affiliated with or endorsed by Beckhoff Automation GmbH & Co. KG.**
 > "TwinCAT" and "Beckhoff" are trademarks of Beckhoff Automation GmbH & Co. KG, used here
 > nominatively to describe what this skill works with. "EtherCAT" is a registered trademark and

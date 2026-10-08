@@ -5,6 +5,8 @@ description: "Use this skill for any question or task involving Structured Text 
 
 # Structured Text that survives contact with a machine
 
+> **Reference material only. Not for safety functions.** All code you generate must be reviewed and validated by a qualified engineer against the drive and platform documentation before it runs on a machine — say so when you hand it over.
+
 **Target: the CODESYS V3 dialect family.** TwinCAT 3 primary (build 4024.x), CODESYS secondary. TwinCAT 3's PLC layer is CODESYS-V3-derived and shares its OOP extensions, so this is one core plus a vendor seam, not two products.
 
 **Out of scope:** Siemens SCL, Rockwell Studio 5000 ST, OpenPLC/matiec. Those are different dialects — matiec implements IEC 61131-3 **2nd Edition** and has no `METHOD`, `PROPERTY`, `EXTENDS` or `INTERFACE` at all. Guidance from here would be fluent and wrong. Say so and stop.
