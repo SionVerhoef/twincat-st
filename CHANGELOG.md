@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **A disclaimer at the top of `README.md` and `SKILL.md`:** reference material only, not for
+  safety functions, and all generated code is reviewed and validated by a qualified engineer
+  against the drive and platform documentation before it runs on a machine. The skill now
+  says so when it hands code over.
+
 ## 0.2.0 — 2026-10-06
 
 - **The skill now loads when it should.** The `SKILL.md` description was 1,181 characters,
