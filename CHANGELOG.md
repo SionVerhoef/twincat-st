@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 — 2026-10-08
 
 - **A disclaimer at the top of `README.md` and `SKILL.md`:** reference material only, not for
   safety functions, and all generated code is reviewed and validated by a qualified engineer
