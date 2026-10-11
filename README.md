@@ -2,7 +2,7 @@
 
 An agent skill for writing, reviewing and debugging IEC 61131-3 **Structured Text** in the
 CODESYS V3 dialect family — **Beckhoff TwinCAT 3** primary (build 4024.x), **CODESYS**
-secondary. Works with Claude Code and with GitHub Copilot in VS Code, from the same files.
+secondary. Tested with Claude Code and with GitHub Copilot in VS Code, from the same files.
 
 Companion skill: **[twincat-scope](https://github.com/SionVerhoef/twincat-scope)** records and
 triages TwinCAT 3 Scope measurements — what the code written here actually does on the machine.
