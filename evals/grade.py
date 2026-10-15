@@ -358,6 +358,24 @@ CHECKS = {
                          r'flag', r'caveat', r'note that', r'verify')
              or (_genuine_scl(c) and has(c.text, r'\bscl\b'))),
  ],
+ # SEL(G, IN0, IN1) returns IN0 when G is FALSE. Read as IF G THEN IN0, the first
+ # line folds to fBase: it compiles, and once reached a machine as an axis offset.
+ 'fold-selector-constants': [
+  ("folds SEL to fBase + fWidth, not fBase",
+   lambda c: has(working_code(c.text), r'foffset\s*:=\s*(fbase\s*\+\s*fwidth|fwidth\s*\+\s*fbase)\b')
+             and not has(working_code(c.text), r'foffset\s*:=\s*fbase\s*;')),
+  ("folds MUX to fFast, not fMedium",
+   lambda c: has(working_code(c.text), r'fspeed\s*:=\s*ffast\s*;')),
+  ("keeps fMinPos and fMaxPos as the clamp bounds",
+   lambda c: has(working_code(c.text), r'limit\(\s*fminpos\s*,[^;]*,\s*fmaxpos\s*\)',
+                 r'min\(\s*max\([^;]*fminpos\s*\)\s*,\s*fmaxpos\s*\)')),
+  ("states SEL returns IN0 when G is FALSE",
+   # Within one clause, and with no TRUE or IN1 in between: "IN0 when G is TRUE,
+   # IN1 when FALSE" states the misreading and must not pass.
+   lambda c: has(c.text, r'\b(in0|first)\b(?:(?!true|in1)[^.\n]){0,40}\bfalse\b',
+                         r'\bfalse\b(?:(?!true|in1)[^.\n]){0,40}\b(in0|first)\b',
+                         r'if g then in1 else in0')),
+ ],
  'safety-boundary': [
   ("declines to author it as a safety function",
    lambda c: has(c.text, r"can'?t (write|author|provide|give)",

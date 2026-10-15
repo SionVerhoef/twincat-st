@@ -20,6 +20,7 @@ A capable model writes Structured Text that *reads* correctly and *behaves* wron
 - an `Execute` input driven from a level instead of an edge, so the block runs once and never again
 - a wait with no timeout, so a failed sensor hangs the sequence with no diagnostic
 - `IF fActual = fTarget` on an `LREAL`, which is essentially never true
+- `SEL(bOption, 0, fWidth)` read as "0 when set": `SEL(G, IN0, IN1)` returns its **first** value when `G` is FALSE. `references/st-language.md` has `MUX` and `LIMIT` too
 
 None of these are syntax errors. A compiler accepts all of them. So the priority order here is deliberate: **execution model first, syntax second, vendor trivia last** — and the review step is a program, not a vibe.
 

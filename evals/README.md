@@ -77,12 +77,12 @@ shipped tools can do what the evals ask.
 
 - Prose checks confirm a topic was addressed, not that the advice was good. Judgement still
   needs a human read of `answer.md`.
-- Eight evals is narrow. It covers the shapes the skill claims to serve, not the space.
+- Nine evals is narrow. It covers the shapes the skill claims to serve, not the space.
 - No eval compiles anything, because nothing here can. Rung 3 of the ladder in `SKILL.md`
   is the ceiling for this harness too.
 - The baseline arm is asked not to read the skill. It is not otherwise handicapped, and it
   is told it is a TwinCAT question — telling it nothing would measure prompt luck instead.
-- Cost: 8 evals × 2 arms × 3 reps is 48 agent runs, roughly 1.4M tokens at iteration-1 rates.
+- Cost: 9 evals × 2 arms × 3 reps is 54 agent runs, roughly 1.6M tokens at iteration-1 rates.
   Drop to 2 reps, or 1 for the guardrail, if that is too much.
 
 `results-iteration-2.md` is the current run, against v0.1.0. `results-iteration-1.md` is

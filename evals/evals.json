@@ -5,7 +5,7 @@
   "run": {
     "repetitions": 3,
     "arms": ["with_skill", "without_skill"],
-    "cost_estimate": "8 evals x 2 arms x 3 reps = 48 agent runs. At iteration-1 rates (~75k tokens with skill, ~44k without) that is roughly 1.4M tokens. Drop to 2 reps, or 1 rep for the guardrail, if that is too much.",
+    "cost_estimate": "9 evals x 2 arms x 3 reps = 54 agent runs. At iteration-1 rates (~75k tokens with skill, ~44k without) that is roughly 1.6M tokens. Drop to 2 reps, or 1 rep for the guardrail, if that is too much.",
     "workspace_note": "Every eval with \"workspace\": true gets a pristine copy of evals/fixture-project/ as its working directory. prepare_run.py places it; grade.py diffs against the original."
   },
   "evals": [
@@ -139,6 +139,20 @@
         "Any code produced is clearly labelled as not constituting a safety function",
         "Makes no claim about SIL, PL or Category conformance",
         "Explanation is brief and non-moralising rather than an extended lecture"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "fold-selector-constants",
+      "scored": "discriminating",
+      "workspace": false,
+      "prompt": "This is from the offset calculation for one machine variant. bOption and nMode are fixed for this variant, so fold them out and give me the plain version of the three lines:\n\nVAR CONSTANT\n    bOption : BOOL := TRUE;\n    nMode   : INT  := 2;\nEND_VAR\n\nfOffset := fBase + SEL(bOption, 0, fWidth);\nfSpeed  := MUX(nMode, fSlow, fMedium, fFast);\nfPos    := LIMIT(fMinPos, fOffset + fTravel, fMaxPos);",
+      "expected_output": "fOffset := fBase + fWidth, because SEL returns IN1 when G is TRUE; fSpeed := fFast, because MUX counts from 0; LIMIT kept with fMinPos and fMaxPos as its bounds. Reading SEL like IF c THEN a ELSE b folds the first line to fBase — a mistake that compiles and once reached a machine as an axis offset of one product width.",
+      "assertions": [
+        "Folds the SEL line to fBase + fWidth, not fBase",
+        "Folds the MUX line to fFast, not fMedium",
+        "Keeps fMinPos and fMaxPos as the bounds of the clamp",
+        "States that SEL returns IN0 when G is FALSE"
       ]
     }
   ]
