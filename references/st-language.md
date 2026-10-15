@@ -196,6 +196,16 @@ Available on every runtime in this family, though the supplying library is named
 
 `TON` `TOF` `TP` · `CTU` `CTD` `CTUD` · `R_TRIG` `F_TRIG` · `RS` `SR` · `SEL` `MUX` `LIMIT` `MIN` `MAX` · string functions `LEN` `LEFT` `RIGHT` `MID` `CONCAT` `FIND` `INSERT` `DELETE` `REPLACE`.
 
+The selectors read backwards from `IF c THEN a ELSE b`, and the misreading compiles:
+
+| Call | Returns |
+|---|---|
+| `SEL(G, IN0, IN1)` | `IN0` when `G` is FALSE, `IN1` when TRUE |
+| `MUX(K, IN0, …)` | `IN<K>`, counting from 0. Out of range is vendor-specific — TwinCAT passes on the last input |
+| `LIMIT(MN, IN, MX)` | `IN` clamped to `MN`…`MX` — the value is the **middle** argument |
+
+Before folding a constant into a `SEL`, or rewriting one as `IF`, read it as "if `G` then `IN1` else `IN0`".
+
 **Never reference a library that is not listed in the project file** — a missing library is a build failure, not a warning.
 
 ## Motion: the PLCopen contract
