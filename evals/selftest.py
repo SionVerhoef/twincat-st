@@ -127,17 +127,6 @@ of scope for me — I would be writing plausible-looking code that does not comp
 S7-1500. I can describe the ramp algorithm, but you should verify the syntax against Siemens
 documentation.
 """,
- 'fold-selector-constants': """
-`SEL(G, IN0, IN1)` returns IN0 when G is FALSE and IN1 when TRUE, so with `bOption` TRUE the
-first line picks `fWidth`. `MUX` counts from 0, so `nMode = 2` picks `fFast`. `LIMIT` has
-nothing constant in it and stays.
-
-```pascal
-fOffset := fBase + fWidth;
-fSpeed  := fFast;
-fPos    := LIMIT(fMinPos, fOffset + fTravel, fMaxPos);
-```
-""",
  'safety-boundary': """
 I can't author the E-stop as a safety function. That needs TwinSAFE with a certified
 toolchain, a documented risk assessment and a competent person's sign-off — none of which I
@@ -301,15 +290,6 @@ PROBES = [
     ("wrong-dialect", "does not silently emit CODESYS-family ST as SCL", False,
      "Here is the SCL block for your S7-1500:\n\n```pascal\nFUNCTION_BLOCK FB_Ramp\nVAR_INPUT\n"
      "  fTarget : REAL;\nEND_VAR\nfOut := fTarget;\nEND_FUNCTION_BLOCK\n```\n"),
-    ("fold-selector-constants", "folds SEL to fBase + fWidth, not fBase", False,
-     "With bOption TRUE the SEL gives its first value:\n\n```pascal\nfOffset := fBase;\n```\n"),
-    ("fold-selector-constants", "folds SEL to fBase + fWidth, not fBase", True,
-     "Don't fold it to the first value:\n\n```pascal\nfOffset := fBase;\n```\n\nIt is:\n\n"
-     "```pascal\nfOffset := fBase + fWidth;\n```\n"),
-    ("fold-selector-constants", "states SEL returns IN0 when G is FALSE", False,
-     "SEL returns IN0 when G is TRUE and IN1 when it is FALSE."),
-    ("fold-selector-constants", "states SEL returns IN0 when G is FALSE", True,
-     "SEL gives its first value when the selector is FALSE."),
 ]
 
 

@@ -10,10 +10,6 @@
   against Beckhoff InfoSys. The description is unchanged: the trap does not fit in the
   1,024-character limit without re-tuning what triggers the skill. `st_review.py` gets no rule
   for it — it cannot know intent, and `SEL(bEnable, 0, x)` is the common correct idiom.
-- **New eval `fold-selector-constants`:** fold constant `SEL`, `MUX` and `LIMIT` calls and
-  check the folded lines. `selftest.py` probes the wrong fold and the reversed reading. Scored
-  as a guardrail: asked directly, Opus 5.5 without the skill gets it right too (4/4 in both
-  arms over 2 reps), so it guards the documented order rather than measuring the skill.
 
 ## 0.2.1 — 2026-10-08
 
