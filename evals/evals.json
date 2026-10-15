@@ -144,8 +144,9 @@
     {
       "id": 8,
       "name": "fold-selector-constants",
-      "scored": "discriminating",
+      "scored": "guardrail",
       "workspace": false,
+      "guardrail_note": "Scored 4/4 in both arms on Opus 5.5 (2 reps each): asked directly, the baseline folds SEL correctly. The original error happened with the SEL buried in a larger change. Kept as a regression guard on the documented order; a version that discriminates needs the SEL inside a real task.",
       "prompt": "This is from the offset calculation for one machine variant. bOption and nMode are fixed for this variant, so fold them out and give me the plain version of the three lines:\n\nVAR CONSTANT\n    bOption : BOOL := TRUE;\n    nMode   : INT  := 2;\nEND_VAR\n\nfOffset := fBase + SEL(bOption, 0, fWidth);\nfSpeed  := MUX(nMode, fSlow, fMedium, fFast);\nfPos    := LIMIT(fMinPos, fOffset + fTravel, fMaxPos);",
       "expected_output": "fOffset := fBase + fWidth, because SEL returns IN1 when G is TRUE; fSpeed := fFast, because MUX counts from 0; LIMIT kept with fMinPos and fMaxPos as its bounds. Reading SEL like IF c THEN a ELSE b folds the first line to fBase — a mistake that compiles and once reached a machine as an axis offset of one product width.",
       "assertions": [
