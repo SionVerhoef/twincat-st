@@ -7,6 +7,14 @@
 - **Shorter `SKILL.md` description:** 1,009 characters cut to 793, leaving room under the
   1,024 limit for future additions. All 22 queries in `evals/trigger-evals.json` still pass
   (Opus 5.5, three runs each).
+- **The argument order of `SEL`, `MUX` and `LIMIT`.** A model folded a constant into
+  `SEL(bOption, 0, fWidth)` as if `SEL` returned its first value when the condition holds;
+  it returns `IN0` when `G` is FALSE. The code compiled and showed up only on the machine,
+  as an axis offset of one product width. `SKILL.md` now lists the trap among the recurring
+  failures, and `references/st-language.md` gives all three selectors' order, checked
+  against Beckhoff InfoSys. The description is unchanged: the trap does not fit in the
+  1,024-character limit without re-tuning what triggers the skill. `st_review.py` gets no rule
+  for it — it cannot know intent, and `SEL(bEnable, 0, x)` is the common correct idiom.
 
 ## 0.2.1 — 2026-10-08
 
