@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **README rewritten** in the order an engineer reads it: why, what it has shown, features,
+  install with release pinning, and a status split into verified and not yet verified.
+- **Shorter `SKILL.md` description:** 1,009 characters cut to 793, leaving room under the
+  1,024 limit for future additions. All 22 queries in `evals/trigger-evals.json` still pass
+  (Opus 5.5, three runs each).
 - **The argument order of `SEL`, `MUX` and `LIMIT`.** A model folded a constant into
   `SEL(bOption, 0, fWidth)` as if `SEL` returned its first value when the condition holds;
   it returns `IN0` when `G` is FALSE. The code compiled and showed up only on the machine,
