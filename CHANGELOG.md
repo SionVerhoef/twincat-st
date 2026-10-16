@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **README rewritten** in the order an engineer reads it: why, what it has shown, features,
+  install with release pinning, and a status split into verified and not yet verified.
+- **Shorter `SKILL.md` description:** 1,009 characters cut to 793, leaving room under the
+  1,024 limit for future additions. All 22 queries in `evals/trigger-evals.json` still pass
+  (Opus 5.5, three runs each).
+
 ## 0.2.1 — 2026-10-08
 
 - **A disclaimer at the top of `README.md` and `SKILL.md`:** reference material only, not for
