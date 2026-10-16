@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-16
 
 - **README rewritten** in the order an engineer reads it: why, what it has shown, features,
   install with release pinning, and a status split into verified and not yet verified.
@@ -12,8 +12,8 @@
   it returns `IN0` when `G` is FALSE. The code compiled and showed up only on the machine,
   as an axis offset of one product width. `SKILL.md` now lists the trap among the recurring
   failures, and `references/st-language.md` gives all three selectors' order, checked
-  against Beckhoff InfoSys. The description is unchanged: the trap does not fit in the
-  1,024-character limit without re-tuning what triggers the skill. `st_review.py` gets no rule
+  against Beckhoff InfoSys. The description does not name the trap: adding it means
+  re-running the trigger evals. `st_review.py` gets no rule
   for it — it cannot know intent, and `SEL(bEnable, 0, x)` is the common correct idiom.
 
 ## 0.2.1 — 2026-10-08
