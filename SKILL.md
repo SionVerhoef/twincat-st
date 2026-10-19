@@ -5,7 +5,7 @@ description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3
 
 # Structured Text that survives contact with a machine
 
-> **Reference material only. Not for safety functions.** All code you generate must be reviewed and validated by a qualified engineer against the drive and platform documentation before it runs on a machine — say so when you hand it over.
+> **Reference material only. Not for safety functions.** All code you generate must be reviewed and validated by a qualified engineer against the drive and platform documentation before it runs on a machine. Every hand-over ends with the fixed line in step 5.
 
 **Target: the CODESYS V3 dialect family.** TwinCAT 3 primary (build 4024.x), CODESYS secondary. TwinCAT 3's PLC layer is CODESYS-V3-derived and shares its OOP extensions, so this is one core plus a vendor seam, not two products.
 
@@ -123,6 +123,12 @@ Name the rung you reached. Never imply a higher one.
 There is deliberately no Linux syntax-check rung. `matiec` and `rusty` cannot parse the OOP constructs this dialect is built on, so a clean run there would prove almost nothing while looking like a pass.
 
 Close with: what you wrote and which shape it uses · what was verified and what was not · the assumptions you made about I/O, cycle time and fault behaviour · what the human must do next.
+
+**End every hand-over that contains code with this line, word for word, even for a one-line change:**
+
+> Not compiled. A qualified engineer must review and validate this code against the drive and platform documentation before it runs on a machine.
+
+"Not compiled" alone is not enough, and neither is "review it before it goes on the machine". In a field test, 8 of 8 hand-overs said the first and only 1 of 8 said the second in full.
 
 ## Where to read next
 

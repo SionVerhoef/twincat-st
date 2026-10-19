@@ -55,6 +55,10 @@ def tcpou(*args, stdin=None):
 
 # --------------------------------------------------------------- gold artifacts
 
+# The closing line SKILL.md step 5 makes every code hand-over end with.
+HANDOVER = ("Not compiled. A qualified engineer must review and validate this code against "
+            "the drive and platform documentation before it runs on a machine.\n")
+
 GOLD_PROSE = {
  'review-project-on-disk': """
 Three defects, all inside `FB_Filler.DoseComplete` — the POU body itself is clean, which
@@ -70,10 +74,10 @@ is why they are easy to miss.
 I have not changed anything. Nothing here has been compiled — this is a pattern review only.
 """,
  'new-object-in-project': "Added FB_CapTorque and registered it in PLC1.plcproj. "
-                          "Not compiled — no TwinCAT toolchain here.",
- 'style-match': "Added FB_Outfeed following the project's ix/qx naming. Not compiled.",
+                          "Not compiled — no TwinCAT toolchain here. " + HANDOVER,
+ 'style-match': "Added FB_Outfeed following the project's ix/qx naming. " + HANDOVER,
  'edit-existing-pou': "Added a 10 s timeout on step 10 of FB_Homing, faulting to step 99. "
-                      "Not compiled.",
+                      + HANDOVER,
  'blocking-wait-trap': """
 Assuming a 10 ms task cycle time and that a failed clamp should hold the sequence:
 
@@ -114,7 +118,7 @@ END_CASE
 ```
 
 This has not been compiled — there is no TwinCAT compiler here.
-""",
+""" + HANDOVER,
  'interface-design-choice': """
 Use a level-controlled `Enable`/`Valid` interface, not `Execute`/`Done`. Edge detection
 inside the block costs two PLC cycles before the work even starts, so an Execute interface
