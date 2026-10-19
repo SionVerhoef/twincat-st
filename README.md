@@ -54,7 +54,7 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 
 **Write and review Structured Text**
 
-- **`st_review.py`** — 26 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
+- **`st_review.py`** — 27 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
   that document's own severity; `X` rules are this skill's own: blocking loops, timer presets
   typed as integers, unchecked pointer dereferences, state machines with no reachable error
   state, `FB_init` without an online-change guard, and FBs that pair `Enable` with `Done`.
@@ -146,7 +146,7 @@ matched — the tool says so on every run, and so should you.
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 26 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 27 rules, PLCopen-keyed
 │   └── tcpou.py                        surgical .TcPOU editing, reguid, .plcproj registration
 ├── references/
 │   ├── cyclic-execution-rules.md       CORE — the execution model + review rubric
@@ -186,11 +186,23 @@ twincat-st/
 ## Status
 
 There is no TwinCAT toolchain where this skill is developed. That makes the line between
-verified and not verified the most important fact on this page.
+verified and not verified the most important fact on this page. The v0.3.0 field test
+([`evals/field-review-v0.3.0.md`](evals/field-review-v0.3.0.md)) ran the toolchain half on
+TwinCAT 3.1.4024.55.
 
 **Verified**
 
-- Every one of the 26 reviewer rules fires on a deliberately defective fixture, and the reviewer
+- **The templates compile.** `E_SeqState`, `FB_Sequence` and `FB_ExampleTestSuite` build in XAE
+  4024.55 with no errors, the suite against TcUnit 1.3.2.
+- **The TcUnit suite fails loudly.** On a test controller it passed 2 of 2, and a test whose
+  condition never arrives failed through its watchdog after 10 s instead of hanging the suite.
+- **`tcpou.py` round-trips a real project.** A file made with `new`, `register`, `set` and
+  `reguid` opened in XAE with no repair prompt and built. Opening and building rewrote none of
+  the files `tcpou.py` wrote.
+- **Agent-written code built as delivered** in two field-test tasks: a new valve FB, and a step
+  added to `FB_Sequence` by editing the `.TcPOU` in place.
+- **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
+- Every one of the 27 reviewer rules fires on a deliberately defective fixture, and the reviewer
   stays silent on a second fixture collecting every shape that was once a false positive.
 - False positives swept across 440 real `.TcPOU` files while tuning the rules — Beckhoff's
   samples, TcUnit, TcMatrix, a PackML example and Stefan Henneken's corpus — and across 1,230
@@ -201,15 +213,20 @@ verified and not verified the most important fact on this page.
 
 **Not yet verified**
 
-- **Nothing here has been compiled.** No template or generated code has been loaded into XAE,
-  and no `.TcPOU` written by `tcpou.py` has been opened in TwinCAT.
+- **Code an agent writes for you is still not compiled** unless you build it. The field test
+  built two answers; it says nothing about the next one.
+- **The reviewer fixes made after the field test** have not been re-run on the real project they
+  came from. Those fixes cover four false-positive classes, 148 of its 270 findings.
+- `tcpou.py add-method` and `add-property` are newer than the field test, and no file they
+  wrote has been opened in XAE yet. The method in the round trip above was added by hand.
 - CODESYS guidance (`references/codesys.md`) has not been tried on a CODESYS install.
 
 `SKILL.md` rule 3 makes the agent declare that gap rather than paper over it. The same applies
 to this list.
 
-The most useful contributions are a compile of the templates and a scaffolded FB on a machine
-with TwinCAT, and real house code for `examples/` — see `examples/README.md`.
+The most useful contributions are a run of `st_review.py` on your own project with each finding
+judged real or false, a build of a scaffolded FB with a method added by `add-method`, and real
+house code for `examples/` — see `examples/README.md`.
 
 ## Tests
 
