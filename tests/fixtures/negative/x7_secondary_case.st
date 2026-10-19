@@ -1,39 +1,36 @@
-// X7 and X3 must stay quiet on the second CASE. It only picks a value per step,
-// a step without a label keeps the last one on purpose, and the state variable it
-// reads has an error state and an ELSE in the main CASE above it.
-FUNCTION_BLOCK FB_SecondaryCase
+TYPE E_Step :
+(
+  Idle    := 0,
+  MoveA    := 10,
+  MoveB    := 20,
+  DeviceError  := 900
+);
+END_TYPE
+
+FUNCTION_BLOCK FB_TwoCases
 VAR_INPUT
-    bStart : BOOL;
-    bReset : BOOL;
-END_VAR
-VAR_OUTPUT
-    bError : BOOL;
+  bGo      : BOOL;
+  bFault    : BOOL;
+  bReset    : BOOL;
 END_VAR
 VAR
-    eStep   : E_Step;
-    fTarget : LREAL;   // [mm]
+  eStep    : E_Step;
+  fTarget    : LREAL;  // [mm]
 END_VAR
+IF bFault THEN
+  eStep := E_Step.DeviceError;
+END_IF
 CASE eStep OF
-    E_Step.Idle:
-        IF bStart THEN
-            eStep := E_Step.Move;
-        END_IF
-    E_Step.Move:
-        eStep := E_Step.Idle;
-    E_Step.DeviceError:
-        bError := TRUE;
-        IF bReset THEN
-            bError := FALSE;
-            eStep := E_Step.Idle;
-        END_IF
+  E_Step.Idle:    IF bGo THEN eStep := E_Step.MoveA; END_IF
+  E_Step.MoveA:    eStep := E_Step.MoveB;
+  E_Step.MoveB:    eStep := E_Step.Idle;
+  E_Step.DeviceError:  IF bReset THEN eStep := E_Step.Idle; END_IF
 ELSE
-    eStep := E_Step.DeviceError;
+  eStep := E_Step.DeviceError;
 END_CASE
-
+// Pick a target per step; other steps keep the last one
 CASE eStep OF
-    E_Step.Idle:
-        fTarget := 0.0;
-    E_Step.Move:
-        fTarget := 120.0;
+  E_Step.MoveA:  fTarget := 100.0;
+  E_Step.MoveB:  fTarget := 0.0;
 END_CASE
 END_FUNCTION_BLOCK

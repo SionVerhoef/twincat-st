@@ -171,12 +171,12 @@ check("X7 fires even though the FB declares a bError output",
       "FB_StateNoError" in x7, repr(sorted(x7)))
 
 # Both rules judge a state variable across every CASE over it, so a secondary
-# CASE that only picks a value per step (negative fixture x7_secondary_case) is
+# CASE that only picks a value per step (negative fixtures x7_secondary_case, FB_SecondaryCase) is
 # covered by the main one. Take the main one's ELSE and error step away and the
 # variable must be reported once each, at its first CASE — not once per CASE, and
 # not zero times because one CASE stood in for another.
 
-sec = (FIXTURES / "negative" / "x7_secondary_case.st").read_text(encoding="utf-8")
+sec = (FIXTURES / "negative" / "FB_SecondaryCase.st").read_text(encoding="utf-8")
 bare = re.sub(r"    E_Step\.DeviceError:.*?END_IF\nELSE\n.*?\n", "", sec, flags=re.S)
 with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp) / "secondary_bare.st"
