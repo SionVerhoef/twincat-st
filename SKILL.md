@@ -5,7 +5,7 @@ description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3
 
 # Structured Text that survives contact with a machine
 
-> **Reference material only. Not for safety functions.** All code you generate must be reviewed and validated by a qualified engineer against the drive and platform documentation before it runs on a machine — say so when you hand it over.
+> **Reference material only. Not for safety functions.** All code you generate must be reviewed and validated by a qualified engineer against the drive and platform documentation before it runs on a machine. Every hand-over ends with the fixed line in step 5.
 
 **Target: the CODESYS V3 dialect family.** TwinCAT 3 primary (build 4024.x), CODESYS secondary. TwinCAT 3's PLC layer is CODESYS-V3-derived and shares its OOP extensions, so this is one core plus a vendor seam, not two products.
 
@@ -17,7 +17,9 @@ A capable model writes Structured Text that *reads* correctly and *behaves* wron
 
 - `WHILE NOT bDone DO` where the answer was a state machine — the task overruns, the watchdog fires, the machine stops
 - a `TON` preset written `PT := 500` instead of `PT := T#500MS`
-- an `Execute` input driven from a level instead of an edge, so the block runs once and never again
+- an `Execute` input driven from a level instead of an edge, so the block runs once and never again (reviewer rule `X11`)
+
+**Asked to add "another one like this", check the existing line first.** If it carries one of these traps, name that line as the problem before writing anything next to it. Copying its style copies the defect: in a field test an agent kept `Execute := bAutoMode AND bAtHome` unremarked and delivered a second level-driven move beside it.
 - a wait with no timeout, so a failed sensor hangs the sequence with no diagnostic
 - `IF fActual = fTarget` on an `LREAL`, which is essentially never true
 - `SEL(bOption, 0, fWidth)` read as "0 when set": `SEL(G, IN0, IN1)` returns its **first** value when `G` is FALSE. `references/st-language.md` has `MUX` and `LIMIT` too
@@ -124,6 +126,12 @@ There is deliberately no Linux syntax-check rung. `matiec` and `rusty` cannot pa
 
 Close with: what you wrote and which shape it uses · what was verified and what was not · the assumptions you made about I/O, cycle time and fault behaviour · what the human must do next.
 
+**End every hand-over that contains code with this line, word for word, even for a one-line change:**
+
+> Not compiled. A qualified engineer must review and validate this code against the drive and platform documentation before it runs on a machine.
+
+"Not compiled" alone is not enough, and neither is "review it before it goes on the machine". In a field test, 8 of 8 hand-overs said the first and only 1 of 8 said the second in full.
+
 ## Where to read next
 
 Load a reference when the task reaches it — don't read them all up front.
@@ -151,7 +159,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | Path | For |
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
-| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
+| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from two published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 

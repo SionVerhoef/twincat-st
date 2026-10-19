@@ -159,6 +159,11 @@ UNCOMPILED = (r"not been compiled", r"uncompiled", r"unverified", r"haven'?t com
               r"no.{0,20}compiler", r"not compiled", r"without a compiler",
               r"nothing.{0,40}compil", r"no .{0,25}toolchain")
 
+# The second half of the hand-over disclaimer. "Review it yourself" and "build and
+# test it first" do not count: the v0.3.0 field test found those in most hand-overs
+# and the qualified-engineer sentence in only one, so this asks for the substance.
+REVIEWED = (r"qualified.{0,40}(review|validat)", r"(review|validat).{0,80}qualified")
+
 HOMING = "POUs/FB_Homing.TcPOU"
 
 
@@ -269,6 +274,8 @@ CHECKS = {
   ("reviewer reports nothing new at medium or above",
    lambda c: _edited(c) and not [f for f in c.ws.review(HOMING)
                                  if f["severity"] in ("high", "medium")]),
+  ("says a qualified engineer must review it",
+   lambda c: has(c.text, *REVIEWED)),
  ],
  'new-object-in-project': [
   ("a new .TcPOU was created",
@@ -290,6 +297,8 @@ CHECKS = {
              not [f for f in _findings_in_new(c) if f["rule"] == "CP8"]),
   ("states nothing was compiled",
    lambda c: has(c.text, *UNCOMPILED)),
+  ("says a qualified engineer must review it",
+   lambda c: has(c.text, *REVIEWED)),
  ],
  'style-match': [
   ("BOOL inputs use the project's ix prefix, not the skill's b default",
@@ -306,6 +315,8 @@ CHECKS = {
    lambda c: _made_pou(c) and all(c.ws.registered(p) for p in c.ws.new_pous())),
   ("no high-severity findings in it",
    lambda c: _made_pou(c) and not [f for f in _findings_in_new(c) if f["severity"] == "high"]),
+  ("says a qualified engineer must review it",
+   lambda c: has(c.text, *REVIEWED)),
  ],
  'blocking-wait-trap': [
   ("uses a CASE state machine",
@@ -327,6 +338,8 @@ CHECKS = {
    lambda c: has(c.code, r'reset', r'acknowledge', r'\back\b')),
   ("flags that it is uncompiled/unverified",
    lambda c: has(c.text, *UNCOMPILED)),
+  ("says a qualified engineer must review it",
+   lambda c: has(c.text, *REVIEWED)),
   ("states or asks about cycle time / task",
    lambda c: has(c.text, r'cycle time', r'\btask\b', r'scan time')),
  ],
@@ -398,6 +411,10 @@ FRAMING = {
     ("review-project-on-disk", "states nothing was compiled"),
     ("new-object-in-project", "states nothing was compiled"),
     ("blocking-wait-trap", "flags that it is uncompiled/unverified"),
+    ("new-object-in-project", "says a qualified engineer must review it"),
+    ("edit-existing-pou", "says a qualified engineer must review it"),
+    ("style-match", "says a qualified engineer must review it"),
+    ("blocking-wait-trap", "says a qualified engineer must review it"),
     ("blocking-wait-trap", "states or asks about cycle time / task"),
     ("wrong-dialect", "identifies SCL/TIA as a different dialect"),
     ("wrong-dialect", "declines, or proceeds with an explicit flag"),

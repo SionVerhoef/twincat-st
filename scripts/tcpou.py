@@ -11,6 +11,8 @@ Subcommands:
   get       Print one part's source (LF-normalised)
   set       Replace one part's source, preserving GUIDs, BOM and CRLF
   new       Scaffold a new .TcPOU / .TcDUT / .TcGVL with a fresh GUID
+  add-method, add-property
+            Append an empty METHOD or PROPERTY to a POU or interface
   register  Add a file to a .plcproj so it actually compiles
   check     Validate structure, encoding and line endings
 
@@ -211,6 +213,64 @@ def scaffold(kind, name, extends=None, implements=None, shape="execute"):
     raise ValueError(f"unknown kind: {kind}")
 
 
+def add_member(path, kind, name, typ=None, access=None, setter=True):
+    """Append an empty METHOD or PROPERTY to a POU or interface, in place.
+
+    The shape is the one XAE writes: a <Method> or <Property> as the last child of
+    the <POU>/<Itf>, each carrying a fresh Id. Interface members get no
+    <Implementation>, which is how XAE stores a body-less member. Nothing outside
+    the inserted block changes, and it is written in the file's own line endings.
+    Fill the new parts in with `set` afterwards.
+    """
+    f = TcFile(path)
+    host = re.search(r"</(POU|Itf)>(?![\s\S]*</(?:POU|Itf)>)", f.text)
+    if not host:
+        raise ValueError("no <POU> or <Itf> to add a member to")
+    itf = host.group(1) == "Itf"
+    if re.search(rf'<(?:Method|Property)\s+Name="{re.escape(name)}"', f.text, re.I):
+        raise ValueError(f"a method or property named {name} already exists")
+    if itf and access:
+        raise ValueError("interface members take no access modifier")
+
+    head = " ".join(x for x in ((kind.upper(), access, name)) if x)
+    if typ:
+        head += f" : {typ}"
+    ind = "    "
+
+    def accessor(el):
+        if itf:
+            return [f'{ind}  <{el} Name="{el}" Id="{guid()}">',
+                    f"{ind}    <Declaration><![CDATA[]]></Declaration>",
+                    f"{ind}  </{el}>"]
+        return [f'{ind}  <{el} Name="{el}" Id="{guid()}">',
+                f"{ind}    <Declaration><![CDATA[VAR\nEND_VAR\n]]></Declaration>",
+                f"{ind}    <Implementation>",
+                f"{ind}      <ST><![CDATA[]]></ST>",
+                f"{ind}    </Implementation>",
+                f"{ind}  </{el}>"]
+
+    if kind == "method":
+        block = [f'{ind}<Method Name="{name}" Id="{guid()}">',
+                 f"{ind}  <Declaration><![CDATA[{head}\nVAR_INPUT\nEND_VAR\n]]></Declaration>"]
+        if not itf:
+            block += [f"{ind}  <Implementation>",
+                      f"{ind}    <ST><![CDATA[]]></ST>",
+                      f"{ind}  </Implementation>"]
+        block.append(f"{ind}</Method>")
+    else:
+        block = [f'{ind}<Property Name="{name}" Id="{guid()}">',
+                 f"{ind}  <Declaration><![CDATA[{head}\n]]></Declaration>"]
+        block += accessor("Get") + (accessor("Set") if setter else [])
+        block.append(f"{ind}</Property>")
+
+    # Insert at the start of the closing tag's line, so its own indent stays put.
+    cut = f.text.rfind("\n", 0, host.start()) + 1
+    text = "\n".join(block) + "\n"
+    f.text = f.text[:cut] + text.replace("\n", f.eol) + f.text[cut:]
+    f.save()
+    return name
+
+
 # -- .plcproj registration ---------------------------------------------------
 
 def register(plcproj, files):
@@ -259,14 +319,15 @@ def register(plcproj, files):
 def check(path):
     problems, notes = [], []
     raw = open(path, "rb").read()
-    # Encoding and line endings are reported, not enforced. XAE writes UTF-8-with-BOM and
-    # CRLF, but most published TwinCAT code is BOM+LF — git normalisation rewrites it and
+    # Encoding and line endings are reported, not enforced. The XAE editor saves
+    # UTF-8-with-BOM and CRLF (its new-project wizard writes no BOM), but most published TwinCAT code is BOM+LF — git normalisation rewrites it and
     # TwinCAT reads it back happily. Measured over 2839 object files from the reference
     # corpus: 97% carry a BOM, but only 19% use CRLF, and the split runs per repository
     # rather than per file. What matters is that an edit PRESERVES whatever the file
     # already uses, which TcFile does. Calling LF an error would fail most real code.
     if not raw.startswith(BOM):
-        notes.append("no UTF-8 BOM (XAE writes one; edits here will preserve its absence)")
+        notes.append("no UTF-8 BOM (objects saved from the XAE editor carry one; files the "
+                     "new-project wizard creates may not; edits here preserve its absence)")
     body = raw[len(BOM):] if raw.startswith(BOM) else raw
     n_crlf = body.count(b"\r\n")
     n_lf = body.count(b"\n") - n_crlf
@@ -330,6 +391,21 @@ def main():
                         "bExecute/bBusy/bDone (default), 'enable' gives bEnable/bValid, "
                         "'cyclic' gives no command interface at all")
 
+    access = ["PUBLIC", "PRIVATE", "PROTECTED", "INTERNAL"]
+    p = sub.add_parser("add-method", help="append an empty METHOD to a POU or interface")
+    p.add_argument("file")
+    p.add_argument("--name", required=True)
+    p.add_argument("--returns", help="return type, e.g. BOOL (default: none)")
+    p.add_argument("--access", type=str.upper, choices=access,
+                   help="access modifier (default: none, which TwinCAT reads as PUBLIC)")
+
+    p = sub.add_parser("add-property", help="append an empty PROPERTY to a POU or interface")
+    p.add_argument("file")
+    p.add_argument("--name", required=True)
+    p.add_argument("--type", required=True, help="property type, e.g. LREAL")
+    p.add_argument("--access", type=str.upper, choices=access)
+    p.add_argument("--no-set", action="store_true", help="getter only (read-only property)")
+
     p = sub.add_parser("register", help="add files to a .plcproj")
     p.add_argument("plcproj")
     p.add_argument("files", nargs="+")
@@ -389,6 +465,20 @@ def main():
         print(f"created {path}")
         print("next: register it in the .plcproj or it will not be compiled:")
         print(f"  tcpou.py register <PLC.plcproj> {path}")
+        return 0
+
+    if a.cmd in ("add-method", "add-property"):
+        try:
+            if a.cmd == "add-method":
+                add_member(a.file, "method", a.name, a.returns, a.access)
+            else:
+                add_member(a.file, "property", a.name, a.type, a.access, not a.no_set)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 1
+        parts = [k for k in TcFile(a.file).parts() if k.split(":")[0].split(".")[0] == a.name]
+        print(f"added {a.cmd.split('-')[1]} {a.name} to {a.file}")
+        print("fill it in with: tcpou.py set <file> --part " + " | --part ".join(parts))
         return 0
 
     if a.cmd == "register":

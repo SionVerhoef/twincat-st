@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+Fixes from the v0.3.0 field test (`evals/field-review-v0.3.0.md`):
+
+- **CP8** no longer fires on change detection: a value compared exactly with a copy latched from it (`fTarget := fSetpoint;` … `fTarget <> fSetpoint`). A measured value against a target still fires.
+- **CP24** counts the operands of a CFC (or other graphical) body as uses, instead of calling every variable wired in the network unused.
+- **CP24** skips the parameters of interface and `ABSTRACT` methods, which have no body to use them in.
+- **X3 and X7** judge a state variable across all its `CASE`s, so a secondary `CASE` that only picks a value per step is covered by the main one, and a variable is reported once.
+- **New reviewer rule X11** (medium): an `MC_` motion block whose `Execute` is fed from a level, such as `bAutoMode AND bAtHome`. A step comparison, a trigger's `.Q` and a lone command bit pass. `SKILL.md` also tells the agent to name the trap in the existing line before adding "another one like this". The field test's B2b missed both.
+- **`tcpou.py add-method` / `add-property`** append an empty member with a fresh GUID, in the file's own line endings. A3 needed a hand edit without them.
+- **`st_review.py` writes UTF-8** to stdout, so the em dash no longer garbles under Git Bash on Windows.
+- **A fixed closing line for every code hand-over** in `SKILL.md` step 5: not compiled, and a qualified engineer must review and validate it. The field test found the second half in 1 of 8 hand-overs. `evals/grade.py` now checks for it in the four evals that hand over code.
+- **`tcpou.py check`'s BOM note** now says what was measured: the XAE editor saves a BOM, the new-project wizard does not.
+
 ## 0.3.0 — 2026-10-16
 
 - **README rewritten** in the order an engineer reads it: why, what it has shown, features,

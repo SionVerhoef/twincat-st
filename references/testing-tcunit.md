@@ -105,6 +105,8 @@ Timeouts deserve particular attention: the timeout branch of a sequence is the c
 ## What TcUnit will not do for you
 
 - **It runs on a runtime.** There is no PLC runtime in this environment, so tests written here are unverified until someone runs them. Say so.
+- **Activating a test project replaces what the controller was running.** If the only runtime available is a controller that normally holds a machine project, tell the user to back up its boot folder first and plan to re-activate the machine project afterwards. In the field test, the machine project lost its persistent values on activation and got them back only through that re-activation.
+- **TcUnit 1.3.2 reports its summary as Errors.** `Tests: 2`, `Successful tests: 2`, `Failed tests: 0` and the `TESTS FINISHED RUNNING` lines all show up in the XAE Error List as errors, not messages. Read the counts, not the icon.
 - **It does not check timing.** A test proves logical behaviour across N scans, not that the code fits a 1 ms task.
 - **It does not replace review.** Nothing in a passing test suite catches "this FB instance is called from two places" or "this is secretly a safety function".
 

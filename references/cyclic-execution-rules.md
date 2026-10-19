@@ -271,7 +271,7 @@ Initial values (`nCount : DINT := 5;`) apply on download and cold reset — **no
         and a path to Error                                             (X1, X3)
 [ ]  2. Blocks with pending operations keep being called while Busy;
         Execute edges are dropped on Done/Error; no instance shared
-        between two concurrent operations                               (CP20)
+        between two concurrent operations                               (CP20, X11)
 [ ]  3. Every loop is bounded, and the total work fits the cycle time    (X1)
 [ ]  4. Edges via R_TRIG/F_TRIG wherever a one-shot was intended
 [ ]  5. Timers are per-wait instances, reset on entry, PT a TIME literal (X2)

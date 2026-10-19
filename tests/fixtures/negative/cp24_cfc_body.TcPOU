@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="FB_CfcCaller" Id="{0a1b2c3d-0000-4000-8000-000000000001}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_CfcCaller
+VAR_OUTPUT
+  obReady    : BOOL;
+END_VAR
+VAR
+  fbWorker  : TON;
+END_VAR]]></Declaration>
+    <Implementation>
+      <NWL>
+        <XmlArchive>
+          <Data>
+            <o xml:space="preserve" t="NWLImplementationObject">
+              <o n="Instance" t="Operand">
+                <v n="Operand">"fbWorker"</v>
+              </o>
+              <o n="Operand" t="Operand">
+                <v n="Operand">"obReady"</v>
+              </o>
+            </o>
+          </Data>
+        </XmlArchive>
+      </NWL>
+    </Implementation>
+  </POU>
+</TcPlcObject>
