@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_CfcBody" Id="{0c7e5b3a-1d24-4f88-b6a9-5e3f2c1d7a40}" SpecialFunc="None">
+    <Declaration><![CDATA[// CP24 must stay quiet: every variable here is used, but by a graphical (CFC)
+// network rather than by ST. This is a reviewer fixture, not a network XAE can
+// open; it keeps only the shape that matters, operands named in <v n="Operand">.
+FUNCTION_BLOCK FB_CfcBody
+VAR_INPUT
+    ibStart : BOOL;
+END_VAR
+VAR_OUTPUT
+    obReady : BOOL;
+END_VAR
+VAR
+    fbWorker : TON;
+    stCfg    : ST_Cfg;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <NWL>
+        <XmlArchive>
+          <Data>
+            <o xml:space="preserve" t="NWLImplementationObject">
+              <v n="NetworkListComment">""</v>
+              <l2 n="NetworkList" cet="Network">
+                <o>
+                  <v n="Operand">"ibStart"</v>
+                  <v n="Operand">"fbWorker"</v>
+                  <v n="Operand">"stCfg.tDelay"</v>
+                  <v n="Operand">"obReady"</v>
+                </o>
+              </l2>
+            </o>
+          </Data>
+        </XmlArchive>
+      </NWL>
+    </Implementation>
+  </POU>
+</TcPlcObject>

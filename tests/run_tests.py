@@ -114,6 +114,33 @@ x5_lines = sorted(f["line"] for f in review(FIXTURES / "positive")
 check("X5 fires on all three fall-through shapes, not only the '= 0' one",
       len(x5_lines) == 3, f"fired at lines {x5_lines}, expected 3")
 
+# --- CP8 tells change detection from arrival ---------------------------------
+# A field test on a real project found 'fTarget := fSetpoint;' followed by
+# 'bChanged := (fTarget <> fSetpoint)' reported high. That compare asks whether
+# the setpoint moved since the latch, where exact is right; the negative fixture
+# holds it. Skipping it must not also silence the measured position compared
+# with that same target, which was the other high finding there and a real one.
+
+cp8 = [f["source"] for f in review(FIXTURES / "positive")
+       if f["rule"] == "CP8" and f["object"] == "FB_LatchedCompare"]
+check("CP8 fires on a measured value against a latched target, not on the latch check",
+      cp8 == ["bInPosition := (fActPos = fTarget);"], repr(cp8))
+
+# --- a CFC body's operands are uses, and only its operands ------------------
+# CP24 read only <Implementation><ST>, so every variable wired in a CFC network
+# came back unused: 124 findings in 19 POUs on a real project. The negative
+# fixture FB_CfcBody holds that side. Skipping graphical POUs outright would be
+# the lazy fix, so a variable the network never names must still be reported.
+
+cfc = (FIXTURES / "negative" / "FB_CfcBody.TcPOU").read_text(encoding="utf-8-sig")
+with tempfile.TemporaryDirectory() as tmp:
+    dead = Path(tmp) / "FB_CfcDead.TcPOU"
+    dead.write_text(cfc.replace("    stCfg    : ST_Cfg;",
+                                "    stCfg    : ST_Cfg;\n    nSpare   : INT;"), encoding="utf-8")
+    unused = [f["source"] for f in review(dead) if f["rule"] == "CP24"]
+    check("CP24 still reports a variable a CFC network never names",
+          unused == ["nSpare : INT"], repr(unused))
+
 # --- code inside an <Action> is code ----------------------------------------
 # parse_xml walked every container except Action, which tcpou.py has always
 # recognised. The gap cut both ways: defects in the action went unreported, and
@@ -142,6 +169,21 @@ check("X3 fires when the only ELSE belongs to a nested IF",
 x7 = {f["object"] for f in positive if f["rule"] == "X7"}
 check("X7 fires even though the FB declares a bError output",
       "FB_StateNoError" in x7, repr(sorted(x7)))
+
+# Both rules judge a state variable across every CASE over it, so a secondary
+# CASE that only picks a value per step (negative fixture x7_secondary_case) is
+# covered by the main one. Take the main one's ELSE and error step away and the
+# variable must be reported once each, at its first CASE — not once per CASE, and
+# not zero times because one CASE stood in for another.
+
+sec = (FIXTURES / "negative" / "x7_secondary_case.st").read_text(encoding="utf-8")
+bare = re.sub(r"    E_Step\.DeviceError:.*?END_IF\nELSE\n.*?\n", "", sec, flags=re.S)
+with tempfile.TemporaryDirectory() as tmp:
+    p = Path(tmp) / "secondary_bare.st"
+    p.write_text(bare, encoding="utf-8")
+    got = sorted((f["rule"], f["line"]) for f in review(p) if f["rule"] in ("X3", "X7"))
+    check("X3 and X7 report a state variable once, at its first CASE",
+          got == [("X3", 16), ("X7", 16)], repr(got))
 
 # --- X2 keys on the type, not on a name that sounds like a timeout ----------
 # 'udiTimeOut' is PLCopen's UDINT millisecond pin, so a plain number is correct
@@ -402,6 +444,50 @@ with tempfile.TemporaryDirectory() as tmp:
     decl = tcpou("get", str(default), "--part", "decl").stdout.decode("utf-8", "replace")
     check("'new --type fb' defaults to the edge-triggered shape",
           "bExecute" in decl and "bEnable" not in decl, decl)
+
+    # --- add-method / add-property: the A3 round trip, without a hand edit ----
+    # The field test's A3 says new -> register -> set one method -> reguid ->
+    # check, but nothing scaffolded a method: it was pasted in by hand from the
+    # template's XML. These are the steps an agent would run, end to end.
+    rt = Path(tmp) / "FB_RoundTrip.TcPOU"
+    tcpou("new", "--type", "fb", "--name", rt.stem, "--dir", tmp)
+    before = rt.read_bytes()
+    r1 = tcpou("add-method", str(rt), "--name", "M_Reset", "--returns", "BOOL",
+               "--access", "PRIVATE")
+    r2 = tcpou("add-property", str(rt), "--name", "Position", "--type", "LREAL", "--no-set")
+    tcpou("set", str(rt), "--part", "M_Reset:impl", stdin=b"bDone := FALSE;\nM_Reset := TRUE;\n")
+    after = rt.read_bytes()
+    keys = set(re.findall(r"^\s*(\S+)\s", tcpou("show", str(rt)).stdout.decode(), re.M)[1:])
+    check("add-method and add-property create the parts set and get address",
+          r1.returncode == 0 and r2.returncode == 0
+          and {"M_Reset:decl", "M_Reset:impl", "Position:decl", "Position.Get:impl"} <= keys
+          and "Position.Set:impl" not in keys, repr(sorted(keys)))
+    head, tail = before.split(b"  </POU>")
+    check("add-method inserts before </POU> and changes nothing else",
+          after.startswith(head) and after.endswith(b"  </POU>" + tail), "")
+    body = after[3:]
+    check("add-method keeps the BOM and writes CRLF only",
+          after.startswith(b"\xef\xbb\xbf") and body.count(b"\n") == body.count(b"\r\n"), "")
+    ids = re.findall(rb'Id="(\{[0-9a-f-]{36}\})"', after)
+    check("every added object carries its own fresh Id", len(ids) == len(set(ids)) == 4,
+          repr(ids))
+    check("a scaffold with a method still passes check",
+          tcpou("check", str(rt)).returncode == 0
+          and tcpou("reguid", str(rt)).returncode == 0
+          and tcpou("check", str(rt)).returncode == 0)
+    check("the reviewer reads the added method without a stray-line finding",
+          not [f for f in review(rt) if f["rule"] == "X10"])
+    check("add-method refuses a name that already exists, in any case",
+          tcpou("add-method", str(rt), "--name", "m_reset").returncode == 1)
+
+    itf = Path(tmp) / "I_Thing.TcIO"
+    itf.write_bytes((ROOT / "examples" / "design-patterns-state" / "I_State.TcIO").read_bytes())
+    tcpou("add-method", str(itf), "--name", "Probe", "--returns", "BOOL")
+    member = itf.read_text(encoding="utf-8-sig").split('Name="Probe"')[1].split("</Method>")[0]
+    check("an interface method gets no <Implementation>", "<Implementation>" not in member,
+          member)
+    check("an interface member refuses an access modifier",
+          tcpou("add-method", str(itf), "--name", "P2", "--access", "PRIVATE").returncode == 1)
 
 print()
 if failures:

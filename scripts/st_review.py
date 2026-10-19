@@ -198,6 +198,8 @@ class Unit:
     impl: str
     decl_line: int = 1   # absolute first line of the declaration inside the file
     impl_line: int = 1
+    has_body: bool = True   # False for an interface method: no <Implementation> at all
+    graphic: str = ""       # every text and attribute value of a non-ST (CFC, LD) body
 
 
 @dataclass
@@ -298,10 +300,23 @@ def parse_xml(path: Path) -> SourceFile:
             impl_el = el.find("Implementation/ST")
             decl = decl_el.text or "" if decl_el is not None else ""
             impl = impl_el.text or "" if impl_el is not None else ""
+            # A CFC body is <Implementation><NWL>, with each operand named in the
+            # network XML ('<v n="Operand">"obReady"</v>'). Not ST, so no rule may
+            # scan it as code, but CP24 has to see its names: on a real project
+            # 124 of the "unused" findings were variables wired in a CFC network.
+            # Every value in the subtree is taken, not only Operand entries, so a
+            # schema detail this script does not know cannot bring the noise back.
+            body_el = el.find("Implementation")
+            graphic = ""
+            if body_el is not None and impl_el is None:
+                graphic = "\n".join(
+                    s for node in body_el.iter()
+                    for s in (node.text or "", *node.attrib.values()) if s.strip())
             if decl or impl:
                 sf.units.append(Unit(
                     name=name, kind=el.tag, decl=decl, impl=impl,
                     decl_line=line_of(raw, decl), impl_line=line_of(raw, impl),
+                    has_body=body_el is not None, graphic=graphic,
                 ))
             owner = own if el.tag == "Property" else owner
         for child in el:
@@ -567,11 +582,22 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
             seen_pou = i
         owner_of.append(seen_pou)
 
+    # Pairs where one variable is latched straight from the other ('fTarget :=
+    # fSetpoint;'). Comparing those exactly asks "has it changed since the latch?",
+    # and there exact is right: a tolerance would hide a small change. On one real
+    # project this was half of CP8's high findings. A measured value compared with
+    # a target it was never copied from still fires.
+    latched = {frozenset((a.upper(), b.upper())) for a, b in re.findall(
+        r"(?:^|;|\bTHEN\b|\bELSE\b|\bDO\b)\s*([A-Za-z_][\w.]*)\s*:=\s*([A-Za-z_][\w.]*)\s*;",
+        all_impl, re.I | re.M)}
+
     def add(rule: str, unit: Unit, rel_line: int, text: str, msg: str, base: int) -> None:
         if rule not in enabled:
             return
         sev = RULES[rule][0]
         found.append(Finding(rule, sev, fname, unit.name, base + rel_line - 1, text, msg))
+
+    x3_cases: dict[str, list] = {}       # selector -> every CASE over it, for X3
 
     for unit_idx, unit in enumerate(sf.units):
         owner_idx = owner_of[unit_idx] if unit_idx < len(owner_of) else 0
@@ -649,11 +675,13 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         # exactly the state machines it exists to catch. 'ELSIF' and 'END_IF' are
         # not word-boundary matches for IF, so they need no special casing; an
         # entirely inline 'IF .. ELSE .. END_IF' does, since it nets to zero.
-        case_open: list[list] = []          # [start line, has ELSE, IFs open inside]
+        case_open: list[list] = []   # [start line, has ELSE, IFs open inside, selector]
         for i, line in enumerate(lines):
             u = line.upper()
-            for _ in re.finditer(r"\bCASE\b", u):
-                case_open.append([i, False, 0])
+            for m in re.finditer(r"\bCASE\b", u):
+                sel = re.match(r"\s*(.+?)\s+OF\b", u[m.end():])
+                selector = re.sub(r"\s+", "", sel.group(1)) if sel else f"?{unit_idx}:{i}"
+                case_open.append([i, False, 0, selector])
             if case_open:
                 inline_if = re.search(r"\bIF\b", u) or re.search(r"\bEND_IF\b", u)
                 if (re.search(r"^\s*ELSE\b", u) and not inline_if
@@ -663,14 +691,10 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                                      - len(re.findall(r"\bEND_IF\b", u)))
             for _ in re.finditer(r"\bEND_CASE\b", u):
                 if case_open:
-                    start, has_else, _ifs = case_open.pop()
-                    if not has_else:
-                        sup, _ = suppressed(raw_lines, start, "X3")
-                        if not sup:
-                            add("X3", unit, start + 1,
-                                raw_lines[start] if start < len(raw_lines) else line,
-                                "add an ELSE branch so an unexpected state is caught "
-                                "rather than silently ignored", unit.impl_line)
+                    start, has_else, _ifs, selector = case_open.pop()
+                    x3_cases.setdefault(selector, []).append((
+                        unit, start, raw_lines[start] if start < len(raw_lines) else line,
+                        has_else, suppressed(raw_lines, start, "X3")[0]))
 
         # --- X4 unguarded division ------------------------------------------
         const_names = {v.name.upper() for v in scope_vars if v.constant}
@@ -755,6 +779,8 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     continue          # ':=' assignment, not a comparison
                 lroot, rroot = lhs.split(".")[0], rhs.split(".")[0]
                 float_lit = bool(re.fullmatch(r"\d+\.\d+|\.\d+", rhs))
+                if frozenset((lhs.upper(), rhs.upper())) in latched:
+                    continue          # change detection against a latched copy
                 if lroot.upper() in real_names or rroot.upper() in real_names or float_lit:
                     add("CP8", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
                         f"'{lhs} {op} {rhs}' compares floating point exactly; compare "
@@ -922,6 +948,21 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"PLCopen behaviour models; {family} pairs with {partner}, so rename "
                     f"one of them (see references/behaviour-model.md)", unit.decl_line)
 
+    # --- X3, decided per selector -------------------------------------------------
+    # A second 'CASE eStep OF' that only picks a value per step leaves steps out on
+    # purpose: they keep the last value. An unexpected state is caught where the
+    # variable is driven, so one ELSE on any CASE over it covers them all. With none,
+    # the variable is reported once, at its first CASE, not once per CASE. A field
+    # test on a real project had 2 such findings. A suppression on any of them speaks
+    # for the variable.
+    for group in x3_cases.values():
+        if any(has_else or sup for *_, has_else, sup in group):
+            continue
+        unit, start, text, _, _ = min(group, key=lambda c: (sf.units.index(c[0]), c[1]))
+        add("X3", unit, start + 1, text,
+            "add an ELSE branch so an unexpected state is caught rather than silently "
+            "ignored", unit.impl_line)
+
     # --- X6 REFERENCE TO never validated --------------------------------------
     for v in ref_vars:
         if not re.search(rf"__ISVALIDREF\s*\(\s*{re.escape(v.name)}", all_impl, re.I):
@@ -949,11 +990,19 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # case-folded as ST is — plus how often a name stands right before a ':' in a
     # declaration, which is the variable's own declaration being discounted.
     word = r"(?<![.\w])([A-Za-z_]\w*)\b"
-    impl_count = Counter(w.upper() for w in re.findall(word, all_impl))
+    impl_count = Counter(w.upper() for w in re.findall(
+        word, all_impl + "\n" + "\n".join(u.graphic for u in sf.units)))
     decl_count = Counter(w.upper() for w in re.findall(word, all_decl))
     decl_head = Counter(w.upper() for w in re.findall(word + r"\s*:(?!=)", all_decl))
+    # An interface or ABSTRACT method has no body, so its parameters are a contract
+    # for the implementer and can never be used here. A field test on a real
+    # project had 19 findings from interfaces alone, every one of them noise.
+    bodiless = {u.name for u in sf.units
+                if u.kind in ("Method", "Get", "Set")
+                and (not u.has_body or re.search(r"^\s*(METHOD|PROPERTY)\b[^\n]*\bABSTRACT\b",
+                                                 strip_noise(u.decl), re.I | re.M))}
     for v in file_vars:
-        if v.section in ("VAR_EXTERNAL", "VAR_GLOBAL"):
+        if v.section in ("VAR_EXTERNAL", "VAR_GLOBAL") or v.unit in bodiless:
             continue
         if v.name in FIXED_SIGNATURE_PARAMS.get(v.unit.upper(), ()):
             continue
@@ -1011,7 +1060,9 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # not optional: a machine that numbers its steps has no room to say
     # 'error' in a label, and '99: qxError := TRUE;' is the whole of what it
     # can show. Comments are already stripped from all_impl, so '99: // fault'
-    # says nothing by the time this runs.
+    # says nothing by the time this runs. A numbered error step that only sets an
+    # error id ('900: nErrorID := 16#8001;') shows neither signal and is reported;
+    # that is accepted rather than guessed at — name a flag or suppress with a reason.
     ERR = r"ERROR|FAULT|ALARM|ABORT"
 
     def has_error_state(block: str) -> bool:
@@ -1027,12 +1078,23 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
     # Reported against the unit whose implementation holds the machine, at its CASE
     # line. Searching the joined text found it but always named the first unit, so
     # a machine in a METHOD was blamed on the POU body around it.
+    # But the machine is the state variable, not one CASE over it. A second
+    # 'CASE eStep OF' that only picks a value per step has no error label and needs
+    # none: the main CASE over the same variable holds the error state. Judging each
+    # CASE alone reported it, twice on one real project.
+    machines: dict[str, list] = {}       # selector -> [(unit, CASE match, has error)]
     for unit in sf.units:
         impl = strip_noise(unit.impl)
-        bad = next((m for m in re.finditer(r"\bCASE\s+\w*(?:STATE|STEP|SEQ)\w*\s+OF",
-                                           impl, re.I)
-                    if not has_error_state(case_block(impl, m.end()))), None)
-        if bad and "X7" in enabled:
+        for m in re.finditer(r"\bCASE\s+(\w*(?:STATE|STEP|SEQ)\w*)\s+OF", impl, re.I):
+            machines.setdefault(m.group(1).upper(), []).append(
+                (unit, impl, m, has_error_state(case_block(impl, m.end()))))
+    reported: set[str] = set()           # one finding per unit, as before
+    for cases in machines.values():
+        if any(ok for *_, ok in cases):
+            continue
+        unit, impl, bad, _ = cases[0]
+        if "X7" in enabled and unit.name not in reported:
+            reported.add(unit.name)
             raw_lines = unit.impl.splitlines()
             idx = impl.count("\n", 0, bad.start())
             found.append(Finding(
@@ -1103,6 +1165,11 @@ def collect(paths: list[str]) -> list[Path]:
 
 
 def main() -> int:
+    # Python falls back to the console code page on Windows (cp1252), and Git Bash
+    # then shows every em dash in the messages as a replacement character.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(
         description="Static review for IEC 61131-3 Structured Text.",
         epilog="Rule ids: " + ", ".join(sorted(RULES)),

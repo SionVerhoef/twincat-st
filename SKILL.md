@@ -151,7 +151,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | Path | For |
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
-| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
+| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from two published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 

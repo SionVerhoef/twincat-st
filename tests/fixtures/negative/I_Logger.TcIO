@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <Itf Name="I_Logger" Id="{6f0d2a91-3c4e-4b7a-9e15-2d8c7b40a1f3}">
+    <Declaration><![CDATA[INTERFACE I_Logger
+]]></Declaration>
+    <Method Name="Log" Id="{b3e81c42-95d7-4f06-a2c9-7e14d05b6a88}">
+      <Declaration><![CDATA[// CP24 must stay quiet: an interface method has no body, so its parameters
+// are a contract for implementers, not variables this file could ever use.
+METHOD Log : BOOL
+VAR_INPUT
+    sMessage  : STRING(255);
+    nSeverity : UINT;
+END_VAR
+]]></Declaration>
+    </Method>
+  </Itf>
+</TcPlcObject>
