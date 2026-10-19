@@ -73,6 +73,8 @@ RULES: dict[str, tuple[str, str]] = {
                      "or Execute with Valid"),
     "X10": ("high", "line inside VAR ... END_VAR that is neither a declaration nor a "
                     "comment — it will not compile"),
+    "X11": ("medium", "Execute of an MC_ motion block fed from a level expression — it "
+                      "starts on a rising edge only, so it runs once and then never again"),
     "CP2": ("high", "function or function block never referenced anywhere in the scanned tree"),
     "CP6": ("high", "VAR_EXTERNAL inside a function, function block or method — a hidden "
                     "global dependency"),
@@ -947,6 +949,49 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"'{trigger.name}' and '{result.name}' come from the two different "
                     f"PLCopen behaviour models; {family} pairs with {partner}, so rename "
                     f"one of them (see references/behaviour-model.md)", unit.decl_line)
+
+        # --- X11 a motion block's Execute fed from a level --------------------------
+        # 'Execute := bAutoMode AND bAtHome' starts the move on the first scan both
+        # are TRUE and never again while they stay TRUE; the next move needs the
+        # expression to fall first, which no one arranged. SKILL.md lists the trap,
+        # and in the field test an agent left one unnamed and wrote a second. What
+        # is accepted: a step comparison ('Execute := (eStep = E_Step.Move)', edge-
+        # correct because the step changes), a trigger's .Q, or a lone command bit,
+        # which the text cannot judge. Only MC_ instances, whose Execute contract is
+        # fixed by PLCopen; a house FB's 'Execute' pin may mean something else.
+        motion = {v.name.upper() for v in scope_vars if re.match(r"^MC_", v.type.strip(), re.I)}
+        execs = []                         # (offset of the value, instance, value)
+        for m in re.finditer(r"(?<![.\w])([A-Za-z_]\w*)\s*\(", impl):
+            if m.group(1).upper() not in motion:
+                continue
+            depth, arg_start = 0, m.end()
+            for j in range(m.end(), len(impl)):
+                ch = impl[j]
+                if ch == "(":
+                    depth += 1
+                elif ch in ",)" and depth == 0:
+                    a = re.match(r"\s*Execute\s*:=\s*", impl[arg_start:j], re.I)
+                    if a:
+                        execs.append((arg_start + a.end(), m.group(1), impl[arg_start + a.end():j]))
+                    if ch == ")":
+                        break
+                    arg_start = j + 1
+                elif ch == ")":
+                    depth -= 1
+        for m in re.finditer(r"(?<![.\w])([A-Za-z_]\w*)\s*\.\s*Execute\s*:=\s*([^;]*);", impl, re.I):
+            if m.group(1).upper() in motion:
+                execs.append((m.start(2), m.group(1), m.group(2)))
+        for pos, inst, value in execs:
+            level = (re.search(r"\b(AND|OR|XOR|AND_THEN|OR_ELSE)\b", value, re.I)
+                     and not re.search(r"=|<|>", value)
+                     and not re.search(r"\.\s*Q\b", value, re.I))
+            i = impl.count("\n", 0, pos)
+            if level and not suppressed(raw_lines, i, "X11")[0]:
+                add("X11", unit, i + 1, raw_lines[i] if i < len(raw_lines) else value,
+                    f"'{inst}.Execute := {' '.join(value.split())}' is a level; the move "
+                    f"starts once, on its first rising edge, and never again while it stays "
+                    f"TRUE. Drive Execute from a step ('Execute := (eStep = E_Step.Move)') "
+                    f"or a one-shot command (references/behaviour-model.md)", unit.impl_line)
 
     # --- X3, decided per selector -------------------------------------------------
     # A second 'CASE eStep OF' that only picks a value per step leaves steps out on

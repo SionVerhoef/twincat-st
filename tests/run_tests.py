@@ -126,6 +126,16 @@ cp8 = [f["source"] for f in review(FIXTURES / "positive")
 check("CP8 fires on a measured value against a latched target, not on the latch check",
       cp8 == ["bInPosition := (fActPos = fTarget);"], repr(cp8))
 
+# --- X11 reads Execute in both places it can be written ---------------------
+# The field test's B2b: the prompt's own move passed Execute in the call, the
+# agent's second one assigned the member before calling. One form alone would let
+# the other through. FB_StepExecute holds the edge-correct shapes on the other side.
+
+x11 = sorted(f["line"] for f in review(FIXTURES / "positive")
+             if f["rule"] == "X11" and f["object"] == "FB_LevelExecute")
+check("X11 fires on a level Execute in the call and on the member", x11 == [18, 19],
+      repr(x11))
+
 # --- a CFC body's operands are uses, and only its operands ------------------
 # CP24 read only <Implementation><ST>, so every variable wired in a CFC network
 # came back unused: 124 findings in 19 POUs on a real project. The negative

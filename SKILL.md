@@ -17,7 +17,9 @@ A capable model writes Structured Text that *reads* correctly and *behaves* wron
 
 - `WHILE NOT bDone DO` where the answer was a state machine — the task overruns, the watchdog fires, the machine stops
 - a `TON` preset written `PT := 500` instead of `PT := T#500MS`
-- an `Execute` input driven from a level instead of an edge, so the block runs once and never again
+- an `Execute` input driven from a level instead of an edge, so the block runs once and never again (reviewer rule `X11`)
+
+**Asked to add "another one like this", check the existing line first.** If it carries one of these traps, name that line as the problem before writing anything next to it. Copying its style copies the defect: in a field test an agent kept `Execute := bAutoMode AND bAtHome` unremarked and delivered a second level-driven move beside it.
 - a wait with no timeout, so a failed sensor hangs the sequence with no diagnostic
 - `IF fActual = fTarget` on an `LREAL`, which is essentially never true
 - `SEL(bOption, 0, fWidth)` read as "0 when set": `SEL(G, IN0, IN1)` returns its **first** value when `G` is FALSE. `references/st-language.md` has `MUX` and `LIMIT` too
