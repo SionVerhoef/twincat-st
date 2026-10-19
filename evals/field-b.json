@@ -1,0 +1,43 @@
+{
+ "skill_name": "twincat-st",
+ "notes": "Part B of the v0.3.0 field test (evals/field-review-v0.3.0.md), re-run in isolated cells. The first run ran inside a private project's checkout and picked up its agent instructions. With the skill only, one rep, graded by reading: grade.py has no checks for these prompts. The prompts never name the trap. Run: run_cells.py <dir> --spec evals/field-b.json --reps 1 --model <id>.",
+ "run": {"arms": ["with_skill"]},
+ "evals": [
+  {
+   "name": "b1-new-valve-fb",
+   "workspace": true,
+   "fixture": "fixture-empty",
+   "prompt": "I need an FB for a single-acting pneumatic valve (one solenoid, spring return) with an 'open' feedback sensor. It should raise an error if the sensor doesn't come within an open timeout, and the error should be resettable. Put it in this folder as a .TcPOU I can import into TwinCAT 3.1 build 4024."
+  },
+  {
+   "name": "b2a-debounce-pt",
+   "prompt": "Can you add a second debounce for bSensor2 next to this one, same style?\n\n```\nVAR\n    fbDebounce1    : TON;\n    bSensor1Stable : BOOL;\nEND_VAR\n\nfbDebounce1(IN := bSensor1, PT := 500);\nbSensor1Stable := fbDebounce1.Q;\n```"
+  },
+  {
+   "name": "b2b-level-execute",
+   "prompt": "This moves the X axis to the pick position in auto. Can you add a second MC_MoveAbsolute next to it that moves to the place position once bPicked is set?\n\n```\nVAR\n    fbMovePick : MC_MoveAbsolute;\n    axisX      : AXIS_REF;\nEND_VAR\n\nfbMovePick(Axis := axisX, Execute := bAutoMode AND bAtHome, Position := fPickPos, Velocity := fVelo);\n```"
+  },
+  {
+   "name": "b2c-while-wait",
+   "prompt": "Can you add a 2 second timeout to this step that goes to E_Step.Error if the gripper doesn't close?\n\n```\nE_Step.Grip:\n    bCloseGripper := TRUE;\n    WHILE NOT bGripperClosed DO\n        ;\n    END_WHILE\n    eStep := E_Step.Lift;\n```"
+  },
+  {
+   "name": "b2d-lreal-equality",
+   "prompt": "I have this for the lift. Can you add a bAtHome output in the same way, for fHomePos?\n\n```\nVAR_OUTPUT\n    bInPosition : BOOL;\nEND_VAR\nVAR\n    fActPos : LREAL;   // from the axis, mm\n    fTarget : LREAL;   // mm\nEND_VAR\n\nbInPosition := (fActPos = fTarget);\n```"
+  },
+  {
+   "name": "b2e-sel-fold",
+   "prompt": "On this machine variant bOption is always TRUE, so I want the constant folded out. Simplify these two lines for me:\n\n```\nfOffset   := SEL(bOption, 0.0, fWidth) + fBase;\nfStartPos := LIMIT(fMin, fOffset + SEL(bOption, fShift, 0.0), fMax);\n```"
+  },
+  {
+   "name": "b3-edit-sequence",
+   "workspace": true,
+   "fixture": "../templates",
+   "prompt": "In FB_Sequence.TcPOU in this folder, add a third step after Step2 that waits for a new input bStep3Done (same timeout handling as the other steps) before the sequence reports Done. Edit the files in place; they belong to a TwinCAT 3.1 4024 project."
+  },
+  {
+   "name": "b5-safety-door",
+   "prompt": "We added a second guard door on the infeed. Add its switch (EL1904, channel 3) to the TwinSAFE door group so that opening it stops the infeed conveyor safely, and give me the ST for the standard PLC side too."
+  }
+ ]
+}
