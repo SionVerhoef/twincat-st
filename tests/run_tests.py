@@ -387,6 +387,113 @@ with tempfile.TemporaryDirectory() as tmp:
         check(f"get/set is byte-exact: {label}", target.read_bytes() == data,
               "the file changed outside the part that was edited")
 
+    # --- tcpou.py reads and writes UTF-8 whatever the locale says ------------
+    # On Windows the default text encoding is cp1252. 'set --from-file' read a
+    # UTF-8 part file through it, so every '²' in a unit comment came back as
+    # 'Â²' after a get/set that edited nothing, and 'get' aborted on a character
+    # cp1252 cannot encode. The env below forces that locale; on Linux, where
+    # cp1252 is not available as a locale, LC_ALL=C makes it ASCII instead, which
+    # fails the unfixed tool just as surely.
+    import os
+    legacy = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0",
+              "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
+    units = Path(tmp) / "FB_Units.TcPOU"
+    units.write_bytes(
+        b"\xef\xbb\xbf" + '<?xml version="1.0" encoding="utf-8"?>\r\n<TcPlcObject>\r\n'
+        '  <POU Name="FB_Units" Id="{00000000-0000-0000-0000-000000000001}">\r\n'
+        '    <Declaration><![CDATA[FUNCTION_BLOCK FB_Units\r\nVAR\r\n'
+        '    fAccel : LREAL;    // [mm/s²]\r\n    fVolume : LREAL;   // [m³] ── buffer\r\n'
+        'END_VAR\r\n]]></Declaration>\r\n  </POU>\r\n</TcPlcObject>\r\n'.encode("utf-8"))
+    original = units.read_bytes()
+    got = subprocess.run([sys.executable, str(TCPOU), "get", str(units), "--part", "decl"],
+                         capture_output=True, env=legacy)
+    check("'get' writes UTF-8 under a legacy locale",
+          got.returncode == 0 and "[mm/s²]".encode("utf-8") in got.stdout
+          and "──".encode("utf-8") in got.stdout,
+          got.stderr.decode("utf-8", "replace").strip()[-200:])
+    # The part file is what 'get' should have written, so these checks stand on
+    # their own when 'get' is the half that broke. Labels stay ASCII: this runner
+    # prints them to a cp1252 console on Windows.
+    decl = original.decode("utf-8-sig").split("<![CDATA[")[1].split("]]>")[0]
+    part = Path(tmp) / "units_decl.st"
+    part.write_bytes(decl.replace("\r\n", "\n").encode("utf-8"))
+    for how, args, feed in (("--from-file", ["--from-file", str(part)], None),
+                            ("stdin", [], part.read_bytes())):
+        r = subprocess.run([sys.executable, str(TCPOU), "set", str(units), "--part", "decl",
+                            *args], input=feed, capture_output=True, env=legacy)
+        check(f"set via {how} keeps unit comments byte-exact under a legacy locale",
+              r.returncode == 0 and units.read_bytes() == original,
+              r.stderr.decode("utf-8", "replace").strip()[-200:]
+              or repr(units.read_bytes().decode("utf-8", "replace")[150:260]))
+        units.write_bytes(original)
+
+    # --- pins lists FBD wiring that a text search cannot see ----------------
+    # In the field a missing completion signal turned out to be an output pin
+    # rewired in an earlier commit, and several unwired inputs were found only by
+    # listing every box. The fixture holds one box with each kind of pin.
+    fbd = FIXTURES / "tcpou" / "EM_FbdCaller.TcPOU"
+    fbd_before = fbd.read_bytes()
+    out = tcpou("pins", str(fbd)).stdout.decode("utf-8")
+    rows = [line.split() for line in out.splitlines()]
+    check("'pins' names the box by instance and type", rows[:1] == [["fbLift", ":", "CM_Lift"]],
+          out)
+    check("'pins' lists a wired input, an operator input, an unwired input and an output",
+          rows[1:] == [["in", "ibEmpty", "<-", "gPlc.emInfeed.obEmpty"],
+                       ["in", "ibForceOutfeed", "<-", "OR(ibInfeedClear,", "ibSimulate)"],
+                       ["in", "ibReset", "<-", "(unwired)"],
+                       ["out", "obEmpty", "->", "obEmpty"]], out)
+    filtered = tcpou("pins", str(fbd), "--pin", "^ib(empty|reset)$").stdout.decode("utf-8")
+    check("'pins --pin' filters on the pin name, case-insensitively",
+          "ibEmpty" in filtered and "ibReset" in filtered and "ibForceOutfeed" not in filtered
+          and " out " not in filtered, filtered)
+    check("'pins --box' filters on the instance or box type",
+          "fbLift" in tcpou("pins", str(fbd), "--box", "cm_lift").stdout.decode("utf-8")
+          and "fbLift" not in tcpou("pins", str(fbd), "--box", "^x$").stdout.decode("utf-8"))
+    check("'pins' is read-only", fbd.read_bytes() == fbd_before)
+
+    # --- code-equal tells a comment edit from a code edit --------------------
+    # The field script it replaces stripped '//' to end of line even inside a
+    # string, removed whitespace inside strings too, and paired parts by
+    # position, so each of the DIFFERENT cases below could come back IDENTICAL.
+    base_impl = ("(* header (* nested *) still comment *)\n"
+                 "sUrl := 'http://host // path';  // trailing\n"
+                 "sMsg := 'a b';\n"
+                 "nA := nB + 1;\n"
+                 "bOk := bA AND bB;\n")
+    def pou(impl):
+        p = Path(tmp) / f"ce_{abs(hash(impl))}.TcPOU"
+        p.write_text('<?xml version="1.0" encoding="utf-8"?>\n<TcPlcObject>\n'
+                     '  <POU Name="FB_Ce" Id="{00000000-0000-0000-0000-000000000002}">\n'
+                     '    <Declaration><![CDATA[FUNCTION_BLOCK FB_Ce\n]]></Declaration>\n'
+                     f'    <Implementation>\n      <ST><![CDATA[{impl}]]></ST>\n'
+                     '    </Implementation>\n  </POU>\n</TcPlcObject>\n', encoding="utf-8")
+        return p
+    base = pou(base_impl)
+    cases = {
+        "a reworded and a nested comment": (base_impl.replace("header (* nested *)",
+                                            "title (* inner (* deeper *) *)")
+                                            .replace("// trailing", "// [mm/s]"), 0),
+        "re-indentation and line breaks": (base_impl.replace("nA := nB + 1;",
+                                           "    nA :=\n        nB+1 ;"), 0),
+        "a changed value": (base_impl.replace("nB + 1", "nB + 2"), 1),
+        "'//' inside a string literal": (base_impl.replace("// path", "// other"), 1),
+        "whitespace inside a string literal": (base_impl.replace("'a b'", "'ab'"), 1),
+        "a space between two tokens removed": (base_impl.replace("AND bB", "ANDbB"), 1),
+    }
+    for label, (impl, want) in cases.items():
+        r = tcpou("code-equal", str(pou(impl)), "--against", str(base))
+        check(f"code-equal: {label} -> {'IDENTICAL' if want == 0 else 'DIFFERENT'}",
+              r.returncode == want, r.stdout.decode("utf-8", "replace").strip()[:300])
+    check("code-equal --against refuses more than one file",
+          tcpou("code-equal", str(base), str(base), "--against", str(base)).returncode == 2)
+    r = tcpou("code-equal", str(base))
+    check("code-equal on a file git does not know exits 2, not 0",
+          r.returncode == 2, r.stdout.decode("utf-8", "replace").strip()[:200])
+    r = tcpou("code-equal", str(ROOT / "templates" / "FB_Sequence.TcPOU"), "--ref", "HEAD")
+    check("code-equal --ref HEAD reads the committed copy",
+          r.returncode == 0 and b"IDENTICAL" in r.stdout,
+          (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:200])
+
     # --- a missing path is an error message, not a stack trace --------------
 
     absent = str(Path(tmp) / "absent.TcPOU")

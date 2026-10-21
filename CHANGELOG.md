@@ -14,6 +14,13 @@ Fixes from the v0.3.0 field test (`evals/field-review-v0.3.0.md`):
 - **A fixed closing line for every code hand-over** in `SKILL.md` step 5: not compiled, and a qualified engineer must review and validate it. The field test found the second half in 1 of 8 hand-overs. `evals/grade.py` now checks for it in the four evals that hand over code.
 - **`tcpou.py check`'s BOM note** now says what was measured: the XAE editor saves a BOM, the new-project wizard does not.
 
+From field use on a 4024 production project:
+
+- **`tcpou.py` reads and writes UTF-8 whatever the locale.** Under Windows' cp1252 default, `set --from-file` turned every `²` in a unit comment into `Â²` on a round trip that edited nothing, and `get` aborted on a character cp1252 cannot encode. `new` also prints its path with one kind of separator.
+- **`tcpou.py pins`** lists the pin wiring of every FBD box: which symbol or operator feeds each input, which inputs are unwired, and where each output goes. Read-only. In an FBD caller this wiring is invisible to text search; in the field it settled a diagnosis that grep could not.
+- **`tcpou.py code-equal`** proves an edit changed only comments and whitespace, against a git revision (default `HEAD`) or another file. Unlike the field script it replaces, it keeps string literals intact (`//` inside one is not a comment), handles nested `(* *)`, does not equate `a b` with `ab`, and pairs parts by name rather than position.
+- **`scripts/xae_build.ps1`** builds a solution in a hidden XAE through the Automation Interface and prints the Build pane and compiler errors: rung 2 of the verification ladder, on a Windows PC with XAE. It never activates; rule 2 is unchanged and there is no activation script. `references/twincat/xae-automation.md` covers what a build rewrites (`.tmc`, `.xti`, `_CompileInfo`, a `.vsm`) and what the user should do before activating a scratch project on a controller that holds a machine project.
+
 ## 0.3.0 — 2026-10-16
 
 - **README rewritten** in the order an engineer reads it: why, what it has shown, features,

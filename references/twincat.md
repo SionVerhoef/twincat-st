@@ -4,7 +4,7 @@ Everything that does **not** transfer to other CODESYS V3 tools. Target build **
 
 The core rules in `cyclic-execution-rules.md`, `st-language.md` and `naming-conventions.md` apply unchanged. This file is the seam.
 
-Deeper material: [`twincat/project-files.md`](twincat/project-files.md) for editing project files and surviving git; [`twincat/ads-and-diagnostics.md`](twincat/ads-and-diagnostics.md) for ADS, EtherCAT triage and TcUnit.
+Deeper material: [`twincat/project-files.md`](twincat/project-files.md) for editing project files and surviving git; [`twincat/ads-and-diagnostics.md`](twincat/ads-and-diagnostics.md) for ADS, EtherCAT triage and TcUnit; [`twincat/xae-automation.md`](twincat/xae-automation.md) for headless builds.
 
 ## Orienting in an unfamiliar project
 
@@ -123,7 +123,7 @@ CountPulses := nCount;
 |---|---|
 | **XAE** (TE1000) | Engineering environment — Visual Studio integration, or the standalone TcXaeShell |
 | **XAR** | The runtime |
-| **Automation Interface** | COM/DTE scripting of XAE — the route to headless builds and CI. `TcUnit-Runner` uses it. |
+| **Automation Interface** | COM/DTE scripting of XAE — the route to headless builds and CI. `TcUnit-Runner` and `scripts/xae_build.ps1` use it. |
 | **Static Analysis** (TE1200) | Rule-based linting. If the project has a ruleset, treat it as the house standard — the skill and the linter must agree. |
 | **Scope View** (TE1300 for the professional version) | Signal tracing; the right tool for timing questions |
 | **TcUnit** | Open-source unit testing — see `twincat/ads-and-diagnostics.md` |

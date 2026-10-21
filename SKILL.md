@@ -118,7 +118,7 @@ Name the rung you reached. Never imply a higher one.
 | Rung | What it proves |
 |---|---|
 | 1. **TcUnit on a real target**, results read back over ADS | Real semantics, real timing |
-| 2. **Headless build** via the Automation Interface on a Windows runner | Full compiler errors |
+| 2. **Headless build** via the Automation Interface on a Windows PC with XAE — `scripts/xae_build.ps1` | Full compiler errors |
 | 3. **`scripts/st_review.py` + a human read** | Known defect patterns absent — **always do this** |
 | 4. Nothing | Then say "unverified, not compiled" plainly |
 
@@ -150,6 +150,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | `references/twincat.md` | TwinCAT specifics — libraries, `FB_init`, online change, 4024 gotchas. |
 | `references/twincat/project-files.md` | Editing `.TcPOU`/`.plcproj`, or a git merge conflict in one. |
 | `references/twincat/ads-and-diagnostics.md` | ADS access, EtherCAT triage, reading a running machine. |
+| `references/twincat/xae-automation.md` | Asked for a build or compile check, and XAE is installed. What a build rewrites, and why activation stays manual. |
 | `references/codesys.md` | CODESYS rather than TwinCAT. **Marked untested** — say so. |
 
 **Routing rule of thumb:** if the answer names a `Tc2_`/`Tc3_` library, a `.TcPOU` file, ADS or XAE, it is TwinCAT-specific and belongs behind `references/twincat.md`, not in a general answer.
@@ -159,11 +160,12 @@ Load a reference when the task reaches it — don't read them all up front.
 | Path | For |
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
-| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
+| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. `pins` lists FBD wiring, `code-equal` proves an edit touched only comments. |
+| `scripts/xae_build.ps1` | Windows with XAE only: build the solution in a hidden XAE and print the real compiler output. Run it only when the user asked for a build; it rewrites `.tmc`/`.xti`/`_CompileInfo`. It never activates — rule 2 still holds. See `references/twincat/xae-automation.md`. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from two published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 
-Both scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
+The two Python scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
 
 ### `tcpou.py`
 
@@ -172,17 +174,21 @@ Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
 ```bash
 py -3 scripts/tcpou.py show     <file>                                   # parts + encoding
 py -3 scripts/tcpou.py get      <file> --part impl                       # print one part
+py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD box wiring
 py -3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
 py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
 py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
 py -3 scripts/tcpou.py check    <file>...                                # validate
+py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comments-only?
 ```
 
 - `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
 - **`--shape` picks which interface family the FB gets:** `execute` (the default) declares `bExecute`/`bBusy`/`bDone`, `enable` declares `bEnable`/`bValid`, and `cyclic` declares no command interface at all. Choose the one the block actually is — `Execute` pairs with `Done`, `Enable` pairs with `Valid`, and mixing the two is what rule `X9` reports. `references/behaviour-model.md` is the decision. An FB that **inherits** its command interface from a framework base — the common case in a module-based project — fits none of the three on its own: use `--shape cyclic --extends FB_YourBase`, which gives the `EXTENDS` and adds no pins of its own to clash with the base's.
-- `set` reads stdin when `--from-file` is omitted.
+- `set` reads stdin when `--from-file` is omitted. Prefer `--from-file` from PowerShell: Windows PowerShell 5.1 re-encodes text piped into a native command to ASCII, so `²` arrives as `?` before the script ever sees it. Files and output are UTF-8 whatever the console's code page.
 - Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
+- **`pins` before concluding a signal is unused or unwired in an FBD caller.** Which variable feeds which pin of a box is stored in the network XML, so a text search for `ibEmpty :=` finds nothing there. `pins` prints every box's inputs (`<-`, with operators as `OR(a, b)` and an empty pin as `(unwired)`) and its wired outputs (`->`). It is read-only; the layout it reads was checked on 4024 FBD networks.
+- **Claim "comments only" with `code-equal`, not by eye.** It compares every source part with the same part at `--ref` (default `HEAD`) or in `--against` another file, after dropping comments and insignificant whitespace; string literals count as code. Exit 0 = IDENTICAL, 1 = the code changed (it prints the first difference per part), 2 = nothing to compare with. It reads the CDATA source only, not the XML around it.
 
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 
