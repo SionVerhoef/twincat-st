@@ -172,6 +172,7 @@ Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
 ```bash
 py -3 scripts/tcpou.py show     <file>                                   # parts + encoding
 py -3 scripts/tcpou.py get      <file> --part impl                       # print one part
+py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD box wiring
 py -3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
 py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
@@ -183,6 +184,7 @@ py -3 scripts/tcpou.py check    <file>...                                # valid
 - **`--shape` picks which interface family the FB gets:** `execute` (the default) declares `bExecute`/`bBusy`/`bDone`, `enable` declares `bEnable`/`bValid`, and `cyclic` declares no command interface at all. Choose the one the block actually is — `Execute` pairs with `Done`, `Enable` pairs with `Valid`, and mixing the two is what rule `X9` reports. `references/behaviour-model.md` is the decision. An FB that **inherits** its command interface from a framework base — the common case in a module-based project — fits none of the three on its own: use `--shape cyclic --extends FB_YourBase`, which gives the `EXTENDS` and adds no pins of its own to clash with the base's.
 - `set` reads stdin when `--from-file` is omitted. Prefer `--from-file` from PowerShell: Windows PowerShell 5.1 re-encodes text piped into a native command to ASCII, so `²` arrives as `?` before the script ever sees it. Files and output are UTF-8 whatever the console's code page.
 - Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
+- **`pins` before concluding a signal is unused or unwired in an FBD caller.** Which variable feeds which pin of a box is stored in the network XML, so a text search for `ibEmpty :=` finds nothing there. `pins` prints every box's inputs (`<-`, with operators as `OR(a, b)` and an empty pin as `(unwired)`) and its wired outputs (`->`). It is read-only; the layout it reads was checked on 4024 FBD networks.
 
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 

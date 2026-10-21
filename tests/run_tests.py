@@ -427,6 +427,30 @@ with tempfile.TemporaryDirectory() as tmp:
               or repr(units.read_bytes().decode("utf-8", "replace")[150:260]))
         units.write_bytes(original)
 
+    # --- pins lists FBD wiring that a text search cannot see ----------------
+    # In the field a missing completion signal turned out to be an output pin
+    # rewired in an earlier commit, and several unwired inputs were found only by
+    # listing every box. The fixture holds one box with each kind of pin.
+    fbd = FIXTURES / "tcpou" / "EM_FbdCaller.TcPOU"
+    fbd_before = fbd.read_bytes()
+    out = tcpou("pins", str(fbd)).stdout.decode("utf-8")
+    rows = [line.split() for line in out.splitlines()]
+    check("'pins' names the box by instance and type", rows[:1] == [["fbLift", ":", "CM_Lift"]],
+          out)
+    check("'pins' lists a wired input, an operator input, an unwired input and an output",
+          rows[1:] == [["in", "ibEmpty", "<-", "gPlc.emInfeed.obEmpty"],
+                       ["in", "ibForceOutfeed", "<-", "OR(ibInfeedClear,", "ibSimulate)"],
+                       ["in", "ibReset", "<-", "(unwired)"],
+                       ["out", "obEmpty", "->", "obEmpty"]], out)
+    filtered = tcpou("pins", str(fbd), "--pin", "^ib(empty|reset)$").stdout.decode("utf-8")
+    check("'pins --pin' filters on the pin name, case-insensitively",
+          "ibEmpty" in filtered and "ibReset" in filtered and "ibForceOutfeed" not in filtered
+          and " out " not in filtered, filtered)
+    check("'pins --box' filters on the instance or box type",
+          "fbLift" in tcpou("pins", str(fbd), "--box", "cm_lift").stdout.decode("utf-8")
+          and "fbLift" not in tcpou("pins", str(fbd), "--box", "^x$").stdout.decode("utf-8"))
+    check("'pins' is read-only", fbd.read_bytes() == fbd_before)
+
     # --- a missing path is an error message, not a stack trace --------------
 
     absent = str(Path(tmp) / "absent.TcPOU")

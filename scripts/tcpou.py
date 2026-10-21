@@ -14,6 +14,7 @@ Subcommands:
   add-method, add-property
             Append an empty METHOD or PROPERTY to a POU or interface
   register  Add a file to a .plcproj so it actually compiles
+  pins      List the pin wiring of every FBD box (read-only)
   check     Validate structure, encoding and line endings
 
 Targets TwinCAT 3.1 build 4024.
@@ -314,6 +315,61 @@ def register(plcproj, files):
     return added
 
 
+# -- FBD wiring --------------------------------------------------------------
+
+def _q(text):
+    return (text or "").strip().strip('"')
+
+
+def _operand(item):
+    """Text of what feeds one input pin: a symbol, or a nested operator box."""
+    btype = item.findtext("v[@n='BoxType']")
+    if btype is not None:
+        kids = item.find("l2[@n='InputItems']")
+        args = [_operand(k) for k in kids] if kids is not None else []
+        return f"{_q(btype)}({', '.join(args)})"
+    op = item.find("o[@n='Operand']")
+    name = _q((op if op is not None else item).findtext("v[@n='Operand']"))
+    return name or "(unwired)"
+
+
+def pins(path, pin_re=None, box_re=None):
+    """Each FBD box's pin wiring: (instance, box type, [(dir, pin, operand)]).
+
+    Which variable feeds which pin of a box lives in the network XML, so a text
+    search for 'ibEmpty :=' finds nothing in an FBD caller. Layout as XAE 4024
+    writes it: a box carries <v n="BoxType"> and <o n="Instance">; its inputs are
+    the <l2 n="InputItems"> children, in the order of InputParam/Names; outputs
+    are OutputItems/OutputItems in the order of OutputParam/Names. An operator
+    such as OR feeding a pin is a nested box with no names of its own, so it is
+    printed as a call and not listed separately. Unwired outputs are left out.
+    """
+    root = ET.fromstring(TcFile(path).text)
+    boxes = []
+    for box in root.iter():
+        btype = box.find("v[@n='BoxType']")
+        in_names = box.find("o[@n='InputParam']/l2[@n='Names']")
+        out_names = box.find("o[@n='OutputParam']/l2[@n='Names']")
+        if btype is None or (in_names is None and out_names is None):
+            continue
+        inst = _q(box.findtext("o[@n='Instance']/v[@n='Operand']"))
+        if box_re and not (box_re.search(inst) or box_re.search(_q(btype.text))):
+            continue
+        wires = []
+        ins = box.find("l2[@n='InputItems']")
+        if in_names is not None and ins is not None:
+            wires += [("in", _q(n.text), _operand(i)) for n, i in zip(in_names, ins)]
+        outs = box.find("o[@n='OutputItems']/l2[@n='OutputItems']")
+        if out_names is not None and outs is not None:
+            wires += [("out", _q(n.text), _q(o.findtext("v[@n='Operand']")))
+                      for n, o in zip(out_names, outs)
+                      if _q(o.findtext("v[@n='Operand']"))]
+        wires = [w for w in wires if not pin_re or pin_re.search(w[1])]
+        if wires:
+            boxes.append((inst, _q(btype.text), wires))
+    return boxes
+
+
 # -- checks ------------------------------------------------------------------
 
 def check(path):
@@ -413,6 +469,11 @@ def main():
     p = sub.add_parser("reguid", help="give every object in a file a fresh Id GUID")
     p.add_argument("files", nargs="+")
 
+    p = sub.add_parser("pins", help="list the pin wiring of every FBD box (read-only)")
+    p.add_argument("file")
+    p.add_argument("--pin", help="regex on the pin name")
+    p.add_argument("--box", help="regex on the instance name or box type")
+
     p = sub.add_parser("check", help="validate structure and encoding")
     p.add_argument("files", nargs="+")
 
@@ -508,6 +569,18 @@ def main():
             else:
                 print(f"ok   {path}  ({n} GUID{'s' if n != 1 else ''} regenerated)")
         return 1 if failed else 0
+
+    if a.cmd == "pins":
+        pin_re = a.pin and re.compile(a.pin, re.IGNORECASE)
+        box_re = a.box and re.compile(a.box, re.IGNORECASE)
+        boxes = pins(a.file, pin_re, box_re)
+        for inst, btype, wires in boxes:
+            print(f"{inst or '(no instance)'} : {btype}")
+            for d, pin, operand in wires:
+                print(f"   {d:<3} {pin:<30} {'<-' if d == 'in' else '->'} {operand}")
+        if not boxes:
+            print("no FBD boxes" + (" matched" if a.pin or a.box else " in this file"))
+        return 0
 
     if a.cmd == "check":
         failed = False

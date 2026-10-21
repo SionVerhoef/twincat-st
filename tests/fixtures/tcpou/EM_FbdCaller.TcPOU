@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="EM_FbdCaller" Id="{0a1b2c3d-0000-4000-8000-000000000101}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK EM_FbdCaller
+VAR_INPUT
+  ibInfeedClear : BOOL;
+  ibSimulate    : BOOL;
+END_VAR
+VAR_OUTPUT
+  obEmpty       : BOOL;
+END_VAR
+VAR
+  fbLift        : CM_Lift;
+END_VAR]]></Declaration>
+    <Implementation>
+      <NWL>
+        <XmlArchive>
+          <Data>
+            <o xml:space="preserve" t="NWLImplementationObject">
+              <v n="NetworkListComment">""</v>
+              <l2 n="NetworkList" cet="Network">
+                <o>
+                  <v n="ILSTNetwork">false</v>
+                  <o n="Network" t="BoxTreeBox">
+                    <v n="BoxType">"CM_Lift"</v>
+                    <o n="Instance" t="Operand">
+                      <v n="Operand">"fbLift"</v>
+                      <v n="Type">"CM_Lift"</v>
+                      <v n="Boolean">false</v>
+                      <v n="Id">1001L</v>
+                    </o>
+                    <l2 n="InputItems" cet="BoxTreeOperand">
+                      <o>
+                        <o n="Operand" t="Operand">
+                          <v n="Operand">"gPlc.emInfeed.obEmpty"</v>
+                          <v n="Type">"BOOL"</v>
+                          <v n="Boolean">true</v>
+                          <v n="Id">1002L</v>
+                        </o>
+                        <v n="Id">1003L</v>
+                      </o>
+                      <o t="BoxTreeBox">
+                        <v n="BoxType">"OR"</v>
+                        <l2 n="InputItems" cet="BoxTreeOperand">
+                          <o>
+                            <o n="Operand" t="Operand">
+                              <v n="Operand">"ibInfeedClear"</v>
+                              <v n="Type">"BOOL"</v>
+                              <v n="Boolean">true</v>
+                              <v n="Id">1004L</v>
+                            </o>
+                            <v n="Id">1005L</v>
+                          </o>
+                          <o>
+                            <o n="Operand" t="Operand">
+                              <v n="Operand">"ibSimulate"</v>
+                              <v n="Type">"BOOL"</v>
+                              <v n="Boolean">true</v>
+                              <v n="Id">1006L</v>
+                            </o>
+                            <v n="Id">1007L</v>
+                          </o>
+                        </l2>
+                        <v n="Id">1008L</v>
+                      </o>
+                      <o>
+                        <o n="Operand" t="Operand">
+                          <v n="Operand">""</v>
+                          <v n="Type">""</v>
+                          <v n="Boolean">false</v>
+                          <v n="Id">1009L</v>
+                        </o>
+                        <v n="Id">1010L</v>
+                      </o>
+                    </l2>
+                    <o n="InputParam" t="ParamList">
+                      <l2 n="Names" cet="string">
+                        <v>ibEmpty</v>
+                        <v>ibForceOutfeed</v>
+                        <v>ibReset</v>
+                      </l2>
+                    </o>
+                    <o n="OutputParam" t="ParamList">
+                      <l2 n="Names" cet="string">
+                        <v>obEmpty</v>
+                        <v>obBusy</v>
+                      </l2>
+                    </o>
+                    <o n="OutputItems" t="OutputItemList">
+                      <l2 n="OutputItems" cet="Operand">
+                        <o>
+                          <v n="Operand">"obEmpty"</v>
+                          <v n="Type">"BOOL"</v>
+                          <v n="Boolean">true</v>
+                          <v n="Id">1011L</v>
+                        </o>
+                        <o>
+                          <v n="Operand">""</v>
+                          <v n="Type">""</v>
+                          <v n="Boolean">false</v>
+                          <v n="Id">1012L</v>
+                        </o>
+                      </l2>
+                    </o>
+                    <v n="Id">1013L</v>
+                  </o>
+                </o>
+              </l2>
+            </o>
+          </Data>
+        </XmlArchive>
+      </NWL>
+    </Implementation>
+  </POU>
+</TcPlcObject>
