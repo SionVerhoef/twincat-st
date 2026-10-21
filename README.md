@@ -70,7 +70,10 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 
 - **`tcpou.py`** — `show`, `get` and `set` one method or property of a `.TcPOU` without
   touching its GUIDs, BOM or line endings; `new` scaffolds an object with a fresh GUID;
-  `register` adds it to the `.plcproj`; `reguid` and `check` repair and validate.
+  `register` adds it to the `.plcproj`; `reguid` and `check` repair and validate; `pins` lists
+  the wiring of FBD boxes; `code-equal` proves an edit changed only comments.
+- **`xae_build.ps1`** — on a Windows PC with XAE, builds the solution in a hidden XAE and prints
+  the real compiler output. It never activates.
 
 **Guidance for the agent**
 
@@ -147,7 +150,8 @@ twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
 │   ├── st_review.py                    the reviewer — 27 rules, PLCopen-keyed
-│   └── tcpou.py                        surgical .TcPOU editing, reguid, .plcproj registration
+│   ├── tcpou.py                        surgical .TcPOU editing, FBD pins, comments-only proof
+│   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
 │   ├── cyclic-execution-rules.md       CORE — the execution model + review rubric
 │   ├── plcopen-rules.md                the 64-rule PLCopen catalogue, with severities
@@ -219,6 +223,9 @@ TwinCAT 3.1.4024.55.
   came from. Those fixes cover four false-positive classes, 148 of its 270 findings.
 - `tcpou.py add-method` and `add-property` are newer than the field test, and no file they
   wrote has been opened in XAE yet. The method in the round trip above was added by hand.
+- `xae_build.ps1` built a production project and a scratch TcUnit project on 4024.55 in the
+  field, but runs in no CI here. `tcpou.py pins` reads the FBD layout of one 4024 project; its
+  test fixture is written to that layout, not exported from XAE.
 - CODESYS guidance (`references/codesys.md`) has not been tried on a CODESYS install.
 
 `SKILL.md` rule 3 makes the agent declare that gap rather than paper over it. The same applies

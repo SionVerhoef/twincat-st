@@ -118,7 +118,7 @@ Name the rung you reached. Never imply a higher one.
 | Rung | What it proves |
 |---|---|
 | 1. **TcUnit on a real target**, results read back over ADS | Real semantics, real timing |
-| 2. **Headless build** via the Automation Interface on a Windows runner | Full compiler errors |
+| 2. **Headless build** via the Automation Interface on a Windows PC with XAE — `scripts/xae_build.ps1` | Full compiler errors |
 | 3. **`scripts/st_review.py` + a human read** | Known defect patterns absent — **always do this** |
 | 4. Nothing | Then say "unverified, not compiled" plainly |
 
@@ -150,6 +150,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | `references/twincat.md` | TwinCAT specifics — libraries, `FB_init`, online change, 4024 gotchas. |
 | `references/twincat/project-files.md` | Editing `.TcPOU`/`.plcproj`, or a git merge conflict in one. |
 | `references/twincat/ads-and-diagnostics.md` | ADS access, EtherCAT triage, reading a running machine. |
+| `references/twincat/xae-automation.md` | Asked for a build or compile check, and XAE is installed. What a build rewrites, and why activation stays manual. |
 | `references/codesys.md` | CODESYS rather than TwinCAT. **Marked untested** — say so. |
 
 **Routing rule of thumb:** if the answer names a `Tc2_`/`Tc3_` library, a `.TcPOU` file, ADS or XAE, it is TwinCAT-specific and belongs behind `references/twincat.md`, not in a general answer.
@@ -159,11 +160,12 @@ Load a reference when the task reaches it — don't read them all up front.
 | Path | For |
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
-| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. |
+| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. `pins` lists FBD wiring, `code-equal` proves an edit touched only comments. |
+| `scripts/xae_build.ps1` | Windows with XAE only: build the solution in a hidden XAE and print the real compiler output. Run it only when the user asked for a build; it rewrites `.tmc`/`.xti`/`_CompileInfo`. It never activates — rule 2 still holds. See `references/twincat/xae-automation.md`. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from two published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
 
-Both scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
+The two Python scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
 
 ### `tcpou.py`
 
