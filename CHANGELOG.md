@@ -18,6 +18,7 @@ From field use on a 4024 production project:
 
 - **`tcpou.py` reads and writes UTF-8 whatever the locale.** Under Windows' cp1252 default, `set --from-file` turned every `²` in a unit comment into `Â²` on a round trip that edited nothing, and `get` aborted on a character cp1252 cannot encode. `new` also prints its path with one kind of separator.
 - **`tcpou.py pins`** lists the pin wiring of every FBD box: which symbol or operator feeds each input, which inputs are unwired, and where each output goes. Read-only. In an FBD caller this wiring is invisible to text search; in the field it settled a diagnosis that grep could not.
+- **`tcpou.py code-equal`** proves an edit changed only comments and whitespace, against a git revision (default `HEAD`) or another file. Unlike the field script it replaces, it keeps string literals intact (`//` inside one is not a comment), handles nested `(* *)`, does not equate `a b` with `ab`, and pairs parts by name rather than position.
 
 ## 0.3.0 — 2026-10-16
 

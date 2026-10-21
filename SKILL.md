@@ -178,6 +178,7 @@ py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaff
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
 py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
 py -3 scripts/tcpou.py check    <file>...                                # validate
+py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comments-only?
 ```
 
 - `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
@@ -185,6 +186,7 @@ py -3 scripts/tcpou.py check    <file>...                                # valid
 - `set` reads stdin when `--from-file` is omitted. Prefer `--from-file` from PowerShell: Windows PowerShell 5.1 re-encodes text piped into a native command to ASCII, so `²` arrives as `?` before the script ever sees it. Files and output are UTF-8 whatever the console's code page.
 - Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
 - **`pins` before concluding a signal is unused or unwired in an FBD caller.** Which variable feeds which pin of a box is stored in the network XML, so a text search for `ibEmpty :=` finds nothing there. `pins` prints every box's inputs (`<-`, with operators as `OR(a, b)` and an empty pin as `(unwired)`) and its wired outputs (`->`). It is read-only; the layout it reads was checked on 4024 FBD networks.
+- **Claim "comments only" with `code-equal`, not by eye.** It compares every source part with the same part at `--ref` (default `HEAD`) or in `--against` another file, after dropping comments and insignificant whitespace; string literals count as code. Exit 0 = IDENTICAL, 1 = the code changed (it prints the first difference per part), 2 = nothing to compare with. It reads the CDATA source only, not the XML around it.
 
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 

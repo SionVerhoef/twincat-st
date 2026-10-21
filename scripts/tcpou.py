@@ -15,6 +15,8 @@ Subcommands:
             Append an empty METHOD or PROPERTY to a POU or interface
   register  Add a file to a .plcproj so it actually compiles
   pins      List the pin wiring of every FBD box (read-only)
+  code-equal
+            Prove an edit changed only comments and whitespace
   check     Validate structure, encoding and line endings
 
 Targets TwinCAT 3.1 build 4024.
@@ -44,9 +46,10 @@ NAME_RE = re.compile(r'Name\s*=\s*"([^"]*)"')
 class TcFile:
     """A TwinCAT PLC object file, held as text plus its original byte quirks."""
 
-    def __init__(self, path):
+    def __init__(self, path, raw=None):
         self.path = path
-        raw = open(path, "rb").read()
+        if raw is None:
+            raw = open(path, "rb").read()
         self.has_bom = raw.startswith(BOM)
         if self.has_bom:
             raw = raw[len(BOM):]
@@ -370,6 +373,87 @@ def pins(path, pin_re=None, box_re=None):
     return boxes
 
 
+# -- code-equal --------------------------------------------------------------
+
+def _word(c):
+    return c.isalnum() or c == "_"
+
+
+def code_only(src):
+    """Source with comments dropped and whitespace reduced to what separates tokens.
+
+    String literals are kept byte for byte, so '//' inside one is not a comment
+    and 'a b' never equals 'ab'. (* *) comments nest, as CODESYS allows. A run of
+    whitespace or comments becomes one space only between two identifier
+    characters - dropping it there would make 'a b' and 'ab' look the same.
+    """
+    out, gap, i, n = [], False, 0, len(src)
+    while i < n:
+        two = src[i:i + 2]
+        if two == "//":
+            j = src.find("\n", i)
+            i, gap = (n if j < 0 else j), True
+        elif two == "(*":
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if src.startswith("(*", i):
+                    depth, i = depth + 1, i + 2
+                elif src.startswith("*)", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            gap = True
+        elif two == "/*":
+            j = src.find("*/", i + 2)
+            i, gap = (n if j < 0 else j + 2), True
+        elif src[i].isspace():
+            i, gap = i + 1, True
+        else:
+            if gap and out and _word(out[-1][-1]) and _word(src[i]):
+                out.append(" ")
+            gap = False
+            if src[i] in "'\"":
+                j = i + 1
+                while j < n and src[j] != src[i]:
+                    j += 2 if src[j] == "$" else 1     # $' is the ST escape
+                out.append(src[i:j + 1])
+                i = j + 1
+            else:
+                out.append(src[i])
+                i += 1
+    return "".join(out)
+
+
+def code_parts(tc):
+    return {k: code_only(tc.text[s:e]) for k, (s, e) in tc.parts().items()}
+
+
+def git_blob(path, rev):
+    """The bytes of `path` at `rev`, or None when git has no such file there."""
+    import subprocess
+    d, base = os.path.split(os.path.abspath(path))
+    r = subprocess.run(["git", "show", f"{rev}:./{base}"], cwd=d, capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def code_diff(old, new):
+    """Report lines for every part whose code differs; empty when all are equal."""
+    a, b = code_parts(old), code_parts(new)
+    lines = []
+    for key in list(a) + [k for k in b if k not in a]:
+        if key not in b:
+            lines.append(f"  {key}: removed")
+        elif key not in a:
+            lines.append(f"  {key}: added")
+        elif a[key] != b[key]:
+            x, y = a[key], b[key]
+            k = next((j for j in range(min(len(x), len(y))) if x[j] != y[j]), min(len(x), len(y)))
+            lines.append(f"  {key}: first difference at code character {k}")
+            lines.append(f"    old: {x[max(0, k - 40):k + 40]}")
+            lines.append(f"    new: {y[max(0, k - 40):k + 40]}")
+    return lines
+
+
 # -- checks ------------------------------------------------------------------
 
 def check(path):
@@ -473,6 +557,12 @@ def main():
     p.add_argument("file")
     p.add_argument("--pin", help="regex on the pin name")
     p.add_argument("--box", help="regex on the instance name or box type")
+
+    p = sub.add_parser("code-equal", help="prove an edit changed only comments and whitespace")
+    p.add_argument("files", nargs="+")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--ref", default="HEAD", help="git revision to compare with (default: HEAD)")
+    g.add_argument("--against", help="compare one file with this file on disk instead")
 
     p = sub.add_parser("check", help="validate structure and encoding")
     p.add_argument("files", nargs="+")
@@ -581,6 +671,32 @@ def main():
         if not boxes:
             print("no FBD boxes" + (" matched" if a.pin or a.box else " in this file"))
         return 0
+
+    if a.cmd == "code-equal":
+        # Exit 1 when code differs, 2 when a file could not be compared at all:
+        # "nothing to compare with" must never read as "identical".
+        if a.against and len(a.files) != 1:
+            print("refused: --against compares exactly one file", file=sys.stderr)
+            return 2
+        status = 0
+        for path in a.files:
+            if a.against:
+                old, base = TcFile(a.against), a.against
+            else:
+                blob = git_blob(path, a.ref)
+                if blob is None:
+                    print(f"CANNOT COMPARE {path}: not in git at {a.ref}")
+                    status = 2
+                    continue
+                old, base = TcFile(path, blob), a.ref
+            new = TcFile(path)
+            lines = code_diff(old, new)
+            n = len(new.parts())
+            print(f"{'DIFFERENT' if lines else 'IDENTICAL'} code: {path} vs {base} ({n} parts)")
+            if lines:
+                print("\n".join(lines))
+                status = max(status, 1)
+        return status
 
     if a.cmd == "check":
         failed = False

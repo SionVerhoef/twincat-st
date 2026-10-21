@@ -451,6 +451,49 @@ with tempfile.TemporaryDirectory() as tmp:
           and "fbLift" not in tcpou("pins", str(fbd), "--box", "^x$").stdout.decode("utf-8"))
     check("'pins' is read-only", fbd.read_bytes() == fbd_before)
 
+    # --- code-equal tells a comment edit from a code edit --------------------
+    # The field script it replaces stripped '//' to end of line even inside a
+    # string, removed whitespace inside strings too, and paired parts by
+    # position, so each of the DIFFERENT cases below could come back IDENTICAL.
+    base_impl = ("(* header (* nested *) still comment *)\n"
+                 "sUrl := 'http://host // path';  // trailing\n"
+                 "sMsg := 'a b';\n"
+                 "nA := nB + 1;\n"
+                 "bOk := bA AND bB;\n")
+    def pou(impl):
+        p = Path(tmp) / f"ce_{abs(hash(impl))}.TcPOU"
+        p.write_text('<?xml version="1.0" encoding="utf-8"?>\n<TcPlcObject>\n'
+                     '  <POU Name="FB_Ce" Id="{00000000-0000-0000-0000-000000000002}">\n'
+                     '    <Declaration><![CDATA[FUNCTION_BLOCK FB_Ce\n]]></Declaration>\n'
+                     f'    <Implementation>\n      <ST><![CDATA[{impl}]]></ST>\n'
+                     '    </Implementation>\n  </POU>\n</TcPlcObject>\n', encoding="utf-8")
+        return p
+    base = pou(base_impl)
+    cases = {
+        "a reworded and a nested comment": (base_impl.replace("header (* nested *)",
+                                            "title (* inner (* deeper *) *)")
+                                            .replace("// trailing", "// [mm/s]"), 0),
+        "re-indentation and line breaks": (base_impl.replace("nA := nB + 1;",
+                                           "    nA :=\n        nB+1 ;"), 0),
+        "a changed value": (base_impl.replace("nB + 1", "nB + 2"), 1),
+        "'//' inside a string literal": (base_impl.replace("// path", "// other"), 1),
+        "whitespace inside a string literal": (base_impl.replace("'a b'", "'ab'"), 1),
+        "a space between two tokens removed": (base_impl.replace("AND bB", "ANDbB"), 1),
+    }
+    for label, (impl, want) in cases.items():
+        r = tcpou("code-equal", str(pou(impl)), "--against", str(base))
+        check(f"code-equal: {label} -> {'IDENTICAL' if want == 0 else 'DIFFERENT'}",
+              r.returncode == want, r.stdout.decode("utf-8", "replace").strip()[:300])
+    check("code-equal --against refuses more than one file",
+          tcpou("code-equal", str(base), str(base), "--against", str(base)).returncode == 2)
+    r = tcpou("code-equal", str(base))
+    check("code-equal on a file git does not know exits 2, not 0",
+          r.returncode == 2, r.stdout.decode("utf-8", "replace").strip()[:200])
+    r = tcpou("code-equal", str(ROOT / "templates" / "FB_Sequence.TcPOU"), "--ref", "HEAD")
+    check("code-equal --ref HEAD reads the committed copy",
+          r.returncode == 0 and b"IDENTICAL" in r.stdout,
+          (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:200])
+
     # --- a missing path is an error message, not a stack trace --------------
 
     absent = str(Path(tmp) / "absent.TcPOU")
