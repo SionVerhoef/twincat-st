@@ -418,6 +418,14 @@ def main():
 
     a = ap.parse_args()
 
+    # Source text is UTF-8 whatever the locale says. On Windows the default is
+    # cp1252, which turned every '²' in a unit comment into 'Â²' on a get/set that
+    # edited nothing, and aborted 'get' on a character cp1252 has no code for.
+    # stdin takes "-sig" because a PowerShell pipe may lead with a BOM.
+    if sys.stdin is not None:
+        sys.stdin.reconfigure(encoding="utf-8-sig")
+    sys.stdout.reconfigure(encoding="utf-8")
+
     if a.cmd == "show":
         f = TcFile(a.file)
         eol = "mixed CRLF+LF" if f.mixed else ("CRLF" if f.eol == "\r\n" else "LF")
@@ -439,7 +447,7 @@ def main():
         return 0
 
     if a.cmd == "set":
-        body = open(a.from_file).read() if a.from_file else sys.stdin.read()
+        body = open(a.from_file, encoding="utf-8-sig").read() if a.from_file else sys.stdin.read()
         f = TcFile(a.file)
         try:
             f.set(a.part, body)
@@ -456,7 +464,7 @@ def main():
 
     if a.cmd == "new":
         ext, content = scaffold(a.type, a.name, a.extends, a.implements, a.shape)
-        path = os.path.join(a.dir, f"{a.name}.{ext}")
+        path = os.path.normpath(os.path.join(a.dir, f"{a.name}.{ext}"))
         if os.path.exists(path):
             print(f"refused: {path} already exists", file=sys.stderr)
             return 1

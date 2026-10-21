@@ -181,7 +181,7 @@ py -3 scripts/tcpou.py check    <file>...                                # valid
 
 - `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
 - **`--shape` picks which interface family the FB gets:** `execute` (the default) declares `bExecute`/`bBusy`/`bDone`, `enable` declares `bEnable`/`bValid`, and `cyclic` declares no command interface at all. Choose the one the block actually is — `Execute` pairs with `Done`, `Enable` pairs with `Valid`, and mixing the two is what rule `X9` reports. `references/behaviour-model.md` is the decision. An FB that **inherits** its command interface from a framework base — the common case in a module-based project — fits none of the three on its own: use `--shape cyclic --extends FB_YourBase`, which gives the `EXTENDS` and adds no pins of its own to clash with the base's.
-- `set` reads stdin when `--from-file` is omitted.
+- `set` reads stdin when `--from-file` is omitted. Prefer `--from-file` from PowerShell: Windows PowerShell 5.1 re-encodes text piped into a native command to ASCII, so `²` arrives as `?` before the script ever sees it. Files and output are UTF-8 whatever the console's code page.
 - Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
 
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.

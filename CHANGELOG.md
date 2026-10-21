@@ -14,6 +14,10 @@ Fixes from the v0.3.0 field test (`evals/field-review-v0.3.0.md`):
 - **A fixed closing line for every code hand-over** in `SKILL.md` step 5: not compiled, and a qualified engineer must review and validate it. The field test found the second half in 1 of 8 hand-overs. `evals/grade.py` now checks for it in the four evals that hand over code.
 - **`tcpou.py check`'s BOM note** now says what was measured: the XAE editor saves a BOM, the new-project wizard does not.
 
+From field use on a 4024 production project:
+
+- **`tcpou.py` reads and writes UTF-8 whatever the locale.** Under Windows' cp1252 default, `set --from-file` turned every `²` in a unit comment into `Â²` on a round trip that edited nothing, and `get` aborted on a character cp1252 cannot encode. `new` also prints its path with one kind of separator.
+
 ## 0.3.0 — 2026-10-16
 
 - **README rewritten** in the order an engineer reads it: why, what it has shown, features,

@@ -387,6 +387,46 @@ with tempfile.TemporaryDirectory() as tmp:
         check(f"get/set is byte-exact: {label}", target.read_bytes() == data,
               "the file changed outside the part that was edited")
 
+    # --- tcpou.py reads and writes UTF-8 whatever the locale says ------------
+    # On Windows the default text encoding is cp1252. 'set --from-file' read a
+    # UTF-8 part file through it, so every '²' in a unit comment came back as
+    # 'Â²' after a get/set that edited nothing, and 'get' aborted on a character
+    # cp1252 cannot encode. The env below forces that locale; on Linux, where
+    # cp1252 is not available as a locale, LC_ALL=C makes it ASCII instead, which
+    # fails the unfixed tool just as surely.
+    import os
+    legacy = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0",
+              "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
+    units = Path(tmp) / "FB_Units.TcPOU"
+    units.write_bytes(
+        b"\xef\xbb\xbf" + '<?xml version="1.0" encoding="utf-8"?>\r\n<TcPlcObject>\r\n'
+        '  <POU Name="FB_Units" Id="{00000000-0000-0000-0000-000000000001}">\r\n'
+        '    <Declaration><![CDATA[FUNCTION_BLOCK FB_Units\r\nVAR\r\n'
+        '    fAccel : LREAL;    // [mm/s²]\r\n    fVolume : LREAL;   // [m³] ── buffer\r\n'
+        'END_VAR\r\n]]></Declaration>\r\n  </POU>\r\n</TcPlcObject>\r\n'.encode("utf-8"))
+    original = units.read_bytes()
+    got = subprocess.run([sys.executable, str(TCPOU), "get", str(units), "--part", "decl"],
+                         capture_output=True, env=legacy)
+    check("'get' writes UTF-8 under a legacy locale",
+          got.returncode == 0 and "[mm/s²]".encode("utf-8") in got.stdout
+          and "──".encode("utf-8") in got.stdout,
+          got.stderr.decode("utf-8", "replace").strip()[-200:])
+    # The part file is what 'get' should have written, so these checks stand on
+    # their own when 'get' is the half that broke. Labels stay ASCII: this runner
+    # prints them to a cp1252 console on Windows.
+    decl = original.decode("utf-8-sig").split("<![CDATA[")[1].split("]]>")[0]
+    part = Path(tmp) / "units_decl.st"
+    part.write_bytes(decl.replace("\r\n", "\n").encode("utf-8"))
+    for how, args, feed in (("--from-file", ["--from-file", str(part)], None),
+                            ("stdin", [], part.read_bytes())):
+        r = subprocess.run([sys.executable, str(TCPOU), "set", str(units), "--part", "decl",
+                            *args], input=feed, capture_output=True, env=legacy)
+        check(f"set via {how} keeps unit comments byte-exact under a legacy locale",
+              r.returncode == 0 and units.read_bytes() == original,
+              r.stderr.decode("utf-8", "replace").strip()[-200:]
+              or repr(units.read_bytes().decode("utf-8", "replace")[150:260]))
+        units.write_bytes(original)
+
     # --- a missing path is an error message, not a stack trace --------------
 
     absent = str(Path(tmp) / "absent.TcPOU")
