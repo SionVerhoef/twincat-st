@@ -66,3 +66,30 @@ minutes. R12 needs XAE open at the same time.
    that heading, and bumps `CHANGELOG.md` from *Unreleased* to the release version with the date.
    The version is the maintainer's call; the field-test gate bead (`twincat-st-1hr`) names 1.0.0.
 4. Tag and publish through `/release`, per the maintainer's release flow.
+
+## Re-run after the fixes
+
+Round 4 ran on `f69dd5b` and is recorded in `evals/field-review-round4.md`: 13 of 15 passed, R1
+and R14 failed, and both fixes are in this repository (beads `twincat-st-ajl` and `twincat-st-gqw`).
+The re-run is these two checks on the fix commit, clone and installed copy as before, with the
+same clean environment. Nothing in it needs XAE.
+
+| # | Run | Expect |
+|---|---|---|
+| R1 | `py -3 tests/run_tests.py` from the clone and from the installed copy | exit 0, `all checks passed`, 116 ok, no `skip` line |
+| R14 | `py -3 scripts/st_review.py <Project_A PLC folder>`, the same 158 files as round 4 | 130 findings, 1 high (the CP8 round 4 judged real), no E3; every other rule's count as in round 4 |
+
+`tcpou.py` is unchanged by the fixes, so R3 and R15, which read `get`'s stdout, stand.
+
+Two notes from round 4 for whoever runs it:
+
+- Set the console code page before Windows PowerShell 5.1 starts (`chcp 437`, then start
+  PowerShell). An agent shell hands its own 65001 to a PowerShell it starts, and a `chcp` inside
+  the script comes too late: round 4's first R3 pass kept `²` intact and had nothing to warn
+  about.
+- The scratch solution holds `FB_FbdProbe` from R10, whose WORD output is assigned to a BOOL. It
+  was never built and probably does not compile: delete it, or fix it, before the next build
+  check on that solution.
+
+Then the release PR: every item under README *Awaiting the re-run* moves to *Verified*, the
+heading goes, and `CHANGELOG.md` gets the version and date (step 3 above).

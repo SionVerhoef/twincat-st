@@ -114,7 +114,7 @@ These govern the pointer and allocation features vendors added beyond the standa
 |---|---|---|---|
 | E1 | High | No dynamic allocation. `__NEW`/`__DELETE` in cyclic code makes execution time unbounded and invites leaks and fragmentation on a controller that must run for months. | ● |
 | E2 | High | No pointer arithmetic to reach adjacent data. Use an array and index it. | ◐ |
-| E3 | High | Only `=` and `<>` are defined on pointers and references. `<`, `>`, `<=`, `>=` depend on undocumented memory layout. | ● |
+| E3 | High | Only `=` and `<>` are defined on pointers. `<`, `>`, `<=`, `>=` depend on undocumented memory layout. A `REFERENCE TO` is dereferenced implicitly, so a comparison through one, like one through `p^`, is on the value and is not E3. | ● |
 
 ## Reading the severities
 

@@ -473,11 +473,13 @@ with tempfile.TemporaryDirectory() as tmp:
     # --- get --out writes the bytes 'get' prints, without a shell in between --
     # Even with a UTF-16 reader, a PowerShell 5.1 '>' is already lost: it decodes
     # the script's UTF-8 through the console code page (IBM437), so '²' lands in
-    # the file as '┬▓'. --out writes UTF-8 bytes itself, no BOM, LF.
+    # the file as '┬▓'. --out writes UTF-8 bytes itself, no BOM, LF. 'get' prints
+    # through a text stream, which writes CRLF on Windows (field round 4, R1), so
+    # the two are compared with line endings normalised.
     out_file = Path(tmp) / "units_out.st"
     r = tcpou("get", str(units), "--part", "decl", "--out", str(out_file), env=legacy)
-    printed = tcpou("get", str(units), "--part", "decl").stdout
-    check("get --out writes UTF-8 with no BOM, byte-identical to what get prints",
+    printed = tcpou("get", str(units), "--part", "decl").stdout.replace(b"\r\n", b"\n")
+    check("get --out writes UTF-8 with no BOM, the text get prints, as LF bytes",
           r.returncode == 0 and out_file.read_bytes() == printed
           and not out_file.read_bytes().startswith(b"\xef\xbb\xbf")
           and "[mm/s²]".encode("utf-8") in out_file.read_bytes(),
@@ -523,8 +525,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check("a file ending in one LF the part lacks round-trips with no diff",
           bare.read_bytes() == bare_original, repr(bare.read_bytes()[-120:]))
     tcpou("set", str(bare), "--part", "impl", stdin=tcpou("get", str(bare)).stdout + b"\n\n")
+    # On Windows 'get' prints CRLF; the probe is read with line endings normalised.
     check("two trailing line breaks are kept: an empty last line stays possible",
-          tcpou("get", str(bare)).stdout == bare_impl.replace("\r\n", "\n").encode() + b"\n\n",
+          tcpou("get", str(bare)).stdout.replace(b"\r\n", b"\n")
+          == bare_impl.replace("\r\n", "\n").encode() + b"\n\n",
           repr(tcpou("get", str(bare)).stdout))
     bare.write_bytes(bare_original)
     # The units decl already ends in one line break; a pipe makes that two.
@@ -597,10 +601,13 @@ with tempfile.TemporaryDirectory() as tmp:
     check("'pins --box' keeps matching on instance and type, and lists no box-less rungs",
           boxed.count("fbConveyor : FB_Conveyor") == 2 and "(coil)" not in boxed
           and "(return)" not in boxed, boxed)
+    # Round 4 drew one FBD network in XAE (evals/field-review-round4.md, R10): an
+    # unwired input, input 0 included, is a BoxTreeOperand with Operand "", and no
+    # BoxTreeTerminator occurred, so "(unwired)" is the only reading for one in Fbd.
     fbd_view = Path(tmp) / "FB_FbdView.TcPOU"
     fbd_view.write_bytes(ld_before.replace(b'"Ld"', b'"Fbd"'))
     out = tcpou("pins", str(fbd_view)).stdout.decode("utf-8")
-    check("in an Fbd network a terminator stays '(unwired)': no FBD example has been checked",
+    check("in an Fbd network a terminator stays '(unwired)': the FBD network drawn in round 4 had none",
           "   in  iEn                            <- (unwired)" in out
           and "left rail" not in out, out)
 

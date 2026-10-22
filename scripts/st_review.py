@@ -804,9 +804,18 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                             unit.impl_line)
 
         # --- E3 ordering comparison on a pointer -------------------------------
+        # Only a bare POINTER TO name is an address. A REFERENCE TO is dereferenced
+        # implicitly and p^ is the value behind it, so 'ref.a <= ref.b', 'refA < refB'
+        # and 'p^.a <= p^.b' compare values. The field reported the first shape as
+        # high, twice, because references counted as pointers and the pattern took
+        # the bare identifier in front of '.fStart'. Each side is now one whole
+        # operand, and only a side that is exactly a pointer's name counts.
+        address_names = {v.name.upper() for v in scope_vars
+                         if re.match(r"^\s*POINTER\s+TO\s+", v.type, re.I)}
+        operand = r"[A-Za-z_]\w*(?:\^|\s*\.\s*[A-Za-z_]\w*|\s*\[[^\]]*\])*"
         for i, line in enumerate(lines):
-            for m in re.finditer(r"\b([A-Za-z_]\w*)\s*(<=|>=|<|>)\s*([A-Za-z_]\w*)", line):
-                if m.group(1).upper() in pointer_names or m.group(3).upper() in pointer_names:
+            for m in re.finditer(rf"(?<![\w.^])({operand})\s*(<=|>=|<|>)\s*({operand})", line):
+                if m.group(1).upper() in address_names or m.group(3).upper() in address_names:
                     add("E3", unit, i + 1, raw_lines[i] if i < len(raw_lines) else line,
                         "only = and <> are defined on pointers; ordering relies on "
                         "undocumented memory layout", unit.impl_line)

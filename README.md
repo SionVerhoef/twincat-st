@@ -190,11 +190,13 @@ twincat-st/
 ## Status
 
 There is no TwinCAT toolchain where this skill is developed. That makes the line between
-verified and not verified the most important fact on this page. Three field rounds on TwinCAT
+verified and not verified the most important fact on this page. Four field rounds on TwinCAT
 3.1.4024.55 drew it ([`evals/field-review-v0.3.0.md`](evals/field-review-v0.3.0.md),
-[`evals/field-review-round3.md`](evals/field-review-round3.md)). The fourth
-([`evals/field-test-round4.md`](evals/field-test-round4.md)) is the release round: the list under
-*Awaiting the release round* is what it has to clear, and the release empties it.
+[`evals/field-review-round3.md`](evals/field-review-round3.md),
+[`evals/field-review-round4.md`](evals/field-review-round4.md)). The fourth was the release
+round ([`evals/field-test-round4.md`](evals/field-test-round4.md)): 13 of its 15 checks passed,
+the two that failed are fixed here, and the list under *Awaiting the re-run* is what the re-run
+of those two checks has to clear before the release.
 
 Whatever is verified here, **code an agent writes for you is still not compiled** unless you build
 it. The field tests built a handful of answers; they say nothing about the next one, and `SKILL.md`
@@ -214,7 +216,10 @@ rule 3 makes the agent say so every time.
   step added to `FB_Sequence` by editing the `.TcPOU` in place, in the first round and again in
   the re-run on the fixed skill.
 - **The fixed reviewer, re-run on the production project it was tuned on,** reports 130
-  findings against 270 before the four false-positive fixes; 59 of them are CP24 and real.
+  findings against 270 before the four false-positive fixes; 59 of them are CP24 and real. The
+  release round read every high-severity finding on that project: one is real (CP8, a measured
+  position compared exactly with its target) and two were E3 false positives on code added since
+  round 2, fixed here (see *Awaiting the re-run*).
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
 - Every one of the 27 reviewer rules fires on a deliberately defective fixture, and the reviewer
   stays silent on a second fixture collecting every shape that was once a false positive.
@@ -223,10 +228,24 @@ rule 3 makes the agent say so every time.
   files from ten public TwinCAT projects since 0.2.0.
 - The two scripts check each other: tests scaffold an FB with `tcpou.py` and review it with
   `st_review.py`. The shipped templates pass the reviewer.
-- **`code-equal` holds on a real project.** Over the 1,352 unmodified source files of a
-  production project against `HEAD`, 1,351 came back IDENTICAL. The one false DIFFERENT, a CR
-  kept inside a multi-line string literal under `core.autocrlf=true`, is fixed here and awaits a
-  re-run.
+- **`code-equal` holds on a real project.** Over the 1,353 unmodified source files of a
+  production project against `HEAD` under `core.autocrlf=true`: 1,353 IDENTICAL, 0 DIFFERENT,
+  0 CANNOT COMPARE. Round 3's one false DIFFERENT, a CR kept inside a multi-line string literal,
+  was among them.
+- **`tcpou.py` moves a part safely from Windows PowerShell 5.1 and cmd.exe.** `get --out` then
+  `set --from-file` round-trips a part with `²` with no diff; a UTF-16 file from `>` is decoded,
+  and the `┬▓` it carries is named in one warning line; one trailing line break from a pipe or an
+  editor leaves no diff; a file that is neither UTF-8 nor UTF-16 with a BOM is refused in one
+  line with the target unchanged; `get` into a reader that stops early exits quietly.
+- **`tcpou.py pins` matches XAE's own PLCopen export.** Six LD callers of a 4024 production
+  project, 56 boxes and 1,076 pins, 0 mismatches: the rung input, negations, the owning method,
+  and the coil and RETURN rungs print as the export has them. One FBD network drawn in XAE
+  matched its export on every pin; XAE stores an unwired FBD input, input 0 included, as an
+  empty `BoxTreeOperand`, so `(unwired)` is right there.
+- **`xae_build.ps1`** built the scratch TcUnit solution with no XAE open (`Build complete -- 0
+  errors, 0 warnings`, exit 0). With the same solution open in XAE it warned first, that XAE
+  asked once to reload the `.xti`, and Yes was the end of it. A wrong `-PublicAssemblies` printed
+  one line and left no XAE running.
 - Agent behaviour in A/B evals on Opus and Haiku, as summarised under *Why*.
 
 **Not supported**
@@ -240,25 +259,21 @@ rule 3 makes the agent say so every time.
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
 
-**Awaiting the release round** (`evals/field-test-round4.md`)
+**Awaiting the re-run** (`evals/field-test-round4.md`, *Re-run after the fixes*)
 
-Each of these has a test in this repository and none has been re-run on the TwinCAT PC:
+The release round failed two of its fifteen checks. Both are fixed here with a test, and neither
+fix has been run on the TwinCAT PC:
 
-- The round-3 `tcpou.py` fixes: UTF-16 part files and `get --out`, the trailing line break a
-  pipe or an editor appends, and `code-equal` under `core.autocrlf` (1,351 of 1,352 files were
-  IDENTICAL before the fix; the release round expects 1,352).
-- `tcpou.py pins` on LD. Compared with XAE's own PLCopen export of six LD callers on one 4024
-  project (56 boxes, 1,066 pins), operands and order matched and four things did not: the rung
-  input, negations, the owning method, and coil and RETURN rungs. The shapes behind all four were
-  confirmed in the XAE editor and the fixes are here; the fixed output has not been compared with
-  the export yet. No FBD network has been checked. The fixtures are written to that layout, not
-  exported from XAE.
-- `xae_build.ps1` built a production project and a scratch TcUnit project on 4024.55 in the
-  field, but runs in no CI here, and its warning for a solution already open in XAE is new.
-- The reviewer's 130 findings on the production project have not been classified by severity;
-  the release round expects no high-severity false positive.
+- **The test suite on Windows** (R1). Two checks compared `get`'s stdout with LF bytes, and on
+  Windows a text stream prints CRLF: 114 ok, 2 failed, from the clone and the installed copy
+  alike. They now compare with line endings normalised, `tcpou.py` is unchanged, and CI runs the
+  suite on `windows-latest` as well as `ubuntu-latest`. The re-run expects 116 ok.
+- **No high-severity false positive** (R14). The round found 132 findings on the production
+  project, 3 high: one real (CP8) and two E3 on `ist_Zone.fEnd <= ist_Zone.fStart`, two LREAL
+  members read through a `REFERENCE TO`. E3 now takes only `POINTER TO` names and only a whole
+  identifier as an operand. The re-run expects 130 findings and one high.
 
-After the round, every item here moves to *Verified* or is taken out of the skill.
+After the re-run, both items move to *Verified*, this heading goes, and the release is tagged.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.

@@ -87,3 +87,17 @@ jobs:
           for d in examples/*/; do
             [ -f "$d/LICENSE" ] || { echo "missing LICENSE in $d"; exit 1; }
           done
+
+  # The same suite on Windows, where the scripts are actually used: stdout is a
+  # text stream there and writes CRLF. Field round 4 found two checks that passed
+  # only on ubuntu-latest (evals/field-review-round4.md, R1). The other steps
+  # above are shell one-liners and stay on Linux.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: every rule still detects its defect, on Windows
+        run: python tests/run_tests.py
