@@ -14,7 +14,7 @@ Subcommands:
   add-method, add-property
             Append an empty METHOD or PROPERTY to a POU or interface
   register  Add a file to a .plcproj so it actually compiles
-  pins      List the pin wiring of every FBD box (read-only)
+  pins      List the pin wiring of every FBD/LD box (read-only)
   code-equal
             Prove an edit changed only comments and whitespace
   check     Validate structure, encoding and line endings
@@ -103,7 +103,17 @@ class TcFile:
         span = self.parts().get(key)
         if span is None:
             raise KeyError(key)
-        body = body.replace("\r\n", "\n").replace("\n", self.eol)
+        body = body.replace("\r\n", "\n")
+        # A pipe (PowerShell's `Get-Content d.st | set`) and most editors append one
+        # line break after the last line, while `get` prints the part exactly, so
+        # the round trip grew an empty line before ]]> on every edit. One trailing
+        # line break more than the part has now is that artefact and is dropped;
+        # any other count is stored as sent, so a wanted empty last line stays
+        # possible by sending two.
+        old = self.text[span[0]:span[1]].replace("\r\n", "\n")
+        if _trailing(body) == _trailing(old) + 1:
+            body = body[:-1]
+        body = body.replace("\n", self.eol)
         self.text = self.text[:span[0]] + body + self.text[span[1]:]
 
     # -- output --------------------------------------------------------------
@@ -113,6 +123,33 @@ class TcFile:
         if self.has_bom:
             data = BOM + data
         open(self.path, "wb").write(data)
+
+
+def _trailing(text):
+    """How many line breaks `text` ends with."""
+    return len(text) - len(text.rstrip("\n"))
+
+
+def decode_source(data, what):
+    """Text of an incoming source part, decoded by its BOM.
+
+    UTF-8 with or without a BOM, and UTF-16 LE or BE with one. Windows PowerShell
+    5.1's `>` is Out-File and writes UTF-16LE with a BOM, so a body saved with
+    `get > d.st` arrived here as 0xFF 0xFE and `set` died in a traceback. Bytes
+    that are none of these are refused by name rather than guessed at.
+    """
+    try:
+        if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+            return data.decode("utf-16")       # the codec reads the BOM and drops it
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError(f"{what}: not UTF-8 or UTF-16 with a BOM") from None
+
+
+# Fingerprints of UTF-8 read through the wrong code page: '²' and '³' become 'Â²'/'Â³'
+# under cp1252 and '┬▓'/'┬│' under the OEM page a PowerShell 5.1 console uses. A
+# body carrying one the part did not have before was mangled on its way here.
+MOJIBAKE = ("\u00c2\u00b2", "\u00c2\u00b3", "\u252c\u2593", "\u252c\u2502")
 
 
 # -- scaffolding -------------------------------------------------------------
@@ -318,59 +355,180 @@ def register(plcproj, files):
     return added
 
 
-# -- FBD wiring --------------------------------------------------------------
+# -- FBD/LD wiring -----------------------------------------------------------
+
+# Flags bit 0 on an operand: XAE's PLCopen export marks it negated="true", as a
+# negated contact and/or pin. On one 4024 LD project every Flags=1 operand was shown
+# negated and no Flags=0 operand was.
+NEGATED = 1
+# Flags 8 was seen only on the "???" output operand of a conditional RETURN rung; it
+# is not a negation. See _rungs for the inference.
+RETURN_MARK = 8
+
 
 def _q(text):
     return (text or "").strip().strip('"')
 
 
-def _operand(item):
-    """Text of what feeds one input pin: a symbol, or a nested operator box."""
+def _flags(el):
+    """The Flags value of an operand element, 0 when it carries none."""
+    v = _q(el.findtext("o[@n='Flags']/v[@n='Flags']"))
+    return int(v.rstrip("L")) if v else 0
+
+
+def _named(el):
+    """An operand's symbol, prefixed NOT when its Flags say XAE shows it negated."""
+    name = _q(el.findtext("v[@n='Operand']"))
+    if not name:
+        return ""
+    return f"NOT {name}" if _flags(el) & NEGATED else name
+
+
+def _operand(item, ld=False, rail=False):
+    """Text of what feeds one input pin: a symbol, NOT symbol, or a nested operator box.
+
+    `rail` says this is the first input of the leftmost box on an LD rung. There a
+    BoxTreeTerminator is the connection to the left power rail - TRUE whenever the
+    rung is energised - and not an unwired pin; XAE's PLCopen export draws exactly
+    that. Measured at InputItems[0] of 48 boxes on one 4024 LD project. No FBD
+    terminator has been seen, so in an Fbd network it stays "(unwired)".
+    """
+    if item.get("t") == "BoxTreeTerminator":
+        return "(rung: left rail, TRUE)" if ld and rail else "(unwired)"
     btype = item.findtext("v[@n='BoxType']")
     if btype is not None:
         kids = item.find("l2[@n='InputItems']")
-        args = [_operand(k) for k in kids] if kids is not None else []
+        args = ([_operand(k, ld, rail and i == 0) for i, k in enumerate(kids)]
+                if kids is not None else [])
         return f"{_q(btype)}({', '.join(args)})"
     op = item.find("o[@n='Operand']")
-    name = _q((op if op is not None else item).findtext("v[@n='Operand']"))
-    return name or "(unwired)"
+    return _named(op if op is not None else item) or "(unwired)"
 
 
-def pins(path, pin_re=None, box_re=None):
-    """Each FBD box's pin wiring: (instance, box type, [(dir, pin, operand)]).
+def _pin_names(box, param):
+    names = box.find(f"o[@n='{param}']/l2[@n='Names']")
+    return [] if names is None else [_q(n.text) for n in names]
 
-    Which variable feeds which pin of a box lives in the network XML, so a text
-    search for 'ibEmpty :=' finds nothing in an FBD caller. Layout as XAE 4024
-    writes it: a box carries <v n="BoxType"> and <o n="Instance">; its inputs are
-    the <l2 n="InputItems"> children, in the order of InputParam/Names; outputs
-    are OutputItems/OutputItems in the order of OutputParam/Names. An operator
-    such as OR feeding a pin is a nested box with no names of its own, so it is
-    printed as a call and not listed separately. Unwired outputs are left out.
-    """
-    root = ET.fromstring(TcFile(path).text)
-    boxes = []
-    for box in root.iter():
-        btype = box.find("v[@n='BoxType']")
-        in_names = box.find("o[@n='InputParam']/l2[@n='Names']")
-        out_names = box.find("o[@n='OutputParam']/l2[@n='Names']")
-        if btype is None or (in_names is None and out_names is None):
-            continue
+
+def _has_pins(el):
+    """True for an instance or function box: it has named pins to list on its own."""
+    return el.findtext("v[@n='BoxType']") is not None and bool(
+        _pin_names(el, "InputParam") or _pin_names(el, "OutputParam"))
+
+
+def _bodies(root):
+    """(owner, <Implementation>) for every part, the owner named as `show` names it."""
+    found = []
+
+    def walk(el, names):
+        for child in el:
+            if child.tag in CONTAINERS:
+                walk(child, [] if names is None else names + [child.get("Name", "")])
+            elif child.tag == "Implementation" and names is not None:
+                found.append((".".join(n for n in names if n), child))
+            else:
+                walk(child, names)
+
+    walk(root, None)
+    return found
+
+
+def _boxes(network, owner, ld, pin_re, box_re):
+    """Every instance or function box in one network, with its pin wiring."""
+    out = []
+    for box in network.iter():
+        if not _has_pins(box):
+            continue            # an operator (AND, OR, ...) is printed inline where it feeds a pin
+        btype = _q(box.findtext("v[@n='BoxType']"))
         inst = _q(box.findtext("o[@n='Instance']/v[@n='Operand']"))
-        if box_re and not (box_re.search(inst) or box_re.search(_q(btype.text))):
+        if box_re and not (box_re.search(inst) or box_re.search(btype)):
             continue
         wires = []
         ins = box.find("l2[@n='InputItems']")
-        if in_names is not None and ins is not None:
-            wires += [("in", _q(n.text), _operand(i)) for n, i in zip(in_names, ins)]
+        if ins is not None:
+            wires += [("in", n, _operand(i, ld, k == 0))
+                      for k, (n, i) in enumerate(zip(_pin_names(box, "InputParam"), ins))]
         outs = box.find("o[@n='OutputItems']/l2[@n='OutputItems']")
-        if out_names is not None and outs is not None:
-            wires += [("out", _q(n.text), _q(o.findtext("v[@n='Operand']")))
-                      for n, o in zip(out_names, outs)
-                      if _q(o.findtext("v[@n='Operand']"))]
+        if outs is not None:
+            # An unwired output is an empty operand, or a bare <n /> - skipped either way.
+            wires += [("out", n, _named(o))
+                      for n, o in zip(_pin_names(box, "OutputParam"), outs) if _named(o)]
         wires = [w for w in wires if not pin_re or pin_re.search(w[1])]
         if wires:
-            boxes.append((inst, _q(btype.text), wires))
-    return boxes
+            out.append((owner, f"{inst or '(no instance)'} : {btype}", wires))
+    return out
+
+
+def _rungs(network, owner, ld, pin_re, box_re):
+    """Coil and RETURN rungs: a BoxTreeAssign whose RValue holds no instance box.
+
+    Both are stored as NetworkItems of cet="BoxTreeAssign". A coil rung names the
+    variable it drives in OutputItems (Flags 0) and carries the contacts as RValue,
+    nested operator boxes such as AND(OR(a, b, c), NOT d); XAE exports it as
+    contacts feeding a <coil>. A conditional RETURN rung has one OutputItems operand
+    "???" with Flags 8 and the condition as RValue; XAE exports it as a contact
+    feeding a <return>. Reading "??? with Flags 8" as RETURN is inferred from XAE's
+    PLCopen export of 18 such rungs on one 4024 project, every one a single negated
+    operand. It is not yet confirmed on a freshly drawn example (field round 4).
+    A rung whose RValue is an instance box is not listed here: the box lists itself.
+    """
+    out = []
+    if box_re:
+        return out          # --box asks for a box, and these rungs have none
+    for items in network.iter("l2"):
+        if items.get("n") != "NetworkItems":
+            continue
+        for assign in items:
+            rvalue = assign.find("o[@n='RValue']")
+            if rvalue is None or any(_has_pins(el) for el in rvalue.iter()):
+                continue
+            cond = _operand(rvalue, ld, True)
+            for o in assign.iterfind("o[@n='OutputItems']/l2[@n='OutputItems']/o"):
+                name = _q(o.findtext("v[@n='Operand']"))
+                if name == "???" and _flags(o) & RETURN_MARK:
+                    if not pin_re:
+                        out.append((owner, f"(return) <- {cond}", []))
+                elif not pin_re or pin_re.search(name):
+                    out.append((owner, f"(coil) {_named(o) or '(unwired)'} <- {cond}", []))
+    return out
+
+
+def pins(path, pin_re=None, box_re=None):
+    """Pin wiring of every FBD/LD box, plus the coil and RETURN rungs between them.
+
+    Returns ([(owner, header, [(dir, pin, operand)])], [owner of each CFC body]).
+    Which variable feeds which pin of a box lives in the network XML, so a text
+    search for 'ibEmpty :=' finds nothing in a graphical caller. Layout as XAE 4024
+    writes an <NWL> body (FBD, LD and IL share it; <v n="DefaultViewMode"> says
+    which): a box carries <v n="BoxType"> and <o n="Instance">; its inputs are the
+    <l2 n="InputItems"> children, in the order of InputParam/Names; outputs are
+    OutputItems/OutputItems in the order of OutputParam/Names. An operator such as
+    OR feeding a pin is a nested box with no names of its own, so it is printed as
+    a call and not listed separately. Unwired outputs are left out. The owner is
+    the method, action or accessor the network lives in, "" for the POU body - on
+    one project every caller's networks sat in three methods and the body was
+    empty, so a box called in two methods read as a duplicate without it.
+
+    A <CFC> body is a different schema (CFCImplementationObject, not a network
+    list) that this does not read; its owners are returned so the caller can say
+    so instead of printing nothing.
+    """
+    root = ET.fromstring(TcFile(path).text)
+    entries, cfc = [], []
+    for owner, body in _bodies(root):
+        if body.find("CFC") is not None:
+            cfc.append(owner)
+        nwl = body.find("NWL")
+        if nwl is None:
+            continue
+        ld = _q(nwl.findtext(".//v[@n='DefaultViewMode']")) == "Ld"
+        for lst in nwl.iter("l2"):
+            if lst.get("n") != "NetworkList":
+                continue
+            for network in lst:
+                entries += _boxes(network, owner, ld, pin_re, box_re)
+                entries += _rungs(network, owner, ld, pin_re, box_re)
+    return entries, cfc
 
 
 # -- code-equal --------------------------------------------------------------
@@ -425,7 +583,12 @@ def code_only(src):
 
 
 def code_parts(tc):
-    return {k: code_only(tc.text[s:e]) for k, (s, e) in tc.parts().items()}
+    # Line endings are compared as LF on both sides, inside string literals too.
+    # With core.autocrlf=true (the Git for Windows default) the HEAD blob has LF and
+    # the working copy CRLF; whitespace between tokens absorbed that, but a
+    # {attribute 'TcLinkTo' := '...'} whose value spans lines kept the CR inside
+    # the literal, and one untouched file in 1352 came back DIFFERENT.
+    return {k: code_only(tc.text[s:e].replace("\r\n", "\n")) for k, (s, e) in tc.parts().items()}
 
 
 def git_blob(path, rev):
@@ -514,11 +677,14 @@ def main():
     p = sub.add_parser("get", help="print one part's source")
     p.add_argument("file")
     p.add_argument("--part", default="impl", help="e.g. decl, impl, Reset:impl, Value.Get:impl")
+    p.add_argument("--out", help="write the part to this file instead of stdout: UTF-8, no BOM, "
+                                 "LF. From Windows PowerShell 5.1 use this, never '>' or a pipe")
 
     p = sub.add_parser("set", help="replace one part's source")
     p.add_argument("file")
     p.add_argument("--part", required=True)
-    p.add_argument("--from-file", help="read new source from this file (default: stdin)")
+    p.add_argument("--from-file", help="read new source from this file (default: stdin); "
+                                       "UTF-8 with or without a BOM, or UTF-16 with one")
 
     p = sub.add_parser("new", help="scaffold a new object")
     p.add_argument("--type", required=True, choices=["fb", "prg", "fun", "dut", "gvl"])
@@ -553,7 +719,7 @@ def main():
     p = sub.add_parser("reguid", help="give every object in a file a fresh Id GUID")
     p.add_argument("files", nargs="+")
 
-    p = sub.add_parser("pins", help="list the pin wiring of every FBD box (read-only)")
+    p = sub.add_parser("pins", help="list the pin wiring of every FBD/LD box (read-only)")
     p.add_argument("file")
     p.add_argument("--pin", help="regex on the pin name")
     p.add_argument("--box", help="regex on the instance name or box type")
@@ -572,10 +738,10 @@ def main():
     # Source text is UTF-8 whatever the locale says. On Windows the default is
     # cp1252, which turned every '²' in a unit comment into 'Â²' on a get/set that
     # edited nothing, and aborted 'get' on a character cp1252 has no code for.
-    # stdin takes "-sig" because a PowerShell pipe may lead with a BOM.
-    if sys.stdin is not None:
-        sys.stdin.reconfigure(encoding="utf-8-sig")
-    sys.stdout.reconfigure(encoding="utf-8")
+    # `set` reads its source as bytes and decodes by BOM (decode_source); stderr
+    # is UTF-8 too, so a warning that quotes the text survives a redirect.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")
 
     if a.cmd == "show":
         f = TcFile(a.file)
@@ -590,7 +756,14 @@ def main():
 
     if a.cmd == "get":
         try:
-            sys.stdout.write(TcFile(a.file).get(a.part))
+            text = TcFile(a.file).get(a.part)
+            if a.out:
+                # Bytes, not a text stream: PowerShell 5.1's '>' decodes the script's
+                # UTF-8 output through the console code page before writing it, so
+                # '²' landed in the file as '┬▓' and no reader could repair it.
+                open(a.out, "wb").write(text.encode("utf-8"))
+            else:
+                sys.stdout.write(text)
         except KeyError:
             print(f"no such part: {a.part}", file=sys.stderr)
             print("available: " + ", ".join(TcFile(a.file).parts()), file=sys.stderr)
@@ -598,9 +771,19 @@ def main():
         return 0
 
     if a.cmd == "set":
-        body = open(a.from_file, encoding="utf-8-sig").read() if a.from_file else sys.stdin.read()
+        if a.from_file:
+            data, what = open(a.from_file, "rb").read(), a.from_file
+        else:
+            data, what = sys.stdin.buffer.read(), "stdin"
         f = TcFile(a.file)
         try:
+            body = decode_source(data, what)
+            garbled = [m for m in MOJIBAKE if m in body and m not in f.get(a.part)]
+            if garbled:
+                print(f"warning: the new text contains {', '.join(garbled)} and the current "
+                      f"part does not: UTF-8 read through cp1252 or an OEM code page on the "
+                      f"way here? ('get --out' and 'set --from-file' avoid that)",
+                      file=sys.stderr)
             f.set(a.part, body)
         except KeyError:
             print(f"no such part: {a.part}", file=sys.stderr)
@@ -663,13 +846,20 @@ def main():
     if a.cmd == "pins":
         pin_re = a.pin and re.compile(a.pin, re.IGNORECASE)
         box_re = a.box and re.compile(a.box, re.IGNORECASE)
-        boxes = pins(a.file, pin_re, box_re)
-        for inst, btype, wires in boxes:
-            print(f"{inst or '(no instance)'} : {btype}")
+        entries, cfc = pins(a.file, pin_re, box_re)
+        for owner, head, wires in entries:
+            print(head + (f"   [{owner}]" if owner else ""))
             for d, pin, operand in wires:
                 print(f"   {d:<3} {pin:<30} {'<-' if d == 'in' else '->'} {operand}")
-        if not boxes:
-            print("no FBD boxes" + (" matched" if a.pin or a.box else " in this file"))
+        if cfc:
+            # Exit 2 like code-equal's CANNOT COMPARE: an empty listing of a body this
+            # tool cannot read must not look like "nothing wired".
+            for owner in cfc:
+                where = f" ({owner})" if owner else ""
+                print(f"CFC body{where}: pins reads FBD/LD networks only")
+            return 2
+        if not entries:
+            print("no FBD/LD boxes" + (" matched" if a.pin or a.box else " in this file"))
         return 0
 
     if a.cmd == "code-equal":
@@ -722,6 +912,16 @@ if __name__ == "__main__":
     except FileNotFoundError as exc:
         print(f"  ! no such path: {exc.filename}", file=sys.stderr)
         sys.exit(1)
+    except BrokenPipeError:
+        # `get ... | head` closed the pipe early: the reader's choice, not an error
+        # ("! None: Broken pipe" is what the OSError branch made of it). Python
+        # flushes stdout again at exit and would raise a second time, so point it
+        # at a sink first.
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except OSError:
+            pass
+        sys.exit(0)
     except OSError as exc:
         print(f"  ! {exc.filename}: {exc.strerror}", file=sys.stderr)
         sys.exit(1)

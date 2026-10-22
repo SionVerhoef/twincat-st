@@ -96,17 +96,17 @@ traced to its source.
 |---|---|---|---|---|
 | CP8 | high | 1 | **Real defect.** A measured actual position, latched once, compared with `=` against a target. The in-position flag it feeds is practically never TRUE. The same POU checks every other position against a tolerance. | still fires |
 | CP8 | high | 1 | **False positive.** Change detection: `fTarget` is latched from `fSetpoint` on entering the move step, and `fTarget <> fSetpoint` asks "has the setpoint changed since then?". Exact compare is correct there; a tolerance would hide a small change. | fixed |
-| CP24 | medium | 124 | **False positive.** 19 equipment-module POUs with a CFC body (`<Implementation><NWL>`). Every FB instance, output and struct used in the network is reported unused. | fixed |
+| CP24 | medium | 124 | **False positive.** 19 equipment-module POUs with an LD body (`<Implementation><NWL>`; this review called them CFC, round 3 found no CFC POU in the project). Every FB instance, output and struct used in the network is reported unused. | fixed |
 | CP24 | medium | 19 | **False positive.** Method parameters in an interface (`.TcIO`). A method with no body never "uses" its parameters. | fixed |
 | CP24 | medium | 51 | **Real (dead code).** Unused constants, inputs and locals; debug variables; two outputs never written; timers called but never read; a variable whose only use is in a method body wrapped in `(* … *)`. | still fires |
-| CP23 | medium | 22 | **Style noise.** FBs with 11 to 45 pins, on purpose: modules expose their pins to a CFC caller. | unchanged |
+| CP23 | medium | 22 | **Style noise.** FBs with 11 to 45 pins, on purpose: modules expose their pins to an LD caller. | unchanged |
 | X3 | medium | 17 | **Style noise.** `CASE` on a qualified-only enum without `ELSE`. The project's template has none, and per-step timeouts catch a step that hangs. | unchanged |
 | X3 | medium | 2 | **False positive.** A secondary `CASE` on the state variable that only picks a value per step. A missing label keeps the last value. | fixed |
 | X7 | medium | 2 | **False positive.** The same shape. The main `CASE` on the same variable has the error step. | fixed |
-| X6 | medium | 3 | **Style noise.** `REFERENCE TO` inputs bound at every call: two in ST calls, one wired in CFC. | unchanged |
+| X6 | medium | 3 | **Style noise.** `REFERENCE TO` inputs bound at every call: two in ST calls, one wired in LD. | unchanged |
 | X6 | low | 28 | **Style noise.** Method parameters; the rule's own message says the call site binds them. | unchanged |
 
-Totals: 53 real, 148 false positive and 69 style noise. The CFC false positive was also found
+Totals: 53 real, 148 false positive and 69 style noise. The LD false positive was also found
 independently by the B5 agent.
 
 **The fixes.** Each false-positive class has a synthetic repro, with no customer code, in
@@ -250,7 +250,7 @@ not a second stop, and the code says so.
 Filed under `twincat-st-1hr` (the field-test bead):
 
 1. `.1` CP8 fires on change detection against a latched copy -- fixed.
-2. `.2` CP24 ignores CFC bodies -- fixed.
+2. `.2` CP24 ignores graphical (LD) bodies -- fixed.
 3. `.3` CP24 on interface method parameters -- fixed.
 4. `.4` X7 and X3 on a secondary `CASE` over the state variable -- fixed; integer error step
    documented.

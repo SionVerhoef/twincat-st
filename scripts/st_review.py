@@ -302,10 +302,11 @@ def parse_xml(path: Path) -> SourceFile:
             impl_el = el.find("Implementation/ST")
             decl = decl_el.text or "" if decl_el is not None else ""
             impl = impl_el.text or "" if impl_el is not None else ""
-            # A CFC body is <Implementation><NWL>, with each operand named in the
+            # A graphical body is <Implementation><NWL> (the FBD/LD/IL network list;
+            # a CFC body is <Implementation><CFC>), with each operand named in the
             # network XML ('<v n="Operand">"obReady"</v>'). Not ST, so no rule may
             # scan it as code, but CP24 has to see its names: on a real project
-            # 124 of the "unused" findings were variables wired in a CFC network.
+            # 124 of the "unused" findings were variables wired in an LD network.
             # Every value in the subtree is taken, not only Operand entries, so a
             # schema detail this script does not know cannot bring the noise back.
             body_el = el.find("Implementation")

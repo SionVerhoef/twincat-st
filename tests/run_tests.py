@@ -20,8 +20,17 @@ defect this skill leads with. This is the other half of the gate:
     tools disagreed for the skill's whole life, and only a human reading both
     noticed, because nothing here ever reviewed a scaffold
   * a get/set round trip through tcpou.py is byte-exact, including on a file
-    whose line endings are mixed
+    whose line endings are mixed, under a legacy locale, through a UTF-16 part
+    file, and with the one trailing line break a pipe or an editor appends
+  * pins reads an LD network as XAE's own PLCopen export shows it: rail input,
+    negations, the owning method, coil and RETURN rungs - and refuses a CFC body
+  * code-equal is not fooled by CRLF inside a string literal (core.autocrlf)
   * a missing path is reported rather than raising
+
+Every subprocess starts without PYTHONIOENCODING and PYTHONUTF8 unless a test sets
+them on purpose: the agent shell on the field-test PC inherits
+PYTHONIOENCODING=utf-8:surrogateescape from its host app, which hid every encoding
+bug a user's console would show.
 
 Standard library only, like everything else here.
 
@@ -29,6 +38,7 @@ Standard library only, like everything else here.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -55,19 +65,22 @@ def check(label, ok, detail=""):
         failures.append(label)
 
 
+CLEAN_ENV = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+
+
 def review(target, *flags):
     out = subprocess.run(
         [sys.executable, str(REVIEW), str(target), "--json", *flags],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=CLEAN_ENV,
     )
     if not out.stdout.strip():
         raise SystemExit(f"reviewer produced no output for {target}:\n{out.stderr}")
     return json.loads(out.stdout)["findings"]
 
 
-def tcpou(*args, stdin=None):
+def tcpou(*args, stdin=None, env=None):
     return subprocess.run([sys.executable, str(TCPOU), *args],
-                          input=stdin, capture_output=True)
+                          input=stdin, capture_output=True, env=env or CLEAN_ENV)
 
 
 # --- every rule still detects its defect ------------------------------------
@@ -136,19 +149,20 @@ x11 = sorted(f["line"] for f in review(FIXTURES / "positive")
 check("X11 fires on a level Execute in the call and on the member", x11 == [18, 19],
       repr(x11))
 
-# --- a CFC body's operands are uses, and only its operands ------------------
-# CP24 read only <Implementation><ST>, so every variable wired in a CFC network
-# came back unused: 124 findings in 19 POUs on a real project. The negative
-# fixture FB_CfcBody holds that side. Skipping graphical POUs outright would be
-# the lazy fix, so a variable the network never names must still be reported.
+# --- a graphical body's operands are uses, and only its operands -------------
+# CP24 read only <Implementation><ST>, so every variable wired in an LD network
+# (<Implementation><NWL>; the field test first called these CFC) came back
+# unused: 124 findings in 19 POUs on a real project. The negative fixture
+# FB_LdBody holds that side. Skipping graphical POUs outright would be the lazy
+# fix, so a variable the network never names must still be reported.
 
-cfc = (FIXTURES / "negative" / "FB_CfcBody.TcPOU").read_text(encoding="utf-8-sig")
+ld_body = (FIXTURES / "negative" / "FB_LdBody.TcPOU").read_text(encoding="utf-8-sig")
 with tempfile.TemporaryDirectory() as tmp:
-    dead = Path(tmp) / "FB_CfcDead.TcPOU"
-    dead.write_text(cfc.replace("    stCfg    : ST_Cfg;",
-                                "    stCfg    : ST_Cfg;\n    nSpare   : INT;"), encoding="utf-8")
+    dead = Path(tmp) / "FB_LdDead.TcPOU"
+    dead.write_text(ld_body.replace("    stCfg    : ST_Cfg;",
+                                    "    stCfg    : ST_Cfg;\n    nSpare   : INT;"), encoding="utf-8")
     unused = [f["source"] for f in review(dead) if f["rule"] == "CP24"]
-    check("CP24 still reports a variable a CFC network never names",
+    check("CP24 still reports a variable an LD network never names",
           unused == ["nSpare : INT"], repr(unused))
 
 # --- code inside an <Action> is code ----------------------------------------
@@ -394,8 +408,7 @@ with tempfile.TemporaryDirectory() as tmp:
     # cp1252 cannot encode. The env below forces that locale; on Linux, where
     # cp1252 is not available as a locale, LC_ALL=C makes it ASCII instead, which
     # fails the unfixed tool just as surely.
-    import os
-    legacy = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0",
+    legacy = {**CLEAN_ENV, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0",
               "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
     units = Path(tmp) / "FB_Units.TcPOU"
     units.write_bytes(
@@ -427,6 +440,99 @@ with tempfile.TemporaryDirectory() as tmp:
               or repr(units.read_bytes().decode("utf-8", "replace")[150:260]))
         units.write_bytes(original)
 
+    # --- set decodes its source by BOM: UTF-8, or UTF-16 with one ------------
+    # Windows PowerShell 5.1's '>' is Out-File and writes UTF-16LE with a BOM, so
+    # 'get > d.st' followed by 'set --from-file d.st' died in a UnicodeDecodeError
+    # traceback. Bytes that are neither are refused in one line, by name.
+    for label, enc in (("UTF-16LE", "utf-16-le"), ("UTF-16BE", "utf-16-be")):
+        bom = b"\xff\xfe" if enc == "utf-16-le" else b"\xfe\xff"
+        part.write_bytes(bom + decl.replace("\r\n", "\n").encode(enc))
+        for how, args, feed in (("--from-file", ["--from-file", str(part)], None),
+                                ("stdin", [], part.read_bytes())):
+            r = tcpou("set", str(units), "--part", "decl", *args, stdin=feed, env=legacy)
+            check(f"set via {how} round-trips a {label} body with a BOM byte-exact",
+                  r.returncode == 0 and units.read_bytes() == original,
+                  r.stderr.decode("utf-8", "replace").strip()[-200:])
+            units.write_bytes(original)
+    bad = Path(tmp) / "latin1.st"
+    bad.write_bytes(b"// [mm/s\xb2]\n")                   # cp1252, no BOM
+    torn = Path(tmp) / "torn.st"
+    torn.write_bytes(b"\xff\xfe\x00\xd8\x80\xff")        # a UTF-16 BOM, then a lone surrogate
+    for src in (bad, torn):
+        for how, args, feed in (("--from-file", ["--from-file", str(src)], None),
+                                ("stdin", [], src.read_bytes())):
+            r = tcpou("set", str(units), "--part", "decl", *args, stdin=feed, env=legacy)
+            err = r.stderr.decode("utf-8", "replace")
+            check(f"set via {how} refuses {src.name} (not UTF-8 or UTF-16 with a BOM) in one line",
+                  r.returncode == 1 and "Traceback" not in err
+                  and len(err.strip().splitlines()) == 1
+                  and "not UTF-8 or UTF-16 with a BOM" in err
+                  and (how == "stdin" or str(src) in err) and units.read_bytes() == original,
+                  err.strip()[-300:])
+
+    # --- get --out writes the bytes 'get' prints, without a shell in between --
+    # Even with a UTF-16 reader, a PowerShell 5.1 '>' is already lost: it decodes
+    # the script's UTF-8 through the console code page (IBM437), so '²' lands in
+    # the file as '┬▓'. --out writes UTF-8 bytes itself, no BOM, LF.
+    out_file = Path(tmp) / "units_out.st"
+    r = tcpou("get", str(units), "--part", "decl", "--out", str(out_file), env=legacy)
+    printed = tcpou("get", str(units), "--part", "decl").stdout
+    check("get --out writes UTF-8 with no BOM, byte-identical to what get prints",
+          r.returncode == 0 and out_file.read_bytes() == printed
+          and not out_file.read_bytes().startswith(b"\xef\xbb\xbf")
+          and "[mm/s²]".encode("utf-8") in out_file.read_bytes(),
+          r.stderr.decode("utf-8", "replace")[-200:])
+    r = tcpou("set", str(units), "--part", "decl", "--from-file", str(out_file), env=legacy)
+    check("get --out then set --from-file is byte-exact under a legacy locale",
+          r.returncode == 0 and units.read_bytes() == original,
+          r.stderr.decode("utf-8", "replace")[-200:])
+
+    # A body that gained 'Â²' or '┬▓' on the way here was UTF-8 read through
+    # cp1252 or an OEM code page; set says so when the part did not have it before.
+    r = tcpou("set", str(units), "--part", "decl",
+              stdin=decl.replace("²", "\u00c2\u00b2").encode("utf-8"), env=legacy)
+    check("set warns when the new text carries a mojibake fingerprint the part lacks",
+          r.returncode == 0 and b"warning" in r.stderr and "\u00c2\u00b2".encode("utf-8") in r.stderr,
+          r.stderr.decode("utf-8", "replace")[-200:])
+    r = tcpou("set", str(units), "--part", "decl", stdin=decl.encode("utf-8"), env=legacy)
+    check("set does not warn when the part already had the same characters",
+          r.returncode == 0 and not r.stderr.strip(), r.stderr.decode("utf-8", "replace")[-200:])
+    units.write_bytes(original)
+
+    # --- one trailing line break a pipe or an editor adds is not an edit ------
+    # get prints the part exactly; a PowerShell pipe appends CRLF after the last
+    # line and most editors save a final newline, so the part grew an empty line
+    # before ]]> on every round trip. One more than the part has is dropped; two
+    # or more are kept, so a wanted empty last line stays possible.
+    bare = Path(tmp) / "FB_Bare.TcPOU"
+    bare_impl = "a := 1;\r\nb := 2;"                                # no final line break
+    bare.write_bytes(('<?xml version="1.0" encoding="utf-8"?>\r\n<TcPlcObject>\r\n'
+                      '  <POU Name="FB_Bare" Id="{00000000-0000-0000-0000-000000000003}">\r\n'
+                      '    <Declaration><![CDATA[FUNCTION_BLOCK FB_Bare\r\n]]></Declaration>\r\n'
+                      f'    <Implementation>\r\n      <ST><![CDATA[{bare_impl}]]></ST>\r\n'
+                      '    </Implementation>\r\n  </POU>\r\n</TcPlcObject>\r\n').encode("utf-8"))
+    bare_original = bare.read_bytes()
+    piped = tcpou("get", str(bare)).stdout + b"\r\n"
+    r = tcpou("set", str(bare), "--part", "impl", stdin=piped)
+    check("a stdin body ending in one CRLF the part lacks round-trips with no diff",
+          r.returncode == 0 and bare.read_bytes() == bare_original,
+          repr(bare.read_bytes()[-120:]))
+    edited = Path(tmp) / "bare_impl.st"
+    edited.write_bytes(tcpou("get", str(bare)).stdout + b"\n")
+    tcpou("set", str(bare), "--part", "impl", "--from-file", str(edited))
+    check("a file ending in one LF the part lacks round-trips with no diff",
+          bare.read_bytes() == bare_original, repr(bare.read_bytes()[-120:]))
+    tcpou("set", str(bare), "--part", "impl", stdin=tcpou("get", str(bare)).stdout + b"\n\n")
+    check("two trailing line breaks are kept: an empty last line stays possible",
+          tcpou("get", str(bare)).stdout == bare_impl.replace("\r\n", "\n").encode() + b"\n\n",
+          repr(tcpou("get", str(bare)).stdout))
+    bare.write_bytes(bare_original)
+    # The units decl already ends in one line break; a pipe makes that two.
+    tcpou("set", str(units), "--part", "decl", stdin=tcpou("get", str(units), "--part", "decl").stdout + b"\r\n")
+    check("a part that already ends in a line break does not grow one more from a pipe",
+          units.read_bytes() == original, repr(units.read_bytes()[-80:]))
+    units.write_bytes(original)
+
     # --- pins lists FBD wiring that a text search cannot see ----------------
     # In the field a missing completion signal turned out to be an output pin
     # rewired in an earlier commit, and several unwired inputs were found only by
@@ -450,6 +556,64 @@ with tempfile.TemporaryDirectory() as tmp:
           "fbLift" in tcpou("pins", str(fbd), "--box", "cm_lift").stdout.decode("utf-8")
           and "fbLift" not in tcpou("pins", str(fbd), "--box", "^x$").stdout.decode("utf-8"))
     check("'pins' is read-only", fbd.read_bytes() == fbd_before)
+
+    # --- pins reads an LD network as XAE's PLCopen export shows it -----------
+    # Against XAE's own export of six LD callers on a 4024 project (56 boxes,
+    # 1066 pins) the operands and their order matched, and four things did not:
+    # the rung input (a BoxTreeTerminator at InputItems[0]) printed "(unwired)"
+    # on 48 boxes where XAE draws the left power rail; six negated operands
+    # (Flags bit 0) printed plain; a box called from two methods looked like a
+    # duplicate because no header said which; and the one coil rung and 18
+    # conditional RETURN rungs - BoxTreeAssigns with no box - were not listed at
+    # all, so "pins found nothing" read as "nothing writes it". The fixture is
+    # built from those shapes with invented names.
+    ld = FIXTURES / "tcpou" / "FB_LdCaller.TcPOU"
+    ld_before = ld.read_bytes()
+    out = tcpou("pins", str(ld)).stdout.decode("utf-8")
+    want = [
+        "fbConveyor : FB_Conveyor   [MotionCycle]",
+        "   in  iEn                            <- (rung: left rail, TRUE)",
+        "   in  bStart                         <- fbOther.bReady",
+        "   in  bAutoPermit                    <- AND(NOT bAuto, bPermit)",
+        "   in  bReset                         <- (unwired)",
+        "   in  bStop                          <- NOT fbOther.bInZone",
+        "   out bDone                          -> bConveyorDone",
+        "(coil) bRunning <- AND(OR(bAuto, bManual, bJog), NOT bFault)   [MotionCycle]",
+        "(return) <- NOT bEnabled   [IdleCycle]",
+        "fbConveyor : FB_Conveyor   [IdleCycle]",
+        "   in  iEn                            <- (rung: left rail, TRUE)",
+        "   in  bStart                         <- (unwired)",
+        "   in  bAutoPermit                    <- (unwired)",
+        "   in  bReset                         <- bFault",
+        "   in  bStop                          <- NOT bEnabled",
+    ]
+    check("'pins' on an LD network: rail input, negations, owning method, coil and RETURN rungs",
+          out.splitlines() == want, out)
+    check("'pins' is read-only on the LD fixture", ld.read_bytes() == ld_before)
+    coil = tcpou("pins", str(ld), "--pin", "^brunning$").stdout.decode("utf-8")
+    check("'pins --pin' finds a coil rung by the variable it drives",
+          coil.splitlines() == [want[7]], coil)
+    boxed = tcpou("pins", str(ld), "--box", "conveyor").stdout.decode("utf-8")
+    check("'pins --box' keeps matching on instance and type, and lists no box-less rungs",
+          boxed.count("fbConveyor : FB_Conveyor") == 2 and "(coil)" not in boxed
+          and "(return)" not in boxed, boxed)
+    fbd_view = Path(tmp) / "FB_FbdView.TcPOU"
+    fbd_view.write_bytes(ld_before.replace(b'"Ld"', b'"Fbd"'))
+    out = tcpou("pins", str(fbd_view)).stdout.decode("utf-8")
+    check("in an Fbd network a terminator stays '(unwired)': no FBD example has been checked",
+          "   in  iEn                            <- (unwired)" in out
+          and "left rail" not in out, out)
+
+    # A <CFC> body is another schema (CFCImplementationObject) that pins does not
+    # read. An empty listing with exit 0 there read as "nothing wired".
+    r = tcpou("pins", str(FIXTURES / "tcpou" / "FB_CfcEmpty.TcPOU"))
+    check("'pins' on a CFC body says so and exits 2",
+          r.returncode == 2 and b"CFC body" in r.stdout and b"FBD/LD networks only" in r.stdout
+          and b"no FBD/LD boxes" not in r.stdout, r.stdout.decode("utf-8", "replace"))
+    r = tcpou("pins", str(ROOT / "templates" / "FB_Sequence.TcPOU"))
+    check("'pins' on an ST-only POU still reports no boxes and exits 0",
+          r.returncode == 0 and b"no FBD/LD boxes in this file" in r.stdout,
+          r.stdout.decode("utf-8", "replace"))
 
     # --- code-equal tells a comment edit from a code edit --------------------
     # The field script it replaces stripped '//' to end of line even inside a
@@ -489,10 +653,58 @@ with tempfile.TemporaryDirectory() as tmp:
     r = tcpou("code-equal", str(base))
     check("code-equal on a file git does not know exits 2, not 0",
           r.returncode == 2, r.stdout.decode("utf-8", "replace").strip()[:200])
-    r = tcpou("code-equal", str(ROOT / "templates" / "FB_Sequence.TcPOU"), "--ref", "HEAD")
-    check("code-equal --ref HEAD reads the committed copy",
-          r.returncode == 0 and b"IDENTICAL" in r.stdout,
-          (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:200])
+    # --ref HEAD is exercised in a repository this test makes, not in this
+    # checkout: an installed copy of the skill is not a git checkout, and the
+    # suite failed there on nothing but that. The committed copy has LF and the
+    # working copy CRLF, as core.autocrlf=true leaves them on Windows. Whitespace
+    # between tokens absorbs that, but a string literal spanning lines - the
+    # {attribute 'TcLinkTo' := '...'} form - kept the CR inside, and one untouched
+    # file in 1352 came back DIFFERENT.
+    repo = Path(tmp) / "repo"
+    repo.mkdir()
+    linked_impl = ("{attribute 'TcLinkTo' := 'TIID^Device 1^Term 2^Channel 1^Output,\n"
+                   "                         TIID^Device 1^Term 3^Channel 1^Output'}\n"
+                   "bOut := bIn;\n")
+    linked = repo / "FB_Linked.TcPOU"
+    linked.write_bytes(pou(linked_impl).read_bytes().replace(b"\r\n", b"\n"))
+    def git(*a):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@x",
+                               "-c", "commit.gpgsign=false", *a],
+                              cwd=repo, capture_output=True, text=True)
+
+    try:
+        steps = [git("init", "-q"), git("add", "."), git("commit", "-q", "-m", "lf")]
+        blocked = next((s.stderr.strip() for s in steps if s.returncode), None)
+    except OSError as exc:                                   # no git on this machine
+        blocked = str(exc)
+    if blocked is not None:
+        print(f"skip  code-equal --ref HEAD: git could not commit here: {blocked[:200]}")
+    else:
+        r = tcpou("code-equal", str(linked), "--ref", "HEAD")
+        check("code-equal --ref HEAD reads the committed copy",
+              r.returncode == 0 and b"IDENTICAL" in r.stdout,
+              (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:200])
+        linked.write_bytes(linked.read_bytes().replace(b"\n", b"\r\n"))
+        r = tcpou("code-equal", str(linked), "--ref", "HEAD")
+        check("code-equal: CRLF inside a multi-line string literal vs LF at HEAD -> IDENTICAL",
+              r.returncode == 0 and b"IDENTICAL" in r.stdout,
+              (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:300])
+        linked.write_bytes(linked.read_bytes().replace(b"Term 3", b"Term 4"))
+        r = tcpou("code-equal", str(linked), "--ref", "HEAD")
+        check("code-equal: a changed string literal at HEAD is still DIFFERENT",
+              r.returncode == 1, (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:300])
+
+    # --- a reader that stops early is not an error ---------------------------
+    # 'get ... | head' printed "! None: Broken pipe" from the OSError branch.
+    big = pou("x := 1;\n" * 40000)                       # past any pipe buffer
+    proc = subprocess.Popen([sys.executable, str(TCPOU), "get", str(big)],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=CLEAN_ENV)
+    proc.stdout.read(100)
+    proc.stdout.close()
+    err = proc.stderr.read()
+    proc.wait()
+    check("'get' into a pipe closed early exits quietly",
+          proc.returncode == 0 and not err.strip(), err.decode("utf-8", "replace")[-200:])
 
     # --- a missing path is an error message, not a stack trace --------------
 

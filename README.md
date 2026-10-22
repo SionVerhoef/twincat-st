@@ -71,7 +71,7 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 - **`tcpou.py`** — `show`, `get` and `set` one method or property of a `.TcPOU` without
   touching its GUIDs, BOM or line endings; `new` scaffolds an object with a fresh GUID;
   `register` adds it to the `.plcproj`; `reguid` and `check` repair and validate; `pins` lists
-  the wiring of FBD boxes; `code-equal` proves an edit changed only comments.
+  the wiring of FBD/LD boxes; `code-equal` proves an edit changed only comments.
 - **`xae_build.ps1`** — on a Windows PC with XAE, builds the solution in a hidden XAE and prints
   the real compiler output. It never activates.
 
@@ -150,7 +150,7 @@ twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
 │   ├── st_review.py                    the reviewer — 27 rules, PLCopen-keyed
-│   ├── tcpou.py                        surgical .TcPOU editing, FBD pins, comments-only proof
+│   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof
 │   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
 │   ├── cyclic-execution-rules.md       CORE — the execution model + review rubric
@@ -213,6 +213,10 @@ TwinCAT 3.1.4024.55.
   files from ten public TwinCAT projects since 0.2.0.
 - The two scripts check each other: tests scaffold an FB with `tcpou.py` and review it with
   `st_review.py`. The shipped templates pass the reviewer.
+- **`code-equal` holds on a real project.** Over the 1,352 unmodified source files of a
+  production project against `HEAD`, 1,351 came back IDENTICAL. The one false DIFFERENT, a CR
+  kept inside a multi-line string literal under `core.autocrlf=true`, is fixed here and awaits a
+  re-run.
 - Agent behaviour in A/B evals on Opus and Haiku, as summarised under *Why*.
 
 **Not yet verified**
@@ -224,8 +228,15 @@ TwinCAT 3.1.4024.55.
 - `tcpou.py add-method` and `add-property` are newer than the field test, and no file they
   wrote has been opened in XAE yet. The method in the round trip above was added by hand.
 - `xae_build.ps1` built a production project and a scratch TcUnit project on 4024.55 in the
-  field, but runs in no CI here. `tcpou.py pins` reads the FBD layout of one 4024 project; its
-  test fixture is written to that layout, not exported from XAE.
+  field, but runs in no CI here. `tcpou.py pins` was compared with XAE's own PLCopen export of
+  six LD callers on one 4024 project (56 boxes, 1,066 pins): operands and order matched, and the
+  four things it missed there (the rung input, negations, the owning method, coil and RETURN
+  rungs) are fixed in this version but not yet re-run against XAE. Its fixtures are written to
+  that layout, not exported from XAE. No FBD or CFC body has been checked.
+- The other fixes from field round 3 (`evals/field-review-round3.md`): UTF-16 part files and
+  `get --out` in `tcpou.py`, the trailing line break a pipe appends, `code-equal` under
+  `core.autocrlf`, and the same-solution warning in `xae_build.ps1`. Each has a test here; none
+  has been re-run on the TwinCAT PC yet.
 - CODESYS guidance (`references/codesys.md`) has not been tried on a CODESYS install.
 
 `SKILL.md` rule 3 makes the agent declare that gap rather than paper over it. The same applies
