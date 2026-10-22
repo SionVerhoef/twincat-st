@@ -1,6 +1,6 @@
 # ADS and Diagnostics
 
-Reading a running TwinCAT system, and triaging one that is not running. **TwinCAT-specific** — ADS is Beckhoff's protocol; CODESYS systems typically expose OPC UA instead (see `../codesys.md`).
+Reading a running TwinCAT system, and triaging one that is not running. **TwinCAT-specific** — ADS is Beckhoff's protocol; CODESYS systems typically expose OPC UA instead.
 
 Scope note: this is the triage layer — enough to diagnose a machine that is not behaving. It is not a full treatment of motion, communications or testing, and does not try to be.
 

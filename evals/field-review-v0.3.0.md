@@ -239,11 +239,21 @@ not a second stop, and the code says so.
 - B2b (first run): two level-driven moves on one axis, gated by `NOT Busy`, approximate a
   sequence. The agent said so but still delivered it. The re-run delivered the sequence.
 
-## Still open before 1.0
+## Round 2 -- the fixed skill back on the TwinCAT PC
 
-- **A4 re-run on Project_A** with the fixed reviewer: expect 0 high false positives.
-- **Build the re-run's B1 and B3 output** in XAE, and run the B3 suite.
-- **Open a file written by `tcpou.py add-method`** in XAE and build it.
+Run after PR #33 on the same XAE (4024.55) and the same Project_A, with the fixed reviewer and
+the new `add-method`/`add-property`. Recorded from the maintainer's notes; this round has no
+per-finding table.
+
+| Item | Result | Checked by |
+|---|---|---|
+| A4 re-run | **130 findings** against 270 at v0.3.0; 59 of them CP24 and real. The high-severity findings are not yet classified real or false; `field-test-round4.md` carries that | reviewer, read |
+| A3 `add-method` / `add-property` | a file written by both **built clean** in XAE; in round 3, `xae_build.ps1 -TreePath` lists the method it added | build |
+| B1 / B3 re-run output | **built** | build |
+| A2 TcUnit | **2 of 2** again | target |
+
+That closes the three items this review left open before 1.0 (the A4 re-run, the B1/B3 build
+and the `add-method` build), bar the severity classification above.
 
 ## Beads
 

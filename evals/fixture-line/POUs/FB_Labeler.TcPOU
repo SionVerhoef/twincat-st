@@ -3,15 +3,18 @@
   <POU Name="FB_Labeler" Id="{5a440053-e5a6-4ae4-853e-d3bc8412c14d}" SpecialFunc="None">
     <Declaration><![CDATA[FUNCTION_BLOCK FB_Labeler
 VAR_INPUT
-    nLabels : UDINT;
-    pRoll   : POINTER TO UDINT;     // remaining labels on the roll, from the HMI
+    nLabels      : UDINT;
+    pRoll        : POINTER TO UDINT;    // remaining labels on the roll, from the HMI
+    bSecondLabel : BOOL;                // this product carries a second (back) label
 END_VAR
 VAR_OUTPUT
-    nRollsUsed : UDINT;
-    bRollLow   : BOOL;
+    nRollsUsed   : UDINT;
+    bRollLow     : BOOL;
+    fLabelOffset : LREAL;               // mm from the first label to the second; 0 when there is none
 END_VAR
 VAR CONSTANT
-    cLabelsPerRoll : UDINT := 2000;
+    cLabelsPerRoll     : UDINT := 2000;
+    cSecondLabelOffset : LREAL := 12.5; // mm, set by the applicator spacing
 END_VAR
 ]]></Declaration>
     <Implementation>
@@ -19,7 +22,11 @@ END_VAR
 IF pRoll <> 0 THEN
     bRollLow := pRoll^ < 100;
 END_IF
-]]></ST>
+IF bSecondLabel THEN
+    fLabelOffset := cSecondLabelOffset;
+ELSE
+    fLabelOffset := 0.0;
+END_IF]]></ST>
     </Implementation>
   </POU>
 </TcPlcObject>

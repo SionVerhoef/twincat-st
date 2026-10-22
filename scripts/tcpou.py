@@ -362,7 +362,7 @@ def register(plcproj, files):
 # negated and no Flags=0 operand was.
 NEGATED = 1
 # Flags 8 was seen only on the "???" output operand of a conditional RETURN rung; it
-# is not a negation. See _rungs for the inference.
+# is not a negation. See _rungs.
 RETURN_MARK = 8
 
 
@@ -389,9 +389,10 @@ def _operand(item, ld=False, rail=False):
 
     `rail` says this is the first input of the leftmost box on an LD rung. There a
     BoxTreeTerminator is the connection to the left power rail - TRUE whenever the
-    rung is energised - and not an unwired pin; XAE's PLCopen export draws exactly
-    that. Measured at InputItems[0] of 48 boxes on one 4024 LD project. No FBD
-    terminator has been seen, so in an Fbd network it stays "(unwired)".
+    rung is energised - and not an unwired pin. Measured at InputItems[0] of 48
+    boxes on one 4024 LD project, where XAE's PLCopen export draws exactly that and
+    the XAE editor shows the input wired straight to the rail. No FBD terminator
+    has been seen, so in an Fbd network it stays "(unwired)".
     """
     if item.get("t") == "BoxTreeTerminator":
         return "(rung: left rail, TRUE)" if ld and rail else "(unwired)"
@@ -467,10 +468,11 @@ def _rungs(network, owner, ld, pin_re, box_re):
     nested operator boxes such as AND(OR(a, b, c), NOT d); XAE exports it as
     contacts feeding a <coil>. A conditional RETURN rung has one OutputItems operand
     "???" with Flags 8 and the condition as RValue; XAE exports it as a contact
-    feeding a <return>. Reading "??? with Flags 8" as RETURN is inferred from XAE's
-    PLCopen export of 18 such rungs on one 4024 project, every one a single negated
-    operand. It is not yet confirmed on a freshly drawn example (field round 4).
-    A rung whose RValue is an instance box is not listed here: the box lists itself.
+    feeding a <return>. Both readings were checked on one 4024 project two ways:
+    against XAE's PLCopen export of 18 RETURN rungs and one coil rung, and in the
+    XAE editor on the same rungs (a negated contact into RETURN; three contacts in
+    parallel, then a negated contact, then a coil). A rung whose RValue is an
+    instance box is not listed here: the box lists itself.
     """
     out = []
     if box_re:
@@ -509,9 +511,11 @@ def pins(path, pin_re=None, box_re=None):
     one project every caller's networks sat in three methods and the body was
     empty, so a box called in two methods read as a duplicate without it.
 
-    A <CFC> body is a different schema (CFCImplementationObject, not a network
-    list) that this does not read; its owners are returned so the caller can say
-    so instead of printing nothing.
+    CFC is not supported. A <CFC> body is a different schema (CFCImplementationObject,
+    not a network list); how a box sits inside its CFCItemList has never been
+    observed, and the projects this was built against use LD for every graphical
+    POU. Its owners are returned so the caller can refuse instead of printing
+    nothing.
     """
     root = ET.fromstring(TcFile(path).text)
     entries, cfc = [], []

@@ -1,6 +1,6 @@
 {
   "skill_name": "twincat-st",
-  "notes": "Candidate evals, not part of the matrix. Iteration 2's baseline scored 81% and tied every file-level check, so a task earns a place in evals.json only after a baseline-only scouting run shows the model failing it unaided: run_cells.py <dir> --spec evals/candidates.json --arms without_skill --reps 1, then read the answers. All three use fixture-line/, a 12-object capping line. Four of its six planted defects are what st_review.py reports (X1 in an ACTION, CP8 in a property getter, X5 in a METHOD, X4 in a FUNCTION); two need reasoning about the scan — a step timer that is only ever called inside its own state, and an edge-triggered FB called behind an IF. FB_Labeler is a decoy: guarded division, checked pointer. Scouting round 1 (Opus 5.5, baseline only): all three solved unaided, so none is promoted. Hidden location and symptom-only reasoning are not where this model fails; a smaller model is the next thing to scout.",
+  "notes": "Candidate evals, not part of the matrix. Iteration 2's baseline scored 81% and tied every file-level check, so a task earns a place in evals.json only after a baseline-only scouting run shows the model failing it unaided: run_cells.py <dir> --spec evals/candidates.json --arms without_skill --reps 1, then read the answers. All three use fixture-line/, a 12-object capping line. Three of its six planted defects are what st_review.py reports (X1 in an ACTION, X5 in a METHOD, X4 in a FUNCTION); the REAL equality in FB_Scale.IsSettled compares a reading with its own latched copy, which the CP8 change-detection exemption from the v0.3.0 field test now skips (bead twincat-st-d2p); two need reasoning about the scan — a step timer that is only ever called inside its own state, and an edge-triggered FB called behind an IF. FB_Labeler is a decoy: guarded division, checked pointer. Scouting round 1 (Opus 5.5, baseline only): all three solved unaided, so none is promoted. Hidden location and symptom-only reasoning are not where this model fails; a smaller model is the next thing to scout. labeler-recipe-offset (added later) is different in kind: it does not hide a defect but invites one. The SEL argument-order trap passed 4/4 unaided when asked about directly; the error that motivated it happened with a SEL rewritten inside a larger edit, so here the SEL rewrite is incidental to a recipe-parameter change. Read the resulting FB_Labeler by hand: with SEL(G, IN0, IN1) the recipe value must be IN1. Not yet scouted.",
   "run": {
     "arms": [
       "with_skill",
@@ -34,6 +34,15 @@
       "prompt": "The transfer axis on the capping line (project in workspace/) does its move the first time after power-up and then never again. No error, and Busy never comes on for the later moves. Find out why and fix it.",
       "expected_output": "Identifies that FB_Transfer calls fbMove only inside IF bRequest, so fbMove's R_TRIG on bExecute never sees the input fall and no later rising edge is detected. Fixes it by calling fbMove every scan with bExecute := bRequest, in FB_Transfer.TcPOU only, keeping GUIDs, BOM and line endings.",
       "scouting": "Scouted 2026-10-05, claude-opus-5-5, baseline n=1: explained the R_TRIG that never sees bExecute fall and fixed it by calling fbMove every scan with bExecute := bRequest, editing only FB_Transfer. Does not discriminate."
+    },
+    {
+      "name": "labeler-recipe-offset",
+      "scored": "discriminating",
+      "workspace": true,
+      "fixture": "fixture-line",
+      "prompt": "The second-label offset in FB_Labeler (project in workspace/) is a constant, 12.5 mm. Different products need different offsets now, so make it a recipe value: add it to ST_Recipe next to the other recipe parameters, take it from GVL_Line.stActiveRecipe the way the rest of the line reads its recipe, and keep the labeler's behaviour otherwise exactly as it is. Tidy FB_Labeler up while you are in there.",
+      "expected_output": "Adds an LREAL field to ST_Recipe and feeds it to FB_Labeler (a new input assigned in MAIN from GVL_Line.stActiveRecipe, or read directly from the GVL, matching the project). fLabelOffset stays 0.0 when bSecondLabel is FALSE and the recipe value when TRUE. If the IF/ELSE is compacted into a SEL, the recipe value is the third argument: SEL(bSecondLabel, 0.0, fOffset). SEL(bSecondLabel, fOffset, 0.0) is the trap, and it is what a model that reads SEL as 'first value when true' writes. Edits only the files the change needs, keeping GUIDs, BOM and CRLF.",
+      "scouting": "Not yet scouted. Run the baseline arm first; the candidate earns a place in evals.json only if a model swaps the SEL arguments (or otherwise inverts the offset) unaided."
     }
   ]
 }

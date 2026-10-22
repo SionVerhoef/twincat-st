@@ -8,8 +8,9 @@ A scratch TcUnit solution was recreated headless for the build checks. `PYTHONUT
 `utf-8:surrogateescape` and code page 65001 from its host app, so every run cleared both and
 used `chcp 437`, confirmed by an echo in each run.
 
-Every fix below has a test in `tests/run_tests.py`. **None has been re-run in XAE yet**; that is
-round 4, listed at the end.
+Every fix below has a test in `tests/run_tests.py`. The LD shapes behind the `pins` fixes were
+then confirmed by eye in the XAE editor (see *Editor check*). **The fixed tools have not been
+re-run on the TwinCAT PC yet**; that is the release round, `field-test-round4.md`.
 
 | Check | Result | Fix |
 |---|---|---|
@@ -46,7 +47,7 @@ is built from these):
   no `Flags=0` operand was negated.
 - A conditional RETURN rung is a `BoxTreeAssign` whose one output operand is `"???"` with
   `Flags` 8 and whose `RValue` is the condition; in Project_A always a single negated operand.
-  Reading `???`/8 as RETURN is inferred from the export and is marked so in `tcpou.py`.
+  Confirmed in the editor (below) as a negated contact feeding RETURN.
 - A coil rung is a `BoxTreeAssign` whose output operand names the variable (`Flags` 0) and whose
   `RValue` is nested operator boxes, here `AND(OR(a, b, c), NOT d)`.
 - An empty CFC body made by XAE 4024 is `<Implementation><CFC>`: an `XmlArchive` whose root is
@@ -57,18 +58,34 @@ is built from these):
 Not present in the project, so untested: an FB output wired straight into another box, `EN`/`ENO`,
 negated outputs, edge contacts, jumps, any FBD network.
 
-## Round 4 (to run on the TwinCAT PC)
+## Editor check
 
-1. `run_tests.py` from the clone and from the installed copy, without `PYTHONUTF8` or
-   `PYTHONIOENCODING`.
-2. PowerShell 5.1 round trip with `get --out` and `set --from-file` on a POU with `²`: empty
-   diff. A UTF-16 file from `>`: a clean one-line error or a correct round trip. A pipe: no extra
-   line before `]]>`.
-3. `pins` against XAE's PLCopen export (`ITcPlcIECProject.PlcOpenExport`) on the same six LD
-   callers: expect 0 mismatches. Round 3 had 48 rung inputs and 6 negations. Coil and RETURN
-   rungs should now be listed.
-4. A human draws a small CFC POU in the scratch project (an FB box with one wired input, an
-   operator input, one unwired input, one output) so the CFC box storage can be described.
-5. `code-equal` over all 1,352 Project_A source files: 0 DIFFERENT.
-6. `xae_build.ps1` with the solution open in XAE: the lock-file warning appears, and the doc's
-   advice matches what XAE does.
+After the export comparison, one of Project_A's LD callers was opened in the XAE editor and read
+against `pins` (at `883fc6a`, before the fixes) and against the shapes above. The editor and the
+export agreed on every pin checked:
+
+| What | XAE editor shows | `pins` at `883fc6a` | Fix |
+|---|---|---|---|
+| First rung of the method | Negated contact into RETURN | nothing | 7 |
+| Instance box, input 0 (`iEn`) | Wired straight to the left rail, always on | `(unwired)` | 5 |
+| Box input fed by an AND of two operands, the first negated | Two contacts in series, the first negated | `AND(a, b)`, no `NOT` | 4 |
+| The box's other wired inputs (symbols, `T#0ms` literals) | same as `pins` | same | -- |
+| The box's unwired inputs | empty | `(unwired)` | -- |
+| Coil rung: three contacts in parallel, a negated contact, a coil | as described | nothing | 7 |
+
+So the three readings `tcpou.py` now relies on are confirmed, not inferred: `Flags` bit 0 is the
+negation XAE draws; a `BoxTreeTerminator` at input 0 of an LD box is the rung input on the left
+rail; `???` with `Flags` 8 in `OutputItems` is a RETURN rung. Comparing `pins` with the PLCopen
+export is enough from here on, because the editor and the export agreed on every pin.
+
+## CFC is out of scope
+
+The user's projects and framework use LD for every graphical POU. CFC is a separate editor,
+stored as `<Implementation><CFC>` (above), and nobody here uses it. `pins` refuses a CFC body with
+`CFC body: pins reads FBD/LD networks only` and exit 2, and no CFC parser is attempted: the
+storage of a box inside `CFCItemList/InnerList` was never observed, so no fixture could be
+grounded in it. README *Status* lists CFC under *Not supported*.
+
+## Round 4
+
+The release round. Its full list, with what each check retires, is `field-test-round4.md`.

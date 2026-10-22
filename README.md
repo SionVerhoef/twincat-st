@@ -1,8 +1,8 @@
 # twincat-st
 
 An agent skill for writing, reviewing and debugging IEC 61131-3 **Structured Text** in the
-CODESYS V3 dialect family — **Beckhoff TwinCAT 3** primary (build 4024.x), **CODESYS**
-secondary. Tested with Claude Code and with GitHub Copilot in VS Code, from the same files.
+CODESYS V3 dialect family, verified on **Beckhoff TwinCAT 3** (build 4024.x). Tested with Claude
+Code and with GitHub Copilot in VS Code, from the same files.
 
 Companion skill: **[twincat-scope](https://github.com/SionVerhoef/twincat-scope)** records and
 triages TwinCAT 3 Scope measurements — what the code written here actually does on the machine.
@@ -81,7 +81,7 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 - The PLCopen behaviour models (`Execute`/`Done` against `Enable`/`Valid`), state machines,
   PackML, OOP and TcUnit testing.
 - TwinCAT specifics: libraries, `FB_init`, online change, ADS and EtherCAT triage. CODESYS
-  notes are included and marked untested.
+  vendor specifics are not covered, and the skill says so when asked.
 - Naming conventions measured against a real corpus — and the rule that **the project you are
   editing wins** over any of them.
 - Three hard rules: no safety logic, no writes to a live machine, and no claim that code
@@ -164,8 +164,7 @@ twincat-st/
 │   ├── safety-boundary.md              the TwinSAFE/FSoE hard stop
 │   ├── twincat.md                      VENDOR — libraries, FB_init, online change, 4024
 │   ├── twincat/project-files.md        VENDOR — .TcPOU/.plcproj editing, git hygiene
-│   ├── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
-│   └── codesys.md                      VENDOR — untested, flagged as such
+│   └── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
 ├── tests/                              every rule must fire; fixed false positives must stay fixed
@@ -176,7 +175,8 @@ twincat-st/
 ## Scope
 
 - **TwinCAT and the CODESYS V3 family.** TwinCAT 3's PLC layer is CODESYS-V3-derived and
-  shares its OOP extensions, so this is one core plus a vendor seam.
+  shares its OOP extensions, so the core applies across the family. Only the TwinCAT seam is
+  covered and verified; CODESYS library names, project format and tooling are not.
 - **Not Siemens SCL or Rockwell Studio 5000 ST.** They are genuinely different dialects;
   guidance from here would be fluent and wrong, so the skill says so and stops.
 - **Not OpenPLC.** It compiles through matiec, which implements IEC 61131-3 **2nd Edition** —
@@ -190,9 +190,15 @@ twincat-st/
 ## Status
 
 There is no TwinCAT toolchain where this skill is developed. That makes the line between
-verified and not verified the most important fact on this page. The v0.3.0 field test
-([`evals/field-review-v0.3.0.md`](evals/field-review-v0.3.0.md)) ran the toolchain half on
-TwinCAT 3.1.4024.55.
+verified and not verified the most important fact on this page. Three field rounds on TwinCAT
+3.1.4024.55 drew it ([`evals/field-review-v0.3.0.md`](evals/field-review-v0.3.0.md),
+[`evals/field-review-round3.md`](evals/field-review-round3.md)). The fourth
+([`evals/field-test-round4.md`](evals/field-test-round4.md)) is the release round: the list under
+*Awaiting the release round* is what it has to clear, and the release empties it.
+
+Whatever is verified here, **code an agent writes for you is still not compiled** unless you build
+it. The field tests built a handful of answers; they say nothing about the next one, and `SKILL.md`
+rule 3 makes the agent say so every time.
 
 **Verified**
 
@@ -202,9 +208,13 @@ TwinCAT 3.1.4024.55.
   condition never arrives failed through its watchdog after 10 s instead of hanging the suite.
 - **`tcpou.py` round-trips a real project.** A file made with `new`, `register`, `set` and
   `reguid` opened in XAE with no repair prompt and built. Opening and building rewrote none of
-  the files `tcpou.py` wrote.
-- **Agent-written code built as delivered** in two field-test tasks: a new valve FB, and a step
-  added to `FB_Sequence` by editing the `.TcPOU` in place.
+  the files `tcpou.py` wrote. A file written by `add-method` and `add-property` built clean too,
+  and `xae_build.ps1 -TreePath` lists the method it added.
+- **Agent-written code built as delivered** in two field-test tasks, twice: a new valve FB, and a
+  step added to `FB_Sequence` by editing the `.TcPOU` in place, in the first round and again in
+  the re-run on the fixed skill.
+- **The fixed reviewer, re-run on the production project it was tuned on,** reports 130
+  findings against 270 before the four false-positive fixes; 59 of them are CP24 and real.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
 - Every one of the 27 reviewer rules fires on a deliberately defective fixture, and the reviewer
   stays silent on a second fixture collecting every shape that was once a false positive.
@@ -219,32 +229,39 @@ TwinCAT 3.1.4024.55.
   re-run.
 - Agent behaviour in A/B evals on Opus and Haiku, as summarised under *Why*.
 
-**Not yet verified**
+**Not supported**
 
-- **Code an agent writes for you is still not compiled** unless you build it. The field test
-  built two answers; it says nothing about the next one.
-- **The reviewer fixes made after the field test** have not been re-run on the real project they
-  came from. Those fixes cover four false-positive classes, 148 of its 270 findings.
-- `tcpou.py add-method` and `add-property` are newer than the field test, and no file they
-  wrote has been opened in XAE yet. The method in the round trip above was added by hand.
+- **CFC bodies.** `tcpou.py pins` refuses a `<CFC>` body with exit 2 instead of listing nothing.
+  CFC is a separate editor with its own storage (`CFCImplementationObject`); the projects this
+  skill was tested on use LD for every graphical POU, and how a CFC box is stored has never been
+  observed. `st_review.py` still counts a CFC body's operands as uses.
+- **CODESYS specifics.** The vendor-neutral core applies to any CODESYS V3 tool, since TwinCAT's
+  PLC layer is CODESYS-V3-derived, but library names, the `.project` container, SoftMotion, OPC
+  UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
+  install, so the skill says so rather than guess.
+
+**Awaiting the release round** (`evals/field-test-round4.md`)
+
+Each of these has a test in this repository and none has been re-run on the TwinCAT PC:
+
+- The round-3 `tcpou.py` fixes: UTF-16 part files and `get --out`, the trailing line break a
+  pipe or an editor appends, and `code-equal` under `core.autocrlf` (1,351 of 1,352 files were
+  IDENTICAL before the fix; the release round expects 1,352).
+- `tcpou.py pins` on LD. Compared with XAE's own PLCopen export of six LD callers on one 4024
+  project (56 boxes, 1,066 pins), operands and order matched and four things did not: the rung
+  input, negations, the owning method, and coil and RETURN rungs. The shapes behind all four were
+  confirmed in the XAE editor and the fixes are here; the fixed output has not been compared with
+  the export yet. No FBD network has been checked. The fixtures are written to that layout, not
+  exported from XAE.
 - `xae_build.ps1` built a production project and a scratch TcUnit project on 4024.55 in the
-  field, but runs in no CI here. `tcpou.py pins` was compared with XAE's own PLCopen export of
-  six LD callers on one 4024 project (56 boxes, 1,066 pins): operands and order matched, and the
-  four things it missed there (the rung input, negations, the owning method, coil and RETURN
-  rungs) are fixed in this version but not yet re-run against XAE. Its fixtures are written to
-  that layout, not exported from XAE. No FBD or CFC body has been checked.
-- The other fixes from field round 3 (`evals/field-review-round3.md`): UTF-16 part files and
-  `get --out` in `tcpou.py`, the trailing line break a pipe appends, `code-equal` under
-  `core.autocrlf`, and the same-solution warning in `xae_build.ps1`. Each has a test here; none
-  has been re-run on the TwinCAT PC yet.
-- CODESYS guidance (`references/codesys.md`) has not been tried on a CODESYS install.
+  field, but runs in no CI here, and its warning for a solution already open in XAE is new.
+- The reviewer's 130 findings on the production project have not been classified by severity;
+  the release round expects no high-severity false positive.
 
-`SKILL.md` rule 3 makes the agent declare that gap rather than paper over it. The same applies
-to this list.
+After the round, every item here moves to *Verified* or is taken out of the skill.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
-judged real or false, a build of a scaffolded FB with a method added by `add-method`, and real
-house code for `examples/` — see `examples/README.md`.
+judged real or false, and real house code for `examples/` — see `examples/README.md`.
 
 ## Tests
 
