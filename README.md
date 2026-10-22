@@ -164,7 +164,8 @@ twincat-st/
 │   ├── safety-boundary.md              the TwinSAFE/FSoE hard stop
 │   ├── twincat.md                      VENDOR — libraries, FB_init, online change, 4024
 │   ├── twincat/project-files.md        VENDOR — .TcPOU/.plcproj editing, git hygiene
-│   └── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
+│   ├── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
+│   └── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
 ├── tests/                              every rule must fire; fixed false positives must stay fixed
@@ -285,7 +286,7 @@ py -3 tests/run_tests.py          # every rule fires; known false positives stay
 py -3 evals/selftest.py           # the eval grader: gold scores full, null scores zero
 ```
 
-Both run in CI. These are plain scripts, not pytest suites. `evals/README.md` explains how the
+Both run in CI, the test suite on Linux and on Windows. These are plain scripts, not pytest suites. `evals/README.md` explains how the
 skill itself is evaluated against a no-skill baseline.
 
 ## Licence
