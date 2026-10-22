@@ -1,6 +1,6 @@
 # TwinCAT Project Files and Version Control
 
-How to edit a real TwinCAT 3 (4024) project from outside the IDE without corrupting it. **TwinCAT-specific** — none of this applies to CODESYS, which uses a `.project` container instead (see `../codesys.md`).
+How to edit a real TwinCAT 3 (4024) project from outside the IDE without corrupting it. **TwinCAT-specific** — none of this applies to CODESYS, which uses a `.project` container instead.
 
 > **Reading versus writing are different problems.** If you are *parsing* a project — extracting ST
 > for context, counting POUs, mining a sample — the things to know are that `.tszip`/`.tpzip` are

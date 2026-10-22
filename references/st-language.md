@@ -2,7 +2,7 @@
 
 IEC 61131-3 ST as implemented across the CODESYS V3 family (TwinCAT 3, CODESYS, and the vendor tools built on it). Read `cyclic-execution-rules.md` first — it governs *how* code is shaped; this covers *what* the language offers.
 
-Everything here is vendor-neutral. For concrete library names, file formats and tooling see `twincat.md` or `codesys.md`.
+Everything here is vendor-neutral. For concrete library names, file formats and tooling see `twincat.md`. CODESYS vendor specifics are not covered here.
 
 ## Data types
 

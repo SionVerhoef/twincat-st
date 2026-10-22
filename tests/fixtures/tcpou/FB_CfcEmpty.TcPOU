@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="FB_CfcEmpty" Id="{0a1b2c3d-0000-4000-8000-000000000301}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_CfcEmpty
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <CFC>
+        <XmlArchive>
+          <Data>
+            <o xml:space="preserve" t="CFCImplementationObject">
+              <o n="Items" t="CFCItemList"><l2 n="InnerList" /></o>
+              <n n="ParameterInitializationMethodGenerator" />
+              <o n="RoutingPathTable" t="CFCRoutingPathTable"><d2 n="InnerDictionary" /></o>
+              <v n="AutoSizeCanvas">true</v>
+              <v n="CanvasWidth">0</v>
+              <v n="CanvasHeight">0</v>
+            </o>
+          </Data>
+          <TypeList>
+            <Type n="Boolean">System.Boolean</Type>
+            <Type n="CFCImplementationObject">{0bd4a8b9-9c6a-4a5f-9e2c-5d1f3c7a8e01}</Type>
+            <Type n="CFCItemList">{0bd4a8b9-9c6a-4a5f-9e2c-5d1f3c7a8e02}</Type>
+            <Type n="CFCRoutingPathTable">{0bd4a8b9-9c6a-4a5f-9e2c-5d1f3c7a8e03}</Type>
+            <Type n="Int32">System.Int32</Type>
+          </TypeList>
+        </XmlArchive>
+      </CFC>
+    </Implementation>
+  </POU>
+</TcPlcObject>

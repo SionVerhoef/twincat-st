@@ -1,10 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
-  <POU Name="FB_CfcBody" Id="{0c7e5b3a-1d24-4f88-b6a9-5e3f2c1d7a40}" SpecialFunc="None">
-    <Declaration><![CDATA[// CP24 must stay quiet: every variable here is used, but by a graphical (CFC)
-// network rather than by ST. This is a reviewer fixture, not a network XAE can
-// open; it keeps only the shape that matters, operands named in <v n="Operand">.
-FUNCTION_BLOCK FB_CfcBody
+  <POU Name="FB_LdBody" Id="{0c7e5b3a-1d24-4f88-b6a9-5e3f2c1d7a40}" SpecialFunc="None">
+    <Declaration><![CDATA[// CP24 must stay quiet: every variable here is used, but by a graphical (LD)
+// network rather than by ST. <NWL> is the FBD/LD/IL network list; a CFC body is
+// <CFC>. This is a reviewer fixture, not a network XAE can open; it keeps only
+// the shape that matters, operands named in <v n="Operand">.
+FUNCTION_BLOCK FB_LdBody
 VAR_INPUT
     ibStart : BOOL;
 END_VAR

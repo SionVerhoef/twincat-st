@@ -1,6 +1,11 @@
 <#
 Build a TwinCAT solution in a hidden XAE and print the compiler output. It never activates and
-changes no controller. The XAE you work in is not touched: this starts its own XAE process.
+changes no controller. It starts its own XAE process. An XAE with a DIFFERENT solution open is
+left alone. One with the SAME solution open keeps running, but within a second of the build it
+asks "<PLC>.xti was modified outside of TwinCAT XAE. Do you want to reload it?" - answer Yes;
+No keeps the old .xti in memory and writes it back on the next save. The hidden XAE also
+rewrites the shared .vs\<sln>\v15\.suo when it quits. Ask the user to close the solution first,
+or to expect that prompt. When the solution's lock file names a live XAE, the script says so.
 Exit code: 0 = every project built, 1 = a project failed (SolutionBuild.LastBuildInfo) or the
 script could not run.
 
@@ -28,8 +33,22 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path "$PublicAssemblies\envdte.dll")) {
-    Write-Error "envdte.dll not found in '$PublicAssemblies'. Pass -PublicAssemblies for this XAE install."
+    # Not Write-Error: under $ErrorActionPreference = 'Stop' it throws, prints a full error
+    # record with the script position, and never reaches the exit below.
+    [Console]::Error.WriteLine("envdte.dll not found in '$PublicAssemblies'. Pass -PublicAssemblies for this XAE install.")
     exit 1
+}
+
+# While a solution is open, XAE keeps <project>.project.~u beside it: three lines - user,
+# machine, PID - rewritten about every 35 s. A live PID there is an XAE that will ask to
+# reload the .xti once this build rewrites it.
+$slnPath = (Resolve-Path $Solution).Path
+foreach ($lock in Get-ChildItem -Path (Split-Path $slnPath) -Filter '*.project.~u' -File -Recurse -Depth 2 -ErrorAction SilentlyContinue) {
+    $lines = @(Get-Content $lock.FullName -ErrorAction SilentlyContinue)
+    $lockPid = 0
+    if ($lines.Count -ge 3 -and [int]::TryParse($lines[2].Trim(), [ref]$lockPid) -and (Get-Process -Id $lockPid -ErrorAction SilentlyContinue)) {
+        "WARNING: the solution is open in XAE (PID $lockPid): it will ask to reload the .xti; answer Yes"
+    }
 }
 
 # XAE rejects COM calls while it is busy (RPC_E_CALL_REJECTED); this filter retries them.
@@ -96,7 +115,7 @@ try {
     $dte = New-Object -ComObject $ProgId
     $dte.SuppressUI = $true
     $dte.MainWindow.Visible = $false
-    $dte.Solution.Open((Resolve-Path $Solution).Path)
+    $dte.Solution.Open($slnPath)
     $dte.ExecuteCommand('View.Output')
     $dte.ExecuteCommand('View.ErrorList')
 
