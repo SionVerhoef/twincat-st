@@ -89,19 +89,17 @@ py -3 scripts/st_review.py src/ --rules X1,X5,CP8       # only these rules
 py -3 scripts/st_review.py --list-rules                 # what it checks
 ```
 
-**Every command in this file is written `py -3`, because TwinCAT runs on Windows and Windows has no `python3`.** A bare `python3` there reaches the Microsoft Store alias stub, which prints *"Python was not found"* and exits 1 **even when Python is installed correctly** — so read the error as a wrong command, not a missing interpreter. On Linux or macOS use `python3` instead. The README has the detail.
+**Commands are written `py -3` because TwinCAT runs on Windows, which has no `python3`.** A bare `python3` there reaches the Microsoft Store alias stub and prints *"Python was not found"* **even when Python is installed** — read that as a wrong command, not a missing interpreter. On Linux or macOS use `python3`.
 
-**Point it at the code you own, not at the whole `.plcproj`.** A project pulls in vendor and framework libraries nobody on the team can change, and their findings bury yours: on one real 1352-file project, scanning everything gave 835 findings where the 111 application files gave 68. Scan the application folder.
+**Point it at the code you own, not at the whole `.plcproj`.** Vendor and framework libraries nobody on the team can change bury your findings (on one real project, 835 findings against 68 for the application folder alone). Scan the application folder.
 
-**Exit status is 1 only at `--fail-on` or above, and that defaults to `high`.** A run reporting hundreds of `medium` findings still exits 0 — that is the gate working, not the tool ignoring them. `--min-severity` filters *before* the gate, so hiding a severity also stops it ever failing a build.
+**Exit status 1 means a finding at `--fail-on` or above (default `high`)**, so hundreds of `medium` findings still exit 0 — the gate working, not the tool ignoring them. `--min-severity` filters *before* the gate, so hiding a severity also stops it failing a build. **Exit 2 means a file could not be parsed**, and overrides `--fail-on never`: an unread file is never reported clean. It is listed on stderr and under `files_unreadable` in the JSON.
 
-**Exit status 2 means a file could not be parsed, and it overrides `--fail-on never`.** An unreadable file produces no findings for the same reason an empty one does, so letting it pass would report a green check on code the reviewer never looked at. Unparsed files are listed on stderr and in the JSON under `files_unreadable`, and `files_scanned` counts only what was actually read.
+It parses `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking **every** method and property, not just the POU body — where most of an OOP project's code lives.
 
-It parses `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking **every** declaration/implementation pair — POU body, methods, property getters and setters. That matters: a top-level-only parse misses about 84% of the code in an OOP project.
+Findings carry a rule id you can cite in a review — `CP8`, `X1`, `E3`. `CP`/`N`/`C`/`L`/`E` are PLCopen Coding Guidelines rules with that document's severity; `X` ids are this skill's own, for scan-cycle failure modes and the PLCopen behaviour-model contract (`X9`). `references/plcopen-rules.md` is the full catalogue.
 
-Findings carry a rule id you can cite in a review — `CP8`, `X1`, `E3`. The `CP`/`N`/`C`/`L`/`E` ids are PLCopen Coding Guidelines rules and carry that document's own severity; the `X` ids are this skill's own, for what that catalogue does not cover — the failure modes specific to a scanned task, plus `X9` for the PLCopen *behaviour model* contract, which is standardised in a different document. `references/plcopen-rules.md` is the full catalogue.
-
-The tool is a floor, not a ceiling. It cannot see intent, so **you still read the code** for the things it cannot check: is the shape right, is the error path meaningful, does the timeout value make physical sense, is this secretly a safety function. `references/cyclic-execution-rules.md` carries the review rubric for that pass.
+The tool is a floor, not a ceiling. **You still read the code** for what it cannot see: is the shape right, is the error path meaningful, does the timeout make physical sense, is this secretly a safety function. `references/cyclic-execution-rules.md` has the rubric for that pass.
 
 When the tool reports something you have judged acceptable, record the judgement in the code rather than ignoring the line:
 
@@ -130,7 +128,7 @@ Close with: what you wrote and which shape it uses · what was verified and what
 
 > Not compiled. A qualified engineer must review and validate this code against the drive and platform documentation before it runs on a machine.
 
-"Not compiled" alone is not enough, and neither is "review it before it goes on the machine". In a field test, 8 of 8 hand-overs said the first and only 1 of 8 said the second in full.
+"Not compiled" alone is not enough, and neither is "review it before it goes on the machine": in a field test, agents wrote the first every time and the full line once in eight.
 
 ## Where to read next
 
@@ -160,11 +158,11 @@ Load a reference when the task reaches it — don't read them all up front.
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
 | `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. `pins` lists FBD/LD wiring, `code-equal` proves an edit touched only comments. |
-| `scripts/xae_build.ps1` | Windows with XAE only: build the solution in a hidden XAE and print the real compiler output. Run it only when the user asked for a build; it rewrites `.tmc`/`.xti`/`_CompileInfo`. It never activates — rule 2 still holds. See `references/twincat/xae-automation.md`. |
+| `scripts/xae_build.ps1` | Windows with XAE only: a real compiler run in a hidden XAE. Only when the user asked for a build — it rewrites `.tmc`/`.xti`/`_CompileInfo`. Never activates. See `references/twincat/xae-automation.md`. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
-| `examples/` | Real working code from two published projects, each with its `LICENSE` and a `NOTES.md` on what to take from it. Read these before writing. House code added here outranks every convention in this skill. |
+| `examples/` | Real working code, each folder with a `NOTES.md` on what to take from it — see step 1 for when to read it. |
 
-The two Python scripts need Python 3 and nothing else — standard library, no `pip install`. Commands are written `py -3` for Windows; on Linux or macOS use `python3`.
+The Python scripts need Python 3 and nothing else — no `pip install`.
 
 ### `tcpou.py`
 
@@ -173,22 +171,20 @@ Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
 ```bash
 py -3 scripts/tcpou.py show     <file>                                   # parts + encoding
 py -3 scripts/tcpou.py get      <file> --part impl [--out body.st]       # print or write one part
-py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD/LD box wiring
 py -3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
-py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold
+py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold (--shape, --extends)
+py -3 scripts/tcpou.py add-method   <file> --name Reset [--returns BOOL] # empty member, fill with set
+py -3 scripts/tcpou.py add-property <file> --name Speed --type LREAL     # [--no-set] = getter only
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
 py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
 py -3 scripts/tcpou.py check    <file>...                                # validate
+py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD/LD box wiring
 py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comments-only?
 ```
 
-- `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
-- **`--shape` picks which interface family the FB gets:** `execute` (the default) declares `bExecute`/`bBusy`/`bDone`, `enable` declares `bEnable`/`bValid`, and `cyclic` declares no command interface at all. Choose the one the block actually is — `Execute` pairs with `Done`, `Enable` pairs with `Valid`, and mixing the two is what rule `X9` reports. `references/behaviour-model.md` is the decision. An FB that **inherits** its command interface from a framework base — the common case in a module-based project — fits none of the three on its own: use `--shape cyclic --extends FB_YourBase`, which gives the `EXTENDS` and adds no pins of its own to clash with the base's.
-- `set` reads stdin when `--from-file` is omitted. **From Windows PowerShell 5.1, move a part with `get --out body.st` and `set --from-file body.st`, never with `>` or a pipe.** `>` is `Out-File`: it decodes the script's UTF-8 through the console code page before writing UTF-16, so `²` lands in the file as `┬▓` and no reader can repair it. A pipe (`Get-Content body.st | set`) re-encodes each character to the console code page: a BOM-less file arrives with `²` as `??`, with `-Encoding UTF8` as `?`; lost either way. (cmd.exe's `>` and `type |` are fine.) `--from-file` and stdin take UTF-8 with or without a BOM and UTF-16 with one; anything else is refused in one line. One trailing line break more than the part already has, which a pipe or an editor appends, is dropped so a round trip leaves no diff. Files and output are UTF-8 whatever the console's code page.
-- Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
-- **`pins` before concluding a signal is unused or unwired in an FBD or LD caller.** Which variable feeds which pin of a box is stored in the network XML, so a text search for `ibEmpty :=` finds nothing there. `pins` prints every box's inputs (`<-`, with operators as `OR(a, b)`, a negated operand as `NOT x`, an empty pin as `(unwired)` and, in LD, the rung input as `(rung: left rail, TRUE)`) and its wired outputs (`->`), each box tagged with the method its network lives in, `[MotionCycle]`. Coil rungs and conditional RETURN rungs have no box and are listed as `(coil) var <- AND(a, NOT b)` and `(return) <- NOT x`; `--pin var` finds the coil. It is read-only; the layout it reads was checked on 4024 LD networks and one FBD network drawn in XAE, against XAE's PLCopen export and in the editor. CFC is not supported: on a `<CFC>` body `pins` refuses with exit 2 rather than print an empty list, and nothing here reads a CFC box.
-- **Claim "comments only" with `code-equal`, not by eye.** It compares every source part with the same part at `--ref` (default `HEAD`) or in `--against` another file, after dropping comments and insignificant whitespace; string literals count as code. Exit 0 = IDENTICAL, 1 = the code changed (it prints the first difference per part), 2 = nothing to compare with. It reads the CDATA source only, not the XML around it.
+- **Run `show` before `get`/`set` rather than guessing a part key, and check the exit status, not just the bytes.** A wrong key exits 1 and prints the real ones; a `set` that never ran looks exactly like one that changed nothing.
+- **`register` is not optional.** A new file that is not in the `.plcproj` silently does not compile. It is idempotent.
+- **From Windows PowerShell 5.1, move a part with `get --out` and `set --from-file`, never `>` or a pipe.** Both re-encode through the console code page and destroy non-ASCII characters (`²`) beyond repair. cmd.exe is fine.
+- **Run `pins` before calling a signal unused or unwired in an FBD/LD caller** — that wiring lives in the network XML, where a text search finds nothing. **Claim "comments only" with `code-equal`**, not by eye.
 
-**Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
-
-**A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional; it is idempotent, so running it twice is safe.
+**Read `references/twincat/project-files.md` before your first `new`, `pins` or `code-equal`:** it has which `--shape` an FB gets (`execute`, `enable`, `cyclic`, or a framework base), the part keys, what `pins` prints, and `code-equal`'s exit codes.
