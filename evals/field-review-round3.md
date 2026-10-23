@@ -88,4 +88,5 @@ grounded in it. README *Status* lists CFC under *Not supported*.
 
 ## Round 4
 
-The release round. Its full list, with what each check retires, is `field-test-round4.md`.
+The release round. Its full list, with what each check retires, is `field-test-round4.md`. It ran
+on 2026-10-22: `field-review-round4.md`, 13 of 15 pass, R1 and R14 fixed afterwards.
