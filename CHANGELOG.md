@@ -1,49 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-10-23
 
-Fixes from the v0.3.0 field test (`evals/field-review-v0.3.0.md`):
+From field rounds 2–4 on a 4024 production project and a scratch TcUnit solution
+(`evals/field-review-v0.3.0.md`, `field-review-round3.md`, `field-review-round4.md`).
 
-- **CP8** no longer fires on change detection: a value compared exactly with a copy latched from it (`fTarget := fSetpoint;` … `fTarget <> fSetpoint`). A measured value against a target still fires.
-- **CP24** counts the operands of an LD (or other graphical, `<NWL>`) body as uses, instead of calling every variable wired in the network unused.
-- **CP24** skips the parameters of interface and `ABSTRACT` methods, which have no body to use them in.
-- **X3 and X7** judge a state variable across all its `CASE`s, so a secondary `CASE` that only picks a value per step is covered by the main one, and a variable is reported once.
-- **New reviewer rule X11** (medium): an `MC_` motion block whose `Execute` is fed from a level, such as `bAutoMode AND bAtHome`. A step comparison, a trigger's `.Q` and a lone command bit pass. `SKILL.md` also tells the agent to name the trap in the existing line before adding "another one like this". The field test's B2b missed both.
-- **`tcpou.py add-method` / `add-property`** append an empty member with a fresh GUID, in the file's own line endings. A3 needed a hand edit without them.
-- **`st_review.py` writes UTF-8** to stdout, so the em dash no longer garbles under Git Bash on Windows.
-- **A fixed closing line for every code hand-over** in `SKILL.md` step 5: not compiled, and a qualified engineer must review and validate it. The field test found the second half in 1 of 8 hand-overs. `evals/grade.py` now checks for it in the four evals that hand over code.
-- **`tcpou.py check`'s BOM note** now says what was measured: the XAE editor saves a BOM, the new-project wizard does not.
+**Reviewer (`st_review.py`)**
 
-From field use on a 4024 production project:
+- **New rule X11** (medium): an `MC_` block's `Execute` fed from a level.
+- False positives fixed: **CP8** on change detection against a latched copy, **CP24** on LD
+  operands and on interface/`ABSTRACT` parameters, **E3** on comparisons through a
+  `REFERENCE TO` or a dereferenced pointer. **X3/X7** judge a state variable across all its
+  `CASE`s. Output is UTF-8 on Windows.
 
-- **`tcpou.py` reads and writes UTF-8 whatever the locale.** Under Windows' cp1252 default, `set --from-file` turned every `²` in a unit comment into `Â²` on a round trip that edited nothing, and `get` aborted on a character cp1252 cannot encode. `new` also prints its path with one kind of separator.
-- **`tcpou.py pins`** lists the pin wiring of every FBD/LD box: which symbol or operator feeds each input, which inputs are unwired, and where each output goes. Read-only. In a graphical caller this wiring is invisible to text search; in the field it settled a diagnosis that grep could not.
-- **`tcpou.py code-equal`** proves an edit changed only comments and whitespace, against a git revision (default `HEAD`) or another file. Unlike the field script it replaces, it keeps string literals intact (`//` inside one is not a comment), handles nested `(* *)`, does not equate `a b` with `ab`, and pairs parts by name rather than position.
-- **`scripts/xae_build.ps1`** builds a solution in a hidden XAE through the Automation Interface and prints the Build pane and compiler errors: rung 2 of the verification ladder, on a Windows PC with XAE. It never activates; rule 2 is unchanged and there is no activation script. `references/twincat/xae-automation.md` covers what a build rewrites (`.tmc`, `.xti`, `_CompileInfo`, a `.vsm`) and what the user should do before activating a scratch project on a controller that holds a machine project.
+**Project files (`tcpou.py`)**
 
-Field round 3, on Project_A (a packaging machine, TwinCAT 3.1.4024.55) and a scratch TcUnit solution; results in `evals/field-review-round3.md`, the release round in `evals/field-test-round4.md`. Each fix has a test in `tests/run_tests.py`. The LD shapes behind the `pins` fixes were confirmed by eye in the XAE editor, and round 4 re-ran every one of these fixes on the TwinCAT PC (below):
+- New: **`add-method`/`add-property`**, **`pins`** (FBD/LD box wiring, matched against XAE's own
+  export; CFC is refused), and **`code-equal`** (proves an edit changed only comments).
+- UTF-8 whatever the locale; `set` decodes its source by BOM, and **`get --out`** gives
+  PowerShell 5.1 a lossless route. A trailing line break from a pipe leaves no diff.
 
-- **`tcpou.py set` decodes its source by BOM:** UTF-8 with or without one, UTF-16 LE or BE with one. Windows PowerShell 5.1's `>` is `Out-File` and writes UTF-16LE, so `set --from-file` on a file it made died in a `UnicodeDecodeError` traceback. Anything else is refused in one line that names the file.
-- **`tcpou.py get --out FILE`** writes the part as UTF-8 bytes (no BOM, LF) with no shell in between. PowerShell 5.1's `>` decodes the script's UTF-8 through the console code page first, so `²` landed in the file as `┬▓`; a pipe loses it as `??`. `SKILL.md` now says: from PowerShell 5.1, `get --out` and `set --from-file`, never `>` or a pipe. `set` warns when the new text carries `Â²`, `Â³`, `┬▓` or `┬│` and the current part does not.
-- **`tcpou.py set` drops one trailing line break more than the part already has**, the one a pipe or an editor appends, so a round trip leaves no diff. Two or more are kept.
-- **`tcpou.py pins` reads LD as XAE shows it.** Compared with XAE's own PLCopen export of six LD callers (56 boxes, 1,066 pins), operands and order matched and four things did not; all four are changed: the rung input (`BoxTreeTerminator` at `InputItems[0]`) prints `(rung: left rail, TRUE)` instead of `(unwired)` (48 boxes); an operand whose `Flags` has bit 0 set prints as `NOT x`, at top level and inside an operator (6 pins); each box header names the method its network lives in, `fbX : FB_Y   [MotionCycle]`, because every caller's body was empty and its networks sat in three methods; coil rungs and conditional RETURN rungs, `BoxTreeAssign`s with no box, are listed as `(coil) var <- AND(OR(a, b, c), NOT d)` and `(return) <- NOT x`, and `--pin` matches the coil's variable. Opening one of the callers in the XAE editor confirmed all three readings: the rung input is wired straight to the left rail, `Flags` bit 0 is the negation XAE draws, and the `???`/`Flags` 8 rung is a negated contact into RETURN.
-- **CFC is not supported, and `pins` says so:** on a `<CFC>` body it refuses with `CFC body: pins reads FBD/LD networks only` and exit 2, where an empty listing with exit 0 read as "nothing wired". Project_A has no CFC POU: the round-2 "CFC POUs" were LD (`<NWL>` with `DefaultViewMode "Ld"`, 43 of 43). A real CFC body is `<CFC>`/`CFCImplementationObject`, how a box is stored inside it has never been observed, and the projects this skill serves use LD throughout, so no CFC parser is attempted. Docs and messages now say FBD/LD where they said FBD, and LD where they said CFC.
-- **`tcpou.py code-equal` compares line endings as LF inside string literals too.** Under `core.autocrlf=true` the `HEAD` blob has LF and the working copy CRLF; a `{attribute 'TcLinkTo' := '…'}` whose value spans lines kept the CR inside the literal, and 1 of 1,352 unmodified files came back DIFFERENT.
-- **`tests/run_tests.py` passes from an installed copy** that is not a git checkout: the `--ref HEAD` check runs in a repository the test creates. Every subprocess in the suite starts without `PYTHONIOENCODING`/`PYTHONUTF8`, which the agent shell on the test PC inherits and which hid encoding bugs.
-- **`tcpou.py get | <a reader that stops early>`** exits quietly instead of printing `! None: Broken pipe`.
-- **`xae_build.ps1` and the same solution open in XAE.** That XAE keeps running but asks to reload the `.xti` within a second of the build (answer Yes; No writes the old one back on the next save), and the hidden XAE rewrites the shared `.suo` on quit; an XAE with a different solution open is left alone. The header and `references/twincat/xae-automation.md` say so instead of "the XAE you work in is not touched", and the script warns before building when the solution's lock file (`<project>.project.~u`) names a live process. A wrong `-PublicAssemblies` prints one line, not a `Write-Error` record. The doc's list of what a build rewrites gains the `.plcproj` on a first build, `_Boot/`, `.xti.bak`, the much larger `.xti` diff without compile state, the `.vsm` rewritten on open, and `-Rebuild` leaving the old `_CompileInfo`. It also repeats that TcUnit 1.3.2 shows its summary as Errors in the Error List, which an agent got wrong when `testing-tcunit.md` was out of its reach.
+**Builds:** **`scripts/xae_build.ps1`** builds in a hidden XAE and prints the real compiler
+output. It never activates; `references/twincat/xae-automation.md` lists what a build rewrites.
 
-Towards the release:
+**Skill and docs**
 
-- **`references/codesys.md` is removed.** It was marked untested from the day it was written and nothing can test it here: no CODESYS install, and no CODESYS-specific code in the reference corpus. The skill's target stays the CODESYS V3 dialect family with TwinCAT 3 as the verified platform; `SKILL.md` now says that CODESYS library names, the `.project` container and tooling are not covered and the agent should say so rather than guess. The `SKILL.md` description is unchanged, so the trigger evals stand.
-- **Field round 2 recorded** in `evals/field-review-v0.3.0.md`, and the README *Status* moved its results to *Verified*: the fixed reviewer re-run on Project_A (130 findings against 270), a file written by `add-method`/`add-property` built clean in XAE, the re-run's B1/B3 answers built, TcUnit 2 of 2.
-- **README *Status* is restructured** into *Verified*, *Not supported* (CFC bodies, CODESYS specifics) and *Awaiting the release round*, with the standing note that agent-written code is still not compiled until someone builds it. The release round, `evals/field-test-round4.md`, lists every check needed to empty the last section.
-- **A candidate eval for the `SEL` trap** (`evals/candidates.json`, `labeler-recipe-offset`): a recipe-parameter edit in the line fixture where compacting an `IF`/`ELSE` into `SEL` is incidental. The direct `fold-selector-constants` prompt passed 4 of 4 without the skill; this one has not been scouted yet.
+- A fixed closing line on every code hand-over: not compiled, and a qualified engineer must
+  review and validate it.
+- `SKILL.md` slimmed from 20 KB to 17 KB; `tcpou.py` detail moved to
+  `references/twincat/project-files.md`. Contradictions removed: `PT := 500` does not compile,
+  `.gitattributes` advice is `-text`, the template recipe uses `new` and `--out`/`--from-file`,
+  TcUnit routes to `testing-tcunit.md`, and duplicated sections have one home.
+- **`FB_Sequence` keeps `bDone` latched until `bExecute` falls**, as PLCopen and
+  `behaviour-model.md` say. This change was not rebuilt in XAE.
+- Tests guard the description's length and that `SKILL.md` names every `tcpou.py` subcommand.
+  The suite also runs on `windows-latest`.
 
-Field round 4, the release round (`evals/field-test-round4.md`), on Project_A and the scratch TcUnit solution; results in `evals/field-review-round4.md`. 13 of 15 checks passed: the round-3 `tcpou.py` fixes from PowerShell 5.1 and cmd.exe, `pins` against a fresh PLCopen export (56 boxes, 1,076 pins, 0 mismatches) and against one FBD network drawn in XAE, `code-equal` over all 1,353 files under `core.autocrlf=true`, and `xae_build.ps1` on its normal, same-solution and wrong-path runs. The two failures are fixed here, and the re-run of those two checks on the fixed skill passed (`evals/field-review-round4.md`, *Re-run after the fixes*): 116 ok on Windows from the clone and the installed copy, and 130 findings on Project_A with one high, the real CP8, and no E3:
-
-- **E3 no longer fires on a comparison through a `REFERENCE TO` or a dereferenced pointer.** `ist_Zone.fEnd <= ist_Zone.fStart`, two LREAL members read through a reference, was reported as high, twice, on Project_A. References counted as pointers, and the pattern took the bare identifier in front of `.fStart`; the same flaw fired on `pZone^.fEnd <= pZone^.fStart` through a real pointer. E3 now takes only `POINTER TO` names and only a whole identifier as an operand: `pA < pB` still fires, and `ref.a <= ref.b`, `refA < refB` and `p^.a <= p^.b` do not. `references/plcopen-rules.md` says the same.
-- **`tests/run_tests.py` passes on Windows.** Two checks compared `get`'s stdout with LF bytes; `get` prints through a text stream, which writes CRLF on Windows, so they failed there and passed in CI, which ran on `ubuntu-latest` only. They compare with line endings normalised now, `tcpou.py` is unchanged, and CI runs the suite on `windows-latest` too.
+**Removed:** `references/codesys.md`, which was never verifiable here. CODESYS specifics are
+stated as not covered.
 
 ## 0.3.0 — 2026-10-16
 
