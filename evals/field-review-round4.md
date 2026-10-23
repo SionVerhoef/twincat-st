@@ -133,3 +133,45 @@ To file under `twincat-st-1hr` (the field-test bead); `bd` is not installed on t
 
    `st_review.py FB_RefOrder.st --rules E3` reports `high   E3    FB_RefOrder:9  only = and <>
    are defined on pointers; ordering relies on undocumented memory layout`, exit 1.
+
+## Re-run after the fixes
+
+R1 and R14 ran again on the same PC, as `field-test-round4.md` *Re-run after the fixes* lists them.
+The skill was at `0dc4194` (PR #36), as the clone and as the installed copy: reinstalled from the
+clone, 116 files, byte-identical, no `.git` or `.github`. Python 3.12.10, cmd.exe. `PYTHONUTF8` and
+`PYTHONIOENCODING` were cleared, and `set PYTHON` listed only `PYTHONDONTWRITEBYTECODE`. `tcpou.py`
+is byte-identical to `f69dd5b`, so R3 and R15 stand.
+
+**Both pass.** Beads `twincat-st-ajl` (R1) and `twincat-st-gqw` (R14) can close, and nothing is left
+under README *Awaiting the re-run*.
+
+| # | Result | Evidence |
+|---|---|---|
+| R1 | pass | Clone and installed copy alike: exit 0, 116 `ok`, no `skip` line, last line `all checks passed`. The two logs are byte-identical. Round 4's two failures are `ok` under their new names: `get --out writes UTF-8 with no BOM, the text get prints, as LF bytes` and `two trailing line breaks are kept: an empty last line stays possible` |
+| R14 | pass | At round 4's Project_A commit: 158 files, **130 findings**, `{'high': 1, 'medium': 101, 'low': 28}`, no E3. Finding for finding, that is round 4's 132 without its two E3. At Project_A's current `HEAD`: 158 files, 129 findings, `{'high': 1, 'medium': 100, 'low': 28}`, no E3 (see below). `--min-severity high` lists one finding at both: round 4's CP8, same line, still real |
+
+### R14 -- Project_A's HEAD moved
+
+Round 4's worktree was made before Project_A's last commits, so R14 ran at both commits. In between,
+Project_A added an `__ISVALIDREF` check on a `REFERENCE TO` input, one line in one POU. At `HEAD`
+the X6 on that input is gone: it was real, and the project fixed it. One CP24 and one X3 in the
+same POU moved down a line. No other finding changed.
+
+| Rule | Sev | Round 4's commit | `HEAD` |
+|---|---|---|---|
+| CP8 | high | 1 | 1 |
+| E3 | high | 0 | 0 |
+| CP24 | medium | 59 | 59 |
+| CP23 | medium | 22 | 22 |
+| X3 | medium | 17 | 17 |
+| X6 | medium | 3 | 2 |
+| X6 | low | 28 | 28 |
+
+### Method notes
+
+- The PC's system disk had about 150 MB free, and a full Project_A worktree no longer fits there.
+  Each worktree was made with `--no-checkout` and then checked out only the eight folders of
+  Project_A's own code, the 158 files. The reviewer ran from the PLC project folder with those
+  eight folders as its paths, as round 4 did, so the framework libraries stay out. Both worktrees
+  were removed afterwards.
+- The scratch solution no longer held `FB_FbdProbe`: it was removed at the end of round 4.

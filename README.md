@@ -196,8 +196,8 @@ verified and not verified the most important fact on this page. Four field round
 [`evals/field-review-round3.md`](evals/field-review-round3.md),
 [`evals/field-review-round4.md`](evals/field-review-round4.md)). The fourth was the release
 round ([`evals/field-test-round4.md`](evals/field-test-round4.md)): 13 of its 15 checks passed,
-the two that failed are fixed here, and the list under *Awaiting the re-run* is what the re-run
-of those two checks has to clear before the release.
+the two that failed were fixed here, and the re-run of those two checks on the fixed skill
+passed.
 
 Whatever is verified here, **code an agent writes for you is still not compiled** unless you build
 it. The field tests built a handful of answers; they say nothing about the next one, and `SKILL.md`
@@ -220,7 +220,12 @@ rule 3 makes the agent say so every time.
   findings against 270 before the four false-positive fixes; 59 of them are CP24 and real. The
   release round read every high-severity finding on that project: one is real (CP8, a measured
   position compared exactly with its target) and two were E3 false positives on code added since
-  round 2, fixed here (see *Awaiting the re-run*).
+  round 2, fixed here.
+- **No high-severity false positive is left** (R14). E3 takes only `POINTER TO` names and only a
+  whole identifier as an operand, and the re-run on the same project reports 130 findings and one
+  high, the real CP8: round 4's 132 without its two E3, finding for finding. At the project's
+  current `HEAD` it is 129, one X6 fewer: the project had guarded that `REFERENCE TO` input with
+  `__ISVALIDREF` since, so the finding was real.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
 - Every one of the 27 reviewer rules fires on a deliberately defective fixture, and the reviewer
   stays silent on a second fixture collecting every shape that was once a false positive.
@@ -229,6 +234,11 @@ rule 3 makes the agent say so every time.
   files from ten public TwinCAT projects since 0.2.0.
 - The two scripts check each other: tests scaffold an FB with `tcpou.py` and review it with
   `st_review.py`. The shipped templates pass the reviewer.
+- **The test suite passes on Windows** (R1). Two checks compared `get`'s stdout with LF bytes,
+  and a Windows text stream prints CRLF: 114 ok, 2 failed. They compare with line endings
+  normalised now, `tcpou.py` is unchanged, and the re-run is 116 ok, exit 0, from the clone and
+  the installed copy alike under cmd.exe. CI runs the suite on `windows-latest` as well as
+  `ubuntu-latest`.
 - **`code-equal` holds on a real project.** Over the 1,353 unmodified source files of a
   production project against `HEAD` under `core.autocrlf=true`: 1,353 IDENTICAL, 0 DIFFERENT,
   0 CANNOT COMPARE. Round 3's one false DIFFERENT, a CR kept inside a multi-line string literal,
@@ -259,22 +269,6 @@ rule 3 makes the agent say so every time.
   PLC layer is CODESYS-V3-derived, but library names, the `.project` container, SoftMotion, OPC
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
-
-**Awaiting the re-run** (`evals/field-test-round4.md`, *Re-run after the fixes*)
-
-The release round failed two of its fifteen checks. Both are fixed here with a test, and neither
-fix has been run on the TwinCAT PC:
-
-- **The test suite on Windows** (R1). Two checks compared `get`'s stdout with LF bytes, and on
-  Windows a text stream prints CRLF: 114 ok, 2 failed, from the clone and the installed copy
-  alike. They now compare with line endings normalised, `tcpou.py` is unchanged, and CI runs the
-  suite on `windows-latest` as well as `ubuntu-latest`. The re-run expects 116 ok.
-- **No high-severity false positive** (R14). The round found 132 findings on the production
-  project, 3 high: one real (CP8) and two E3 on `ist_Zone.fEnd <= ist_Zone.fStart`, two LREAL
-  members read through a `REFERENCE TO`. E3 now takes only `POINTER TO` names and only a whole
-  identifier as an operand. The re-run expects 130 findings and one high.
-
-After the re-run, both items move to *Verified*, this heading goes, and the release is tagged.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.
