@@ -2,7 +2,7 @@
 
 PLC code has a reputation for being untestable. Most of that is a design problem rather than a platform problem: an FB that talks straight to `%IX0.1` cannot be tested anywhere but on the machine, and an FB that takes an `I_Cylinder` can be tested at a desk.
 
-**TcUnit** is the de-facto unit-test framework for TwinCAT 3 (0BSD licence, so it can be vendored freely). Tests are ordinary PLC code that runs on the target — or on a local runtime — and reports results to the error list.
+**TcUnit** is the de-facto unit-test framework for TwinCAT 3 (0BSD licence, so it can be vendored freely). Tests are ordinary PLC code that runs on the target — or on a local runtime — and reports results to the error list. The results are also readable over ADS, which lets an agent read them back itself instead of a human relaying them. Keep suites in a `Tests/` folder excluded from the release build.
 
 ## The shape
 

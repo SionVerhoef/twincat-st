@@ -87,7 +87,6 @@ Declaration comments carry the unit, the valid range, and the provenance of any 
 ## Structure
 
 - **One responsibility per function block** (PLCopen CP5). An FB that moves an axis *and* parses a recipe *and* drives the HMI is three FBs.
-- **Devices get an FB; sequences get an FB.** The device FB knows how to actuate; the sequence FB knows the order. Mixing them makes both untestable.
 - **The interface is the contract**: inputs, outputs, `bError`, `nErrorID`, and a `Reset()`. Keep it small and stable — every change to an FB interface forces a full download, which on a production machine is a scheduled event, not a keystroke.
 - **Cap the pin count at about 10** (CP23). Past that, group related parameters into a `STRUCT`, or move configuration into `FB_init` so it is supplied once at instantiation rather than every cycle.
-- **No logic in `MAIN`** beyond calling the top-level FBs in a defined order. `MAIN` is a wiring diagram, not a program.
+- **Devices and sequences get separate FBs, and `MAIN` only calls them** — see `patterns.md`, *Structuring a machine project*.
