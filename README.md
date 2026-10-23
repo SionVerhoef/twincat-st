@@ -20,8 +20,9 @@ They are independent; install either alone.
 
 ## Why
 
-Syntax is not where model-written PLC code fails. **Execution model is.** The recurring
-defects all compile:
+Syntax is not where model-written PLC code fails. **Execution model is.** All but one of the
+recurring defects compile, and the one that does not, `PT := 500`, needs a compiler the agent
+almost never has:
 
 - `WHILE NOT bDone DO` inside a cyclic task, where the answer was a state machine — the task
   overruns, the watchdog fires, the machine stops.

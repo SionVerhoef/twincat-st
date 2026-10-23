@@ -159,7 +159,7 @@ END_FOR
 
 Watch total work as well as termination: 10,000 iterations of floating-point maths will not fit a 1 ms task. Heavy work belongs in a slower task, or spread across cycles — process N items per scan.
 
-## Rule 4 — Detect edges explicitly. `X-`
+## Rule 4 — Detect edges explicitly.
 
 A signal is observed once per cycle. If it can change faster than the cycle time the PLC will miss it — a task-design problem, not something code can fix.
 

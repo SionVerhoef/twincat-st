@@ -18,13 +18,13 @@ A capable model writes Structured Text that *reads* correctly and *behaves* wron
 - `WHILE NOT bDone DO` where the answer was a state machine — the task overruns, the watchdog fires, the machine stops
 - a `TON` preset written `PT := 500` instead of `PT := T#500MS`
 - an `Execute` input driven from a level instead of an edge, so the block runs once and never again (reviewer rule `X11`)
-
-**Asked to add "another one like this", check the existing line first.** If it carries one of these traps, name that line as the problem before writing anything next to it. Copying its style copies the defect: in a field test an agent kept `Execute := bAutoMode AND bAtHome` unremarked and delivered a second level-driven move beside it.
 - a wait with no timeout, so a failed sensor hangs the sequence with no diagnostic
 - `IF fActual = fTarget` on an `LREAL`, which is essentially never true
 - `SEL(bOption, 0, fWidth)` read as "0 when set": `SEL(G, IN0, IN1)` returns its **first** value when `G` is FALSE. `references/st-language.md` has `MUX` and `LIMIT` too
 
-None of these are syntax errors. A compiler accepts all of them. So the priority order here is deliberate: **execution model first, syntax second, vendor trivia last** — and the review step is a program, not a vibe.
+All but one of these compile. The exception, `PT := 500`, is a type error (`Cannot convert type 'INT' to type 'TIME'`), and there is almost certainly no compiler here to report it. So the priority order here is deliberate: **execution model first, syntax second, vendor trivia last** — and the review step is a program, not a vibe.
+
+**Asked to add "another one like this", check the existing line first.** If it carries one of these traps, name that line as the problem before writing anything next to it. Copying its style copies the defect: in a field test an agent kept `Execute := bAutoMode AND bAtHome` unremarked and delivered a second level-driven move beside it.
 
 ## Three rules that override everything else
 
@@ -192,9 +192,3 @@ py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comme
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 
 **A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional; it is idempotent, so running it twice is safe.
-
-## Adding material to this skill
-
-Files from permissively-licensed sources (MIT, 0BSD, BSD-2, Apache-2) can be copied in — record them in `ATTRIBUTIONS.md` in the same commit. Anything else, including vendor documentation and standards, gets read and restated rather than pasted; vendoring a GPL file would relicense the whole skill.
-
-`ATTRIBUTIONS.md` lists what this was built from and what each source contributed.
