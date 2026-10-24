@@ -51,6 +51,6 @@ Every one of these is a worked example of the rules in `references/cyclic-execut
 - Error IDs as named hex constants, not magic numbers
 - An escape from `Error` via `bReset`, handled outside the `CASE` so it works from any state
 
-The `IF TRUE THEN // <- replace with the real condition` markers are intentional: they are the two places a real step condition must go, and they will not compile into anything meaningful if left alone.
+The step conditions are inputs, `bStep1Done` and `bStep2Done`, marked `// wire this input to the real step-N signal`. Left unwired they stay `FALSE`, so the step never completes and the sequence faults on its timeout instead of running on.
 
-All three templates pass `scripts/st_review.py` with no findings, and CI keeps it that way.
+All three templates pass `scripts/st_review.py` with no findings. CI fails the build if one ever reports a high-severity finding.

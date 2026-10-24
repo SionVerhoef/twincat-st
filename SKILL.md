@@ -172,7 +172,7 @@ Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
 py -3 scripts/tcpou.py show     <file>                                   # parts + encoding
 py -3 scripts/tcpou.py get      <file> --part impl [--out body.st]       # print or write one part
 py -3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
-py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # scaffold (--shape, --extends)
+py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # a name, not a path
 py -3 scripts/tcpou.py add-method   <file> --name Reset [--returns BOOL] # empty member, fill with set
 py -3 scripts/tcpou.py add-property <file> --name Speed --type LREAL     # [--no-set] = getter only
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
