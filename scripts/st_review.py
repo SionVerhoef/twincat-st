@@ -58,7 +58,8 @@ SEVERITIES = ("high", "medium", "low")
 RULES: dict[str, tuple[str, str]] = {
     "X0": ("low", "lint:allow suppression without a stated reason"),
     "X1": ("high", "unbounded WHILE/REPEAT — blocks the scan; use a state machine"),
-    "X2": ("high", "timer preset assigned a bare number instead of a TIME literal"),
+    "X2": ("high", "timer preset assigned a bare number instead of a TIME literal — "
+                   "it will not compile"),
     "X3": ("medium", "CASE without ELSE — corrupted or new state falls through silently"),
     "X4": ("medium", "division by a variable with no zero guard"),
     "X5": ("high", "pointer dereferenced without a NULL check"),

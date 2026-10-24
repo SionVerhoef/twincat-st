@@ -28,6 +28,18 @@ What matters when *modifying* a file:
 
 `scripts/tcpou.py` preserves all five, and refuses the `]]>` case outright. Use it rather than hand-editing the XML.
 
+## `tcpou.py` in detail
+
+`SKILL.md` lists every subcommand. What each one expects:
+
+- `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
+- **`--shape` picks which interface family the FB gets:** `execute` (the default) declares `bExecute`/`bBusy`/`bDone`, `enable` declares `bEnable`/`bValid`, and `cyclic` declares no command interface at all. Choose the one the block actually is — `Execute` pairs with `Done`, `Enable` pairs with `Valid`, and mixing the two is what rule `X9` reports. `references/behaviour-model.md` is the decision. An FB that **inherits** its command interface from a framework base — the common case in a module-based project — fits none of the three on its own: use `--shape cyclic --extends FB_YourBase`, which gives the `EXTENDS` and adds no pins of its own to clash with the base's.
+- `add-method` and `add-property` append an empty member to a POU or interface; fill its parts with `set`. `--access` takes `PUBLIC`, `PRIVATE`, `PROTECTED` or `INTERNAL` (none reads as `PUBLIC`); `add-property --no-set` makes it read-only.
+- Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
+- `set` reads stdin when `--from-file` is omitted. **From Windows PowerShell 5.1, move a part with `get --out body.st` and `set --from-file body.st`, never with `>` or a pipe.** `>` is `Out-File`: it decodes the script's UTF-8 through the console code page before writing UTF-16, so `²` lands in the file as `┬▓` and no reader can repair it. A pipe (`Get-Content body.st | set`) re-encodes each character to the console code page: a BOM-less file arrives with `²` as `??`, with `-Encoding UTF8` as `?`; lost either way. (cmd.exe's `>` and `type |` are fine.) `--from-file` and stdin take UTF-8 with or without a BOM and UTF-16 with one; anything else is refused in one line. One trailing line break more than the part already has, which a pipe or an editor appends, is dropped so a round trip leaves no diff. Files and output are UTF-8 whatever the console's code page.
+- **`pins` before concluding a signal is unused or unwired in an FBD or LD caller.** Which variable feeds which pin of a box is stored in the network XML, so a text search for `ibEmpty :=` finds nothing there. `pins` prints every box's inputs (`<-`, with operators as `OR(a, b)`, a negated operand as `NOT x`, an empty pin as `(unwired)` and, in LD, the rung input as `(rung: left rail, TRUE)`) and its wired outputs (`->`), each box tagged with the method its network lives in, `[MotionCycle]`. Coil rungs and conditional RETURN rungs have no box and are listed as `(coil) var <- AND(a, NOT b)` and `(return) <- NOT x`; `--pin var` finds the coil. It is read-only; the layout it reads was checked on 4024 LD networks and one FBD network drawn in XAE, against XAE's PLCopen export and in the editor. CFC is not supported: on a `<CFC>` body `pins` refuses with exit 2 rather than print an empty list, and nothing here reads a CFC box.
+- **Claim "comments only" with `code-equal`, not by eye.** It compares every source part with the same part at `--ref` (default `HEAD`) or in `--against` another file, after dropping comments and insignificant whitespace; string literals count as code. Exit 0 = IDENTICAL, 1 = the code changed (it prints the first difference per part), 2 = nothing to compare with. It reads the CDATA source only, not the XML around it.
+
 ## The silent failure: `.plcproj` registration
 
 **A `.TcPOU` on disk that is not listed in `.plcproj` is not compiled — with no error.** The IDE adds the entry when you create a file through it; a file created from the shell will not have one.
@@ -59,15 +71,25 @@ A `*` resolution takes whatever is installed; a pinned version is reproducible. 
 
 ### `.gitattributes`
 
+Turn line-ending conversion **off** for TwinCAT files, in line with *preserve, not normalise*
+above:
+
 ```gitattributes
-*.TcPOU     text eol=crlf
-*.TcDUT     text eol=crlf
-*.TcGVL     text eol=crlf
-*.TcTTO     text eol=crlf
-*.plcproj   text eol=crlf
-*.tsproj    text eol=crlf
-*.xti       text eol=crlf
+*.TcPOU     -text
+*.TcDUT     -text
+*.TcGVL     -text
+*.TcIO      -text
+*.TcTTO     -text
+*.TcVIS     -text
+*.plcproj   -text
+*.tsproj    -text
+*.xti       -text
 ```
+
+`text eol=crlf` looks tidier but rewrites every LF file the first time it is touched, so a
+one-line change becomes a whole-file diff. Without any entry, `core.autocrlf=true` on Windows
+leaves LF in the repository and CRLF in the working tree, and a byte comparison between the two
+reports every line changed — `tcpou.py code-equal` compares code, not bytes, and is not fooled.
 
 ### `.gitignore`
 

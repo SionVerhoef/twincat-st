@@ -44,7 +44,7 @@ VAR_INPUT
 END_VAR
 VAR_OUTPUT
     bBusy       : BOOL;                 // sequence is running
-    bDone       : BOOL;                 // completed successfully (until next Execute edge)
+    bDone       : BOOL;                 // completed successfully (latched until bExecute falls)
     bError      : BOOL;
     nErrorID    : UDINT;                // 0 = no error; see GVL_Errors
 END_VAR
@@ -88,6 +88,11 @@ END_IF
 CASE eState OF
 
     E_SeqState.Idle:
+        // PLCopen: Done stays latched until Execute falls. If Execute already
+        // fell while busy, that makes Done a single-scan pulse.
+        IF NOT bExecute THEN
+            bDone := FALSE;
+        END_IF
         IF fbExecTrig.Q THEN
             bDone  := FALSE;
             bError := FALSE;

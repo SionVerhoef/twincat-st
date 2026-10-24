@@ -82,7 +82,7 @@ project.
 There is deliberately no activation script. `SKILL.md` rule 2 stands: activating a configuration
 replaces what runs on the controller, and that is a human gesture. Hand the user the steps; do not
 perform them. That covers running TcUnit on a target too — the user activates, then the results
-can be read back (see `ads-and-diagnostics.md`). TcUnit 1.3.2 shows its summary lines (`Tests:`,
+can be read back over ADS (`testing-tcunit.md`; the client side is in `ads-and-diagnostics.md`). TcUnit 1.3.2 shows its summary lines (`Tests:`,
 `Successful tests:`, `Failed tests:`, `TESTS FINISHED RUNNING`) as **Errors** in the XAE Error
 List, not on a Messages tab: read the counts, not the icon (`testing-tcunit.md`).
 

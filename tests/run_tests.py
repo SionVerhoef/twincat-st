@@ -26,6 +26,8 @@ defect this skill leads with. This is the other half of the gate:
     negations, the owning method, coil and RETURN rungs - and refuses a CFC body
   * code-equal is not fooled by CRLF inside a string literal (core.autocrlf)
   * a missing path is reported rather than raising
+  * SKILL.md's description fits the 1,024-character limit (0.2.0 shipped over
+    it) and its command block names every tcpou.py subcommand
 
 Every subprocess starts without PYTHONIOENCODING and PYTHONUTF8 unless a test sets
 them on purpose: the agent shell on the field-test PC inherits
@@ -824,6 +826,20 @@ with tempfile.TemporaryDirectory() as tmp:
           member)
     check("an interface member refuses an access modifier",
           tcpou("add-method", str(itf), "--name", "P2", "--access", "PRIVATE").returncode == 1)
+
+# --- SKILL.md stays loadable and documents every subcommand ------------------
+# 0.2.0 shipped a description over the limit, and add-method/add-property went
+# undocumented in SKILL.md for a release. Neither had anything guarding it.
+skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+desc = re.search(r'^description:\s*"(.*)"\s*$', skill, re.M)
+check("SKILL.md has a quoted description", desc is not None)
+if desc:
+    check("SKILL.md description is at most 1,024 characters", len(desc.group(1)) <= 1024,
+          f"{len(desc.group(1))} characters")
+subcommands = re.findall(r'add_parser\("([a-z-]+)"', TCPOU.read_text(encoding="utf-8"))
+undocumented = [c for c in subcommands if not re.search(rf"tcpou\.py {re.escape(c)}\s", skill)]
+check("SKILL.md names every tcpou.py subcommand", bool(subcommands) and not undocumented,
+      ", ".join(undocumented))
 
 print()
 if failures:
