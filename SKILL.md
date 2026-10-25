@@ -43,7 +43,7 @@ Establish, and state what you assumed if you could not:
 - vendor and version; which **task** this runs in and its **cycle time**
 - the fault behaviour required — stop, hold, or continue degraded
 - whether any part of this is a safety function (if yes → rule 1)
-- what must survive a restart (→ `RETAIN` / `PERSISTENT`, see `references/cyclic-execution-rules.md`)
+- what must survive a restart, and whether it is still *true* after one — a remembered step or "homed" usually is not (`references/cyclic-execution-rules.md` Rule 9; ask before making it `RETAIN`)
 
 **Read `examples/` when style is the question** — new code going into an existing codebase, or "make this look like ours". Real working code beats a written convention, but it is the most expensive thing here to read: skip it for a contained change to code you can already see. House code the team added there outranks everything, including this skill.
 
