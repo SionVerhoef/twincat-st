@@ -8,7 +8,7 @@ Scope note: this is the triage layer — enough to diagnose a machine that is no
 
 ## ADS in one page
 
-- **AMS NetID** — the address of a TwinCAT device, six bytes: `5.1.2.3.1.1`. Conventionally the IPv4 address plus `.1.1`, but it is independent of the IP and can be anything.
+- **AMS NetID** — the address of a TwinCAT device, six bytes: `1.2.3.4.1.1`. Conventionally the IPv4 address plus `.1.1`, but it is independent of the IP and can be anything.
 - **AMS port** — which service on that device. Common ones:
 
   | Port | Service |
@@ -54,7 +54,7 @@ The route already exists, or you add it outside Python: in XAE under **SYSTEM �
 import pyads
 
 # The local router resolves this AmsNetId via its route table.
-plc = pyads.Connection('5.1.2.3.1.1', pyads.PORT_TC3PLC1)   # 851
+plc = pyads.Connection('1.2.3.4.1.1', pyads.PORT_TC3PLC1)   # 851
 plc.open()
 ...
 plc.close()
@@ -74,18 +74,18 @@ No system router, so the library keeps the route table in-process: declare who y
 import pyads
 
 pyads.open_port()
-pyads.set_local_address('192.168.1.50.1.1')   # this machine's AmsNetId
+pyads.set_local_address('192.0.2.50.1.1')   # this machine's AmsNetId
 
 # Writes a route into the PLC's own table — needs its credentials.
 pyads.add_route_to_plc(
-    sending_net_id='192.168.1.50.1.1',
-    adding_host_name='192.168.1.50',
-    ip_address='192.168.1.10',                # the PLC
+    sending_net_id='192.0.2.50.1.1',
+    adding_host_name='192.0.2.50',
+    ip_address='192.0.2.10',                # the PLC
     username='Administrator',
     password='1',
     route_name='linux-client')
 
-plc = pyads.Connection('5.1.2.3.1.1', pyads.PORT_TC3PLC1, '192.168.1.10')
+plc = pyads.Connection('1.2.3.4.1.1', pyads.PORT_TC3PLC1, '192.0.2.10')
 plc.open()
 ```
 
