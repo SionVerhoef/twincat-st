@@ -51,7 +51,7 @@
       "fixture": "fixture-project",
       "prompt": "Operators are fed up with re-homing after every power cycle. Make FB_Homing remember that it is homed across a restart, so the machine comes back ready. Project's in this folder.",
       "expected_output": "Does not simply declare qxHomed and nStep RETAIN or PERSISTENT. Says that a remembered 'homed' is only true if the axis cannot have moved and its position is kept across the outage (absolute encoder, or the drive's own persistence), and that a remanent nStep resumes the sequence mid-step. If it makes anything remanent, it validates it at start-up rather than trusting it, and states the TwinCAT storage facts: RETAIN needs NOVRAM mapped, PERSISTENT is written at controlled shutdown, so a power loss without a UPS loses it. Edits only FB_Homing.TcPOU, keeping GUIDs, BOM and CRLF.",
-      "scouting": "Not yet scouted. Tests the Rule 9 rewrite: a remanent variable remembers, and that is the trap here."
+      "scouting": "Scouted 2026-10-25, claude-haiku-4-5-20251001. Without the skill (n=1): added a RETAIN flag that restores 'homed' blindly. With the skill: still made nStep RETAIN in 4 of 4 runs across three skill revisions; the last two assumed an absolute encoder instead of asking. Discriminates for the baseline, and the skill does not yet fix it on Haiku (bead filed)."
     },
     {
       "name": "counter-two-tasks",
@@ -59,7 +59,7 @@
       "workspace": false,
       "prompt": "TwinCAT 4024, two PLC tasks: a 1 ms task runs PRG_Fast, a 10 ms task runs MAIN. Both count rejected parts with GVL.nRejects := GVL.nRejects + 1; (PRG_Fast for the vision reject, MAIN for the weight reject). The HMI total is occasionally one lower than the two reject bins together. Why, and what should the code look like?",
       "expected_output": "Names the lost update: the 1 ms task interrupts the 10 ms task between its read and its write of nRejects (or both run on two cores), so one increment is lost. Fixes it by giving each task its own counter and summing them in one place (one writer per variable), or, if both must write, by a short critical section (FB_IecCriticalSection) or TestAndSet with an else path. Does not claim an integer increment is atomic.",
-      "scouting": "Not yet scouted. Tests twincat/tasks-and-exceptions.md: one writer per variable."
+      "scouting": "Scouted 2026-10-25, claude-haiku-4-5-20251001. Without the skill (n=1): named the race, then invented Tc3_Standard.SEMAPHORE and dropped the count when the lock was busy. With the skill: first run invented Tc2_System.InterlockedIncrement; after the reference said not to, one writer per task and a sum (n=1). Discriminates."
     },
     {
       "name": "plc-stops-access-violation",
@@ -67,7 +67,7 @@
       "workspace": false,
       "prompt": "Our TwinCAT 3 machine PLC goes to stop every few days with an access violation exception. Nobody is logged in when it happens, so by the time I connect it is just stopped. How do I find out which line does it, and what should I look for in the code?",
       "expected_output": "Says the runtime writes a core dump to the target's boot folder when no XAE is logged in, that it is loaded in XAE (PLC > Core Dump > Load) to see the call stack and values, and that it only opens against the same project build and its .compileinfo, so they must be archived together. Lists the likely causes of an access violation: a null or stale pointer, an unassigned REFERENCE TO or interface, an out-of-range index corrupting memory. Does not recommend wrapping code in __TRY/__CATCH as the fix.",
-      "scouting": "Not yet scouted. Tests twincat/tasks-and-exceptions.md: finding the line."
+      "scouting": "Scouted 2026-10-25, claude-haiku-4-5-20251001. Without the skill (n=1): invented a 'Task Manager' and log paths, no core dump. With the skill (n=1): core dump, both boot-folder paths, PLC > Core Dump > Load, .compileinfo, call stack first. Discriminates."
     },
     {
       "name": "try-catch-the-division",
@@ -75,7 +75,7 @@
       "workspace": false,
       "prompt": "In TwinCAT 3 this line faults the PLC when the recipe has nPacksPerLayer = 0: nLayers := nPacksTotal / nPacksPerLayer; Can you wrap it in __TRY/__CATCH so the PLC stops crashing?",
       "expected_output": "Pushes back: the fix is a guard on the divisor (reject or default an nPacksPerLayer of 0, ideally when the recipe is loaded), not an exception handler. If it shows __TRY/__CATCH at all, it puts the block into an error state in the catch rather than carrying on with a made-up value, and notes the try branch stops half-done. Writes the guarded division.",
-      "scouting": "Not yet scouted. Tests the __TRY section: it is not flow control."
+      "scouting": "Scouted 2026-10-25, claude-haiku-4-5-20251001. Without the skill (n=1): wrapped the division and set 0, guard only as an alternative. With the skill: led with the wrapper twice, then, after the reference said to lead with the guard, guard first in 2 of 2. Discriminates."
     },
     {
       "name": "checkbounds-as-fix",
@@ -83,7 +83,7 @@
       "workspace": false,
       "prompt": "TwinCAT 3: an index into aSlots[1..50] sometimes goes out of range and corrupts other variables. A colleague says just add a CheckBounds POU and the problem is solved. Is that right?",
       "expected_output": "Says CheckBounds stops the corruption but the default implementation clamps the index to the nearest bound and carries on, so the defect becomes a silent wrong slot; recommends flagging or logging inside it, measuring its cycle-time cost, noting it does not apply inside libraries, and fixing the index computation itself with a bounds check before use.",
-      "scouting": "Not yet scouted. Tests the implicit-checks section."
+      "scouting": "Scouted 2026-10-25, claude-haiku-4-5-20251001. Without the skill (n=1): treated CheckBounds as a function called by hand; no clamp, cost or library caveat. With the skill: first run never opened the reference; after Rule 7 and the routing row named CheckBounds, clamp, cycle-time cost, libraries and fixing the index (n=1). Discriminates."
     }
   ]
 }
