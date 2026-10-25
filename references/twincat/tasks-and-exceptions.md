@@ -63,6 +63,8 @@ ELSE
 END_IF
 ```
 
+These two are the mechanisms InfoSys documents for this. Do not reach for an "atomic increment" or interlocked function in PLC code: none is documented among them, and inventing one gives the user code that does not compile. For a counter, one writer per task and a sum is simpler than any lock.
+
 Never wait for a lock in a loop: that is `X1` under another name, and a lower-priority task
 holding it cannot run to release it while you spin.
 
@@ -140,6 +142,10 @@ Know what they cost and what they hide:
 They are a diagnostic. The defect is still the unguarded index or divisor in the code.
 
 ### `__TRY` / `__CATCH`
+
+**Asked to wrap a division or an index in `__TRY` so the PLC stops faulting, lead with the
+guard, not the wrapper.** The fault is a missing check on the divisor or index; write that
+check first, and offer `__TRY` only for code you cannot change.
 
 Structured exception handling exists from 4024 on targets that support it. Where it is not
 supported the compiler says so.

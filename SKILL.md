@@ -141,7 +141,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | `references/twincat/project-files.md` | Editing `.TcPOU`/`.plcproj`, or a git merge conflict in one. |
 | `references/twincat/ads-and-diagnostics.md` | ADS access, EtherCAT triage, reading a running machine. |
 | `references/twincat/xae-automation.md` | Asked for a build or compile check, and XAE is installed. What a build rewrites, and why activation stays manual. |
-| `references/twincat/tasks-and-exceptions.md` | Data shared between tasks or cores, locking, or a PLC that stopped on an exception — finding the line, core dumps, implicit checks, `__TRY`. |
+| `references/twincat/tasks-and-exceptions.md` | Data shared between tasks or cores, locking, or a PLC that stopped on an exception — finding the line, core dumps, `CheckBounds`/`CheckDiv…` implicit checks, `__TRY`/`__CATCH`. |
 | `references/tools.md` | A reviewer or `tcpou.py` result you did not expect — every flag, exit status and subcommand in full. |
 
 **Routing rule of thumb:** if the answer names a `Tc2_`/`Tc3_` library, a `.TcPOU` file, ADS or XAE, it is TwinCAT-specific and belongs behind `references/twincat.md`, not in a general answer.

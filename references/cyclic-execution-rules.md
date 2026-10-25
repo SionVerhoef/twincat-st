@@ -223,6 +223,8 @@ ELSE
 END_IF
 ```
 
+A `CheckBounds` POU (an implicit check the compiler calls on every indexed access) is a commissioning aid, not this guard: by default it clamps the index and carries on. What it costs and what it hides: `twincat/tasks-and-exceptions.md`.
+
 ## Rule 8 — No allocation, no recursion, validate every pointer. `E1`, `E3`, `X5`, `X6`
 
 Deterministic execution means everything is allocated at download. No `__NEW`/`__DELETE` in cyclic code, no recursive function blocks, no unbounded string building. Fixed arrays and `STRING(n)` are the idiom — and `STRING` defaults to 80 characters plus terminator, so declare the length you need.
@@ -255,8 +257,10 @@ What keeps its value, on TwinCAT 3 (Beckhoff InfoSys, *Remanent Variables*):
 
 The trap runs both ways:
 
-- **A plain `VAR` forgets.** It returns to its declared initial value (`nCount : DINT := 5;`, or zero) on every download, reset and restart: not every cycle, but every time the controller comes back. A step counter, a homed flag or a "has run once" latch kept in a plain `VAR` is lost on a restart while the machine is mid-sequence. If the state must outlive that, declare it remanent; if it must not, make sure the restart path into the init state is safe.
-- **A remanent variable remembers.** `RETAIN` and `PERSISTENT` skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it: after a power cycle, an axis position stored as "homed" may no longer be true.
+- **A plain `VAR` forgets.** It returns to its declared initial value (`nCount : DINT := 5;`, or zero) on every download, reset and restart: not every cycle, but every time the controller comes back. A step counter or a "has run once" latch in a plain `VAR` starts over, so the restart path into the init state must be safe from any step the machine was in.
+- **A remanent variable remembers — including things that stopped being true.** `RETAIN` and `PERSISTENT` skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it.
+
+**Asked to make a sequence or a homed state survive a restart, do not just declare it remanent.** A remanent step counter resumes the sequence in the middle of a step whose outputs, timers and drive commands were all reset. A remanent "homed" claims a position the axis may have lost while the power was off: it is only true when the position itself survives (an absolute encoder, or the drive keeping its own position), and then the thing to keep is that position, checked at start-up, not a flag. Say this to the user before changing anything, and ask what the drive and encoder are.
 
 How each is stored decides how far to trust it. TwinCAT writes `RETAIN` to NOVRAM at the end of every cycle, which works only on a controller that has NOVRAM mapped to the PLC's retain area. `PERSISTENT` goes to a boot-data file **at controlled shutdown**, or when `FB_WritePersistentData` is called: an unexpected power loss without a UPS loses everything since the last write. Treat it as best-effort, and never let machine behaviour that matters depend on it silently. `RETAIN` or `PERSISTENT` on a local of a `FUNCTION` has no effect, and a `POINTER TO` in persistent data points somewhere else after the next download.
 
