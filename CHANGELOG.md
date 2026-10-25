@@ -2,8 +2,9 @@
 
 ## 0.4.0 — 2026-10-23
 
-From field rounds 2–4 on a 4024 production project and a scratch TcUnit solution
-(`evals/field-review-v0.3.0.md`, `field-review-round3.md`, `field-review-round4.md`), and a review
+From field rounds 2–5 on a 4024 production project and a scratch TcUnit solution
+(`evals/field-review-v0.3.0.md`, `field-review-round3.md`, `field-review-round4.md`,
+`field-review-round5.md`), and a review
 of the skill as a whole.
 
 **Reviewer (`st_review.py`)**, now 30 rules
@@ -37,7 +38,8 @@ output. It never activates; `references/twincat/xae-automation.md` lists what a 
   `Reset cold`, per InfoSys; CODESYS differs and the rule says so. It no longer suggests making a
   homed flag remanent.
 - **New reference `twincat/tasks-and-exceptions.md`:** data shared between tasks, locking, PLC
-  exceptions, core dumps, implicit checks, `__TRY`/`__CATCH`.
+  exceptions, core dumps, implicit checks, `__TRY`/`__CATCH` (32-bit runtimes only; an x64
+  4024 runtime refuses it at build time, field round 5).
 - A fixed closing line on every code hand-over: not compiled, and a qualified engineer must
   review and validate it.
 - `SKILL.md` slimmed from 20.4 KB to 15.5 KB; flag, exit-status and subcommand detail moves to
@@ -46,7 +48,8 @@ output. It never activates; `references/twincat/xae-automation.md` lists what a 
   `-text`, the template recipe uses `new` and `--out`/`--from-file`, TcUnit routes to
   `testing-tcunit.md`, and duplicated sections have one home.
 - **`FB_Sequence` keeps `bDone` latched until `bExecute` falls**, as PLCopen and
-  `behaviour-model.md` say. This change was not rebuilt in XAE.
+  `behaviour-model.md` say. It rebuilds in XAE (field round 5); its runtime behaviour has not
+  been observed on a controller.
 - Tests guard the description's length and that `SKILL.md` names every `tcpou.py` subcommand.
   The suite also runs on `windows-latest`.
 - Five candidate evals for the new material (`evals/candidates.json`), scouted on Haiku 4.5: all

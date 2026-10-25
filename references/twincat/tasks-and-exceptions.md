@@ -147,8 +147,9 @@ They are a diagnostic. The defect is still the unguarded index or divisor in the
 guard, not the wrapper.** The fault is a missing check on the divisor or index; write that
 check first, and offer `__TRY` only for code you cannot change.
 
-Structured exception handling exists from 4024 on targets that support it. Where it is not
-supported the compiler says so.
+Beckhoff documents structured exception handling for 32-bit runtimes only. On an x64 runtime
+(4024) the build fails with `The codegenerator for the current device does not support
+structured exception handling.` Check the target before offering it.
 
 ```pascal
 VAR

@@ -195,12 +195,13 @@ twincat-st/
 ## Status
 
 There is no TwinCAT toolchain where this skill is developed, so the line between verified and
-not verified is the most important fact on this page. Four field rounds on TwinCAT 3.1.4024.55
+not verified is the most important fact on this page. Five field rounds on TwinCAT 3.1.4024.55
 drew it, and the evidence for each line below is in their records:
 [`field-review-v0.3.0.md`](evals/field-review-v0.3.0.md),
 [`field-review-round3.md`](evals/field-review-round3.md),
-[`field-review-round4.md`](evals/field-review-round4.md) and
-[`field-test-round4.md`](evals/field-test-round4.md).
+[`field-review-round4.md`](evals/field-review-round4.md),
+[`field-test-round4.md`](evals/field-test-round4.md) and
+[`field-review-round5.md`](evals/field-review-round5.md).
 
 Whatever is verified here, **code an agent writes for you is still not compiled** unless you build
 it, and `SKILL.md` rule 3 makes the agent say so every time.
@@ -209,12 +210,14 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 
 - **The templates compile** in XAE 4024.55, the TcUnit suite against TcUnit 1.3.2, and the suite
   passed 2 of 2 on a test controller with its watchdog failing a hung test after 10 s.
-  `FB_Sequence`'s `bDone` latch was changed in 0.4.0 and has not been rebuilt since.
+  `FB_Sequence`'s `bDone` latch, changed in 0.4.0, rebuilds with 0 errors and 0 warnings; its
+  runtime behaviour has not been observed on a controller since the change.
 - **`tcpou.py` round-trips a real project:** `new`, `register`, `set`, `reguid`, `add-method` and
   `add-property` produce files XAE opens without a repair prompt and builds.
 - **Agent-written code built as delivered** in two field-test tasks, in two rounds.
 - **The reviewer on a production project:** no high-severity false positive left; the one
-  high finding is a real CP8.
+  high finding is a real CP8. X12, CP7 and CP12 report nothing there, correctly: the project
+  has no code in their scope, so that shows no false positives, not that they catch defects.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
 - **All 30 reviewer rules fire** on a defective fixture, and the reviewer stays silent on every shape that was
   once a false positive, swept across about 1,670 real files from public TwinCAT projects.
@@ -239,12 +242,9 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 
 **Not yet verified on a TwinCAT install** (added since the last field round)
 
-- **Reviewer rules X12, CP7 and CP12.** Tuned on a 2,189-file public corpus, where they add 6
-  findings, all read as real; not yet run on the production project the other rules were
-  checked against.
-- **`references/twincat/tasks-and-exceptions.md`.** Its facts come from Beckhoff InfoSys; none
-  of its examples has been built, and the core-dump steps have not been walked through on a
-  controller.
+- **The core-dump steps** in `references/twincat/tasks-and-exceptions.md` have not been walked
+  through on a controller. Of its examples, the `TestAndSet` one builds; `__TRY` is refused by
+  the x64 runtime, as the reference now says.
 - **The rewritten restart table** (`cyclic-execution-rules.md` Rule 9) restates InfoSys; it has
   not been observed on a controller.
 
