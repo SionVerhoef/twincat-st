@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 — 2026-10-23
+## 0.4.0 — 2026-10-25
 
 From field rounds 2–5 on a 4024 production project and a scratch TcUnit solution
 (`evals/field-review-v0.3.0.md`, `field-review-round3.md`, `field-review-round4.md`,
