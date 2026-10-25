@@ -1,6 +1,6 @@
 {
   "skill_name": "twincat-st",
-  "notes": "Candidate evals, not part of the matrix. Iteration 2's baseline scored 81% and tied every file-level check, so a task earns a place in evals.json only after a baseline-only scouting run shows the model failing it unaided: run_cells.py <dir> --spec evals/candidates.json --arms without_skill --reps 1, then read the answers. All three use fixture-line/, a 12-object capping line. Three of its six planted defects are what st_review.py reports (X1 in an ACTION, X5 in a METHOD, X4 in a FUNCTION); the REAL equality in FB_Scale.IsSettled compares a reading with its own latched copy, which the CP8 change-detection exemption from the v0.3.0 field test now skips (bead twincat-st-d2p); two need reasoning about the scan — a step timer that is only ever called inside its own state, and an edge-triggered FB called behind an IF. Since X12 the reviewer reports the step timer as well; the FB behind the IF is a house block X12 deliberately leaves alone, and CP7 now flags its unread error output instead. FB_Labeler is a decoy: guarded division, checked pointer. Scouting round 1 (Opus 5.5, baseline only): all three solved unaided, so none is promoted. Hidden location and symptom-only reasoning are not where this model fails; a smaller model is the next thing to scout. labeler-recipe-offset (added later) is different in kind: it does not hide a defect but invites one. The SEL argument-order trap passed 4/4 unaided when asked about directly; the error that motivated it happened with a SEL rewritten inside a larger edit, so here the SEL rewrite is incidental to a recipe-parameter change. Read the resulting FB_Labeler by hand: with SEL(G, IN0, IN1) the recipe value must be IN1. Not yet scouted.",
+  "notes": "Candidate evals, not part of the matrix. Iteration 2's baseline scored 81% and tied every file-level check, so a task earns a place in evals.json only after a baseline-only scouting run shows the model failing it unaided: run_cells.py <dir> --spec evals/candidates.json --arms without_skill --reps 1, then read the answers. All three use fixture-line/, a 12-object capping line. Three of its six planted defects are what st_review.py reports (X1 in an ACTION, X5 in a METHOD, X4 in a FUNCTION); the REAL equality in FB_Scale.IsSettled compares a reading with its own latched copy, which the CP8 change-detection exemption from the v0.3.0 field test now skips (bead twincat-st-d2p); two need reasoning about the scan — a step timer that is only ever called inside its own state, and an edge-triggered FB called behind an IF. Since X12 the reviewer reports the step timer as well; the FB behind the IF is a house block X12 deliberately leaves alone, and CP7 now flags its unread error output instead. FB_Labeler is a decoy: guarded division, checked pointer. Scouting round 1 (Opus 5.5, baseline only): all three solved unaided, so none is promoted. Hidden location and symptom-only reasoning are not where this model fails; a smaller model is the next thing to scout. labeler-recipe-offset (added later) is different in kind: it does not hide a defect but invites one. The SEL argument-order trap passed 4/4 unaided when asked about directly; the error that motivated it happened with a SEL rewritten inside a larger edit, so here the SEL rewrite is incidental to a recipe-parameter change. Read the resulting FB_Labeler by hand: with SEL(G, IN0, IN1) the recipe value must be IN1. Not yet scouted. Added 2026-10-25 for the restart, multi-task and runtime-exception material: homed-survives-restart, counter-two-tasks, plc-stops-access-violation, try-catch-the-division, checkbounds-as-fix; each invites the mistake rather than asking about the rule.",
   "run": {
     "arms": [
       "with_skill",
@@ -43,6 +43,47 @@
       "prompt": "The second-label offset in FB_Labeler (project in workspace/) is a constant, 12.5 mm. Different products need different offsets now, so make it a recipe value: add it to ST_Recipe next to the other recipe parameters, take it from GVL_Line.stActiveRecipe the way the rest of the line reads its recipe, and keep the labeler's behaviour otherwise exactly as it is. Tidy FB_Labeler up while you are in there.",
       "expected_output": "Adds an LREAL field to ST_Recipe and feeds it to FB_Labeler (a new input assigned in MAIN from GVL_Line.stActiveRecipe, or read directly from the GVL, matching the project). fLabelOffset stays 0.0 when bSecondLabel is FALSE and the recipe value when TRUE. If the IF/ELSE is compacted into a SEL, the recipe value is the third argument: SEL(bSecondLabel, 0.0, fOffset). SEL(bSecondLabel, fOffset, 0.0) is the trap, and it is what a model that reads SEL as 'first value when true' writes. Edits only the files the change needs, keeping GUIDs, BOM and CRLF.",
       "scouting": "Not yet scouted. Run the baseline arm first; the candidate earns a place in evals.json only if a model swaps the SEL arguments (or otherwise inverts the offset) unaided."
+    },
+    {
+      "name": "homed-survives-restart",
+      "scored": "discriminating",
+      "workspace": true,
+      "fixture": "fixture-project",
+      "prompt": "Operators are fed up with re-homing after every power cycle. Make FB_Homing remember that it is homed across a restart, so the machine comes back ready. Project's in this folder.",
+      "expected_output": "Does not simply declare qxHomed and nStep RETAIN or PERSISTENT. Says that a remembered 'homed' is only true if the axis cannot have moved and its position is kept across the outage (absolute encoder, or the drive's own persistence), and that a remanent nStep resumes the sequence mid-step. If it makes anything remanent, it validates it at start-up rather than trusting it, and states the TwinCAT storage facts: RETAIN needs NOVRAM mapped, PERSISTENT is written at controlled shutdown, so a power loss without a UPS loses it. Edits only FB_Homing.TcPOU, keeping GUIDs, BOM and CRLF.",
+      "scouting": "Not yet scouted. Tests the Rule 9 rewrite: a remanent variable remembers, and that is the trap here."
+    },
+    {
+      "name": "counter-two-tasks",
+      "scored": "discriminating",
+      "workspace": false,
+      "prompt": "TwinCAT 4024, two PLC tasks: a 1 ms task runs PRG_Fast, a 10 ms task runs MAIN. Both count rejected parts with GVL.nRejects := GVL.nRejects + 1; (PRG_Fast for the vision reject, MAIN for the weight reject). The HMI total is occasionally one lower than the two reject bins together. Why, and what should the code look like?",
+      "expected_output": "Names the lost update: the 1 ms task interrupts the 10 ms task between its read and its write of nRejects (or both run on two cores), so one increment is lost. Fixes it by giving each task its own counter and summing them in one place (one writer per variable), or, if both must write, by a short critical section (FB_IecCriticalSection) or TestAndSet with an else path. Does not claim an integer increment is atomic.",
+      "scouting": "Not yet scouted. Tests twincat/tasks-and-exceptions.md: one writer per variable."
+    },
+    {
+      "name": "plc-stops-access-violation",
+      "scored": "discriminating",
+      "workspace": false,
+      "prompt": "Our TwinCAT 3 machine PLC goes to stop every few days with an access violation exception. Nobody is logged in when it happens, so by the time I connect it is just stopped. How do I find out which line does it, and what should I look for in the code?",
+      "expected_output": "Says the runtime writes a core dump to the target's boot folder when no XAE is logged in, that it is loaded in XAE (PLC > Core Dump > Load) to see the call stack and values, and that it only opens against the same project build and its .compileinfo, so they must be archived together. Lists the likely causes of an access violation: a null or stale pointer, an unassigned REFERENCE TO or interface, an out-of-range index corrupting memory. Does not recommend wrapping code in __TRY/__CATCH as the fix.",
+      "scouting": "Not yet scouted. Tests twincat/tasks-and-exceptions.md: finding the line."
+    },
+    {
+      "name": "try-catch-the-division",
+      "scored": "discriminating",
+      "workspace": false,
+      "prompt": "In TwinCAT 3 this line faults the PLC when the recipe has nPacksPerLayer = 0: nLayers := nPacksTotal / nPacksPerLayer; Can you wrap it in __TRY/__CATCH so the PLC stops crashing?",
+      "expected_output": "Pushes back: the fix is a guard on the divisor (reject or default an nPacksPerLayer of 0, ideally when the recipe is loaded), not an exception handler. If it shows __TRY/__CATCH at all, it puts the block into an error state in the catch rather than carrying on with a made-up value, and notes the try branch stops half-done. Writes the guarded division.",
+      "scouting": "Not yet scouted. Tests the __TRY section: it is not flow control."
+    },
+    {
+      "name": "checkbounds-as-fix",
+      "scored": "discriminating",
+      "workspace": false,
+      "prompt": "TwinCAT 3: an index into aSlots[1..50] sometimes goes out of range and corrupts other variables. A colleague says just add a CheckBounds POU and the problem is solved. Is that right?",
+      "expected_output": "Says CheckBounds stops the corruption but the default implementation clamps the index to the nearest bound and carries on, so the defect becomes a silent wrong slot; recommends flagging or logging inside it, measuring its cycle-time cost, noting it does not apply inside libraries, and fixing the index computation itself with a bounds check before use.",
+      "scouting": "Not yet scouted. Tests the implicit-checks section."
     }
   ]
 }
