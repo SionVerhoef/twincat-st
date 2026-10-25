@@ -1,6 +1,6 @@
 ---
 name: twincat-st
-description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3 or CODESYS V3, even a one-liner: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, ladder-to-ST conversion, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Easy-looking questions hide the dialect traps (PT := 500, level-driven Execute, blocking loops, float equality); it knows them and ships a reviewer, so use it rather than answering from memory. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
+description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3 or CODESYS V3, even a one-liner: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Easy-looking questions hide the dialect traps (PT := 500, level-driven Execute, blocking loops, float equality); it knows them and ships a reviewer, so use it rather than answering from memory. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
 ---
 
 # Structured Text that survives contact with a machine
@@ -18,13 +18,13 @@ A capable model writes Structured Text that *reads* correctly and *behaves* wron
 - `WHILE NOT bDone DO` where the answer was a state machine — the task overruns, the watchdog fires, the machine stops
 - a `TON` preset written `PT := 500` instead of `PT := T#500MS`
 - an `Execute` input driven from a level instead of an edge, so the block runs once and never again (reviewer rule `X11`)
-
-**Asked to add "another one like this", check the existing line first.** If it carries one of these traps, name that line as the problem before writing anything next to it. Copying its style copies the defect: in a field test an agent kept `Execute := bAutoMode AND bAtHome` unremarked and delivered a second level-driven move beside it.
 - a wait with no timeout, so a failed sensor hangs the sequence with no diagnostic
 - `IF fActual = fTarget` on an `LREAL`, which is essentially never true
 - `SEL(bOption, 0, fWidth)` read as "0 when set": `SEL(G, IN0, IN1)` returns its **first** value when `G` is FALSE. `references/st-language.md` has `MUX` and `LIMIT` too
 
 None of these are syntax errors. A compiler accepts all of them. So the priority order here is deliberate: **execution model first, syntax second, vendor trivia last** — and the review step is a program, not a vibe.
+
+**Asked to add "another one like this", check the existing line first.** If it carries one of these traps, name that line as the problem before writing anything next to it. Copying its style copies the defect: in a field test an agent kept `Execute := bAutoMode AND bAtHome` unremarked and delivered a second level-driven move beside it.
 
 ## Three rules that override everything else
 

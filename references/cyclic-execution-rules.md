@@ -243,15 +243,22 @@ END_IF
 
 ## Rule 9 — Know what survives a restart.
 
-| Declaration | Warm reset | Power cycle | New download |
-|---|---|---|---|
-| `VAR` | no | no | no |
-| `VAR RETAIN` | yes | yes | no |
-| `VAR PERSISTENT` | yes | yes | yes, if written to the persistent file on shutdown |
+What keeps its value, on TwinCAT 3 (Beckhoff InfoSys, *Remanent Variables*):
 
-Initial values (`nCount : DINT := 5;`) apply on download and cold reset — **not** every cycle, and **not** on a warm start. Code relying on a variable "starting at zero" after a restart is wrong; initialise it in an init state.
+| Declaration | Online change | Download | Reset cold | Restart / power cycle | Reset origin |
+|---|---|---|---|---|---|
+| `VAR` | kept | initial value | initial value | initial value | initial value |
+| `VAR RETAIN` | kept | kept | kept | kept, if NOVRAM is mapped | initial value |
+| `VAR PERSISTENT` | kept | kept | kept | kept, if written at shutdown | initial value |
 
-`PERSISTENT` data is written on controlled shutdown. An unexpected power loss can lose it: treat it as best-effort, and never let machine behaviour that matters depend on it silently.
+**CODESYS differs, so check which runtime you are on.** There, `Reset warm` keeps `RETAIN` and `PERSISTENT`, but `Reset cold` and a download re-initialise `RETAIN`; only `PERSISTENT` survives a download. TwinCAT has no warm reset, and its `Reset cold` keeps both.
+
+The trap runs both ways:
+
+- **A plain `VAR` forgets.** It returns to its declared initial value (`nCount : DINT := 5;`, or zero) on every download, reset and restart: not every cycle, but every time the controller comes back. A step counter, a homed flag or a "has run once" latch kept in a plain `VAR` is lost on a restart while the machine is mid-sequence. If the state must outlive that, declare it remanent; if it must not, make sure the restart path into the init state is safe.
+- **A remanent variable remembers.** `RETAIN` and `PERSISTENT` skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it: after a power cycle, an axis position stored as "homed" may no longer be true.
+
+How each is stored decides how far to trust it. TwinCAT writes `RETAIN` to NOVRAM at the end of every cycle, which works only on a controller that has NOVRAM mapped to the PLC's retain area. `PERSISTENT` goes to a boot-data file **at controlled shutdown**, or when `FB_WritePersistentData` is called: an unexpected power loss without a UPS loses everything since the last write. Treat it as best-effort, and never let machine behaviour that matters depend on it silently. `RETAIN` or `PERSISTENT` on a local of a `FUNCTION` has no effect, and a `POINTER TO` in persistent data points somewhere else after the next download.
 
 ## Rule 10 — Respect the process image and task boundaries. `CP12`, `CP15`
 
@@ -278,8 +285,8 @@ Initial values (`nCount : DINT := 5;`) apply on download and cold reset — **no
 [ ]  6. No float or TIME equality; division guarded; integer widths fit  (CP8, CP28, X4)
 [ ]  7. Every computed array index is bounds-checked
 [ ]  8. No allocation or recursion; pointers and references validated    (E1, E3, X5, X6)
-[ ]  9. RETAIN/PERSISTENT chosen deliberately; no reliance on implicit
-        initialisation after a warm start
+[ ]  9. RETAIN/PERSISTENT chosen deliberately; plain VAR state that a
+        restart loses is safe to lose; remanent state is validated at init
 [ ] 10. Outputs written once per cycle; cross-task data transferred
         coherently; no output read-back used as feedback                (CP12, CP15)
 [ ] 11. Error state is reachable, reports an id, defines safe outputs,
