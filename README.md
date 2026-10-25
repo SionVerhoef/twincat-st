@@ -54,10 +54,11 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 
 **Write and review Structured Text**
 
-- **`st_review.py`** — 27 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
+- **`st_review.py`** — 30 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
   that document's own severity; `X` rules are this skill's own: blocking loops, timer presets
   typed as integers, unchecked pointer dereferences, state machines with no reachable error
-  state, `FB_init` without an online-change guard, and FBs that pair `Enable` with `Done`.
+  state, timers and motion blocks called only inside a branch, `FB_init` without an
+  online-change guard, and FBs that pair `Enable` with `Done`.
 - **Reads real projects** — `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking every
   method and property, not only the POU body. A top-level-only parse misses about 84% of the
   code in an OOP project.
@@ -149,7 +150,7 @@ matched — the tool says so on every run, and so should you.
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 27 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 30 rules, PLCopen-keyed
 │   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof
 │   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
@@ -227,7 +228,7 @@ rule 3 makes the agent say so every time.
   current `HEAD` it is 129, one X6 fewer: the project had guarded that `REFERENCE TO` input with
   `__ISVALIDREF` since, so the finding was real.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
-- Every one of the 27 reviewer rules fires on a deliberately defective fixture, and the reviewer
+- Every one of the 30 reviewer rules fires on a deliberately defective fixture, and the reviewer
   stays silent on a second fixture collecting every shape that was once a false positive.
 - False positives swept across 440 real `.TcPOU` files while tuning the rules — Beckhoff's
   samples, TcUnit, TcMatrix, a PackML example and Stefan Henneken's corpus — and across 1,230

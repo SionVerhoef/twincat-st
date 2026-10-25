@@ -86,7 +86,7 @@ A bounded `WHILE` over data you control can be legitimate. Prove the bound, then
 WHILE pNode <> 0 DO   // lint:allow X1 list built at init, hard max 64 entries
 ```
 
-## Rule 2 — Keep calling a block while its operation is in flight. `CP20`
+## Rule 2 — Keep calling a block while its operation is in flight. `CP20`, `X12`
 
 A function block instance is a state machine that only advances when you call it. A PLCopen-style block — motion `MC_*`, communications, file access — that stops being called mid-operation never finishes, never times out and never reports an error. The machine simply stops, with no diagnostic.
 
@@ -176,7 +176,7 @@ END_IF
 
 Using a level where you meant an edge re-triggers every scan the button is held — hundreds of times.
 
-## Rule 5 — Timers are instances: called cyclically, reset explicitly. `X2`
+## Rule 5 — Timers are instances: called cyclically, reset explicitly. `X2`, `X12`
 
 `TON` accumulates only while called with `IN := TRUE`. Two traps.
 
@@ -271,24 +271,26 @@ How each is stored decides how far to trust it. TwinCAT writes `RETAIN` to NOVRA
 
 ## Review rubric
 
-`scripts/st_review.py` covers the mechanical rows. These are the ones that need you.
+`scripts/st_review.py` covers the mechanical part of these rows. An id in brackets is a reviewer rule that checks part of the row; *by hand* marks a PLCopen rule the reviewer does not check at all.
 
 ```
 [ ]  1. Sequences are state machines, not loops; every wait has a timeout
         and a path to Error                                             (X1, X3)
 [ ]  2. Blocks with pending operations keep being called while Busy;
         Execute edges are dropped on Done/Error; no instance shared
-        between two concurrent operations                               (CP20, X11)
+        between two concurrent operations                          (CP20, X11, X12)
 [ ]  3. Every loop is bounded, and the total work fits the cycle time    (X1)
 [ ]  4. Edges via R_TRIG/F_TRIG wherever a one-shot was intended
-[ ]  5. Timers are per-wait instances, reset on entry, PT a TIME literal (X2)
+[ ]  5. Timers are per-wait instances, reset on entry, PT a TIME literal
+                                                                        (X2, X12)
 [ ]  6. No float or TIME equality; division guarded; integer widths fit  (CP8, CP28, X4)
 [ ]  7. Every computed array index is bounds-checked
 [ ]  8. No allocation or recursion; pointers and references validated    (E1, E3, X5, X6)
 [ ]  9. RETAIN/PERSISTENT chosen deliberately; plain VAR state that a
         restart loses is safe to lose; remanent state is validated at init
 [ ] 10. Outputs written once per cycle; cross-task data transferred
-        coherently; no output read-back used as feedback                (CP12, CP15)
+        coherently; no output read-back used as feedback
+                                         (CP12 for AT %Q outputs; CP10, CP11, CP15 by hand)
 [ ] 11. Error state is reachable, reports an id, defines safe outputs,
         and can be reset                                                (X7)
 [ ] 12. Error/status outputs of called blocks are actually read          (CP7)

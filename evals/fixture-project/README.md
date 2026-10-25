@@ -29,6 +29,7 @@ pattern checker can see, which is why a human asks for it in `edit-existing-pou`
 
 ## Known baseline
 
-`scripts/st_review.py evals/fixture-project` reports exactly three high-severity findings,
-all in `FB_Filler.DoseComplete` — X1, X2 and CP8. Any other finding in a graded run is
-something the agent introduced.
+`scripts/st_review.py evals/fixture-project` reports five high-severity findings: X1, X2 and
+CP8, all in `FB_Filler.DoseComplete`, and two CP7 in `MAIN`, which never reads the `Error`
+output of `fbHoming` or `fbFiller`. Any other finding in a graded run is something the agent
+introduced. The two CP7 arrived with the rule, after the evals in `results-*.md` were run.

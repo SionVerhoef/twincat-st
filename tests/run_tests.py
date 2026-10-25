@@ -149,6 +149,26 @@ x11 = sorted(f["line"] for f in review(FIXTURES / "positive")
 check("X11 fires on a level Execute in the call and on the member", x11 == [18, 19],
       repr(x11))
 
+# --- X12, CP7 and CP12 each name what they found ----------------------------
+# FB_ConditionalCalls has one of each block kind X12 covers called only inside a
+# CASE branch, a library and a house error output nobody reads, and an output
+# written from the body and a method. FB_ConditionalCallsClean holds the reset,
+# '=>' binding, member read, hand-on and one-unit IF/ELSE shapes on the other side.
+
+def named(rule):
+    return sorted(re.search(r"'(\w+)'", f["message"]).group(1)
+                  for f in positive if f["rule"] == rule and f["object"] == "FB_ConditionalCalls")
+
+
+positive = review(FIXTURES / "positive")
+check("X12 fires on a timer, a trigger and a motion block called only in a branch",
+      named("X12") == ["fbEdge", "fbMove", "tonWait"], repr(named("X12")))
+check("CP7 fires on an MC_ block and on a house FB whose Error nobody reads",
+      named("CP7") == ["fbDevice", "fbMove"], repr(named("CP7")))
+cp12 = [f["message"] for f in positive if f["rule"] == "CP12"]
+check("CP12 names both places that write the output",
+      len(cp12) == 1 and "FB_ConditionalCalls.CloseValve" in cp12[0], repr(cp12))
+
 # --- a graphical body's operands are uses, and only its operands -------------
 # CP24 read only <Implementation><ST>, so every variable wired in an LD network
 # (<Implementation><NWL>; the field test first called these CFC) came back
