@@ -10,35 +10,34 @@ Known-good TwinCAT 3 (4024) object files. All are UTF-8 with BOM and CRLF, carry
 
 ## Using them
 
-Copy, rename, then edit through the script so the XML stays intact:
+Scaffold a new object with `tcpou.py new`, which gives it a fresh GUID, then move the template's
+parts into it. Never copy the file: a copy keeps the template's GUIDs, and TwinCAT identifies
+objects by GUID. Use `get --out` and `set --from-file` rather than `>` or a pipe, which corrupt
+non-ASCII characters in Windows PowerShell 5.1.
 
 ```bash
-cp templates/FB_Sequence.TcPOU MyProject/PLC/POUs/FB_Filling.TcPOU
+py -3 scripts/tcpou.py new --type fb --name FB_Filling --dir MyProject/PLC/POUs/
+py -3 scripts/tcpou.py add-method MyProject/PLC/POUs/FB_Filling.TcPOU --name M_Fail --access PRIVATE
 
-# rename the object inside the file (the POU Name attribute and the declaration)
-sed -i 's/FB_Sequence/FB_Filling/g' MyProject/PLC/POUs/FB_Filling.TcPOU
+# for each part - decl, impl, M_Fail:decl, M_Fail:impl
+py -3 scripts/tcpou.py get templates/FB_Sequence.TcPOU --part decl --out decl.st
+#   edit decl.st: FUNCTION_BLOCK FB_Sequence -> FUNCTION_BLOCK FB_Filling, then fill in the steps
+py -3 scripts/tcpou.py set MyProject/PLC/POUs/FB_Filling.TcPOU --part decl --from-file decl.st
 
-# REQUIRED - the copy still carries the template's Id GUIDs, and TwinCAT
-# identifies objects by Id. Two objects sharing one is a real conflict and
-# nothing warns you.
-py -3 scripts/tcpou.py reguid MyProject/PLC/POUs/FB_Filling.TcPOU
-
-# validate structure and encoding
-py -3 scripts/tcpou.py check MyProject/PLC/POUs/FB_Filling.TcPOU
-
-# edit the implementation
-py -3 scripts/tcpou.py get MyProject/PLC/POUs/FB_Filling.TcPOU --part impl > /tmp/body.st
-$EDITOR /tmp/body.st
-py -3 scripts/tcpou.py set MyProject/PLC/POUs/FB_Filling.TcPOU --part impl --from-file /tmp/body.st
+# the state enum the same way, if the project does not have it yet
+py -3 scripts/tcpou.py new --type dut --name E_SeqState --dir MyProject/PLC/DUTs/
+py -3 scripts/tcpou.py get templates/E_SeqState.TcDUT --part decl --out enum.st
+py -3 scripts/tcpou.py set MyProject/PLC/DUTs/E_SeqState.TcDUT --part decl --from-file enum.st
 
 # REQUIRED - a file not in the .plcproj is silently not compiled
-py -3 scripts/tcpou.py register MyProject/PLC/PLC.plcproj MyProject/PLC/POUs/FB_Filling.TcPOU
+py -3 scripts/tcpou.py register MyProject/PLC/PLC.plcproj MyProject/PLC/POUs/FB_Filling.TcPOU MyProject/PLC/DUTs/E_SeqState.TcDUT
 
-# then review what you wrote
+# validate, then review what you wrote
+py -3 scripts/tcpou.py check MyProject/PLC/POUs/FB_Filling.TcPOU
 py -3 scripts/st_review.py MyProject/PLC/POUs/FB_Filling.TcPOU
 ```
 
-**Copying a template duplicates its GUID.** For a new object, prefer `tcpou.py new` (which generates a fresh one) and paste the template body in, or replace the `Id="{...}"` value by hand before adding the file to a project that already contains the original.
+If a file was copied anyway, `tcpou.py reguid <file>` gives every object in it a fresh GUID.
 
 ## What the templates deliberately show
 
@@ -51,6 +50,6 @@ Every one of these is a worked example of the rules in `references/cyclic-execut
 - Error IDs as named hex constants, not magic numbers
 - An escape from `Error` via `bReset`, handled outside the `CASE` so it works from any state
 
-The `IF TRUE THEN // <- replace with the real condition` markers are intentional: they are the two places a real step condition must go, and they will not compile into anything meaningful if left alone.
+The step conditions are inputs, `bStep1Done` and `bStep2Done`, marked `// wire this input to the real step-N signal`. Left unwired they stay `FALSE`, so the step never completes and the sequence faults on its timeout instead of running on.
 
-All three templates pass `scripts/st_review.py` with no high or medium findings. The two `low` CP20 notes it does report — a timer called from more than one branch — are the documented mutually-exclusive-branch case: the branches cannot both run in one scan. That is exactly the judgement CP20 asks a reader to make, which is why the reviewer reports it rather than staying silent, and why it reports it at low severity rather than as a defect.
+All three templates pass `scripts/st_review.py` with no findings. CI fails the build if one ever reports a high-severity finding.

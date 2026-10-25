@@ -28,6 +28,10 @@ What matters when *modifying* a file:
 
 `scripts/tcpou.py` preserves all five, and refuses the `]]>` case outright. Use it rather than hand-editing the XML.
 
+## `tcpou.py` in detail
+
+Every subcommand and flag — `new --shape`, part keys, the PowerShell encoding rules, what `pins` prints, `code-equal`'s exit codes — is in [`../tools.md`](../tools.md).
+
 ## The silent failure: `.plcproj` registration
 
 **A `.TcPOU` on disk that is not listed in `.plcproj` is not compiled — with no error.** The IDE adds the entry when you create a file through it; a file created from the shell will not have one.
@@ -59,15 +63,25 @@ A `*` resolution takes whatever is installed; a pinned version is reproducible. 
 
 ### `.gitattributes`
 
+Turn line-ending conversion **off** for TwinCAT files, in line with *preserve, not normalise*
+above:
+
 ```gitattributes
-*.TcPOU     text eol=crlf
-*.TcDUT     text eol=crlf
-*.TcGVL     text eol=crlf
-*.TcTTO     text eol=crlf
-*.plcproj   text eol=crlf
-*.tsproj    text eol=crlf
-*.xti       text eol=crlf
+*.TcPOU     -text
+*.TcDUT     -text
+*.TcGVL     -text
+*.TcIO      -text
+*.TcTTO     -text
+*.TcVIS     -text
+*.plcproj   -text
+*.tsproj    -text
+*.xti       -text
 ```
+
+`text eol=crlf` looks tidier but rewrites every LF file the first time it is touched, so a
+one-line change becomes a whole-file diff. Without any entry, `core.autocrlf=true` on Windows
+leaves LF in the repository and CRLF in the working tree, and a byte comparison between the two
+reports every line changed — `tcpou.py code-equal` compares code, not bytes, and is not fooled.
 
 ### `.gitignore`
 

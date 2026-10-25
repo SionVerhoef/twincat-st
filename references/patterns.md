@@ -147,7 +147,6 @@ Each instance carries its own state, the loop bound is constant, and adding a st
 
 ## Errors and diagnostics
 
-- **Namespace error ids** as hex constants with documented meanings (`16#8101`), collected in one enum or GVL so code, HMI and operators share one list.
-- **Propagate the underlying id** from a failing block rather than replacing it with a generic one. The person debugging needs the drive's error number.
+Propagating the underlying `ErrorID`, namespacing your own ids and keeping `Error` apart from `CommandAborted` are part of the block's contract — see `behaviour-model.md`, *Error handling is part of the contract*. One more habit belongs to the machine as a whole:
+
 - **Record what failed and when**, not just that something did. A latched `sLastError` with a timestamp costs almost nothing and saves a site visit.
-- **Distinguish `Error` from `CommandAborted`.** Different causes, different recovery.

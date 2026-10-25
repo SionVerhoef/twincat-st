@@ -20,8 +20,9 @@ They are independent; install either alone.
 
 ## Why
 
-Syntax is not where model-written PLC code fails. **Execution model is.** The recurring
-defects all compile:
+Syntax is not where model-written PLC code fails. **Execution model is.** All but one of the
+recurring defects compile, and the one that does not, `PT := 500`, needs a compiler the agent
+almost never has:
 
 - `WHILE NOT bDone DO` inside a cyclic task, where the answer was a state machine — the task
   overruns, the watchdog fires, the machine stops.
@@ -54,10 +55,11 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 
 **Write and review Structured Text**
 
-- **`st_review.py`** — 27 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
+- **`st_review.py`** — 30 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
   that document's own severity; `X` rules are this skill's own: blocking loops, timer presets
   typed as integers, unchecked pointer dereferences, state machines with no reachable error
-  state, `FB_init` without an online-change guard, and FBs that pair `Enable` with `Done`.
+  state, timers and motion blocks called only inside a branch, `FB_init` without an
+  online-change guard, and FBs that pair `Enable` with `Done`.
 - **Reads real projects** — `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking every
   method and property, not only the POU body. A top-level-only parse misses about 84% of the
   code in an OOP project.
@@ -100,7 +102,7 @@ git submodule add https://github.com/SionVerhoef/twincat-st .github/skills/twinc
 Pin a release rather than following `main`, and commit the pin:
 
 ```bash
-git -C .claude/skills/twincat-st checkout v0.3.0
+git -C .claude/skills/twincat-st checkout v0.4.0
 git add .claude/skills/twincat-st
 ```
 
@@ -149,7 +151,7 @@ matched — the tool says so on every run, and so should you.
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 27 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 30 rules, PLCopen-keyed
 │   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof
 │   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
@@ -160,12 +162,14 @@ twincat-st/
 │   ├── patterns.md                     state machines, PackML, project structure
 │   ├── oop.md                          inheritance vs composition, SOLID for FBs
 │   ├── naming-conventions.md           conventions, measured against a real corpus
+│   ├── tools.md                        every reviewer flag and tcpou.py subcommand in full
 │   ├── testing-tcunit.md               the test lane
 │   ├── safety-boundary.md              the TwinSAFE/FSoE hard stop
 │   ├── twincat.md                      VENDOR — libraries, FB_init, online change, 4024
 │   ├── twincat/project-files.md        VENDOR — .TcPOU/.plcproj editing, git hygiene
 │   ├── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
-│   └── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   ├── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   └── twincat/tasks-and-exceptions.md VENDOR — shared data between tasks, PLC exceptions
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
 ├── tests/                              every rule must fire; fixed false positives must stay fixed
@@ -190,73 +194,39 @@ twincat-st/
 
 ## Status
 
-There is no TwinCAT toolchain where this skill is developed. That makes the line between
-verified and not verified the most important fact on this page. Four field rounds on TwinCAT
-3.1.4024.55 drew it ([`evals/field-review-v0.3.0.md`](evals/field-review-v0.3.0.md),
-[`evals/field-review-round3.md`](evals/field-review-round3.md),
-[`evals/field-review-round4.md`](evals/field-review-round4.md)). The fourth was the release
-round ([`evals/field-test-round4.md`](evals/field-test-round4.md)): 13 of its 15 checks passed,
-the two that failed were fixed here, and the re-run of those two checks on the fixed skill
-passed.
+There is no TwinCAT toolchain where this skill is developed, so the line between verified and
+not verified is the most important fact on this page. Five field rounds on TwinCAT 3.1.4024.55
+drew it, and the evidence for each line below is in their records:
+[`field-review-v0.3.0.md`](evals/field-review-v0.3.0.md),
+[`field-review-round3.md`](evals/field-review-round3.md),
+[`field-review-round4.md`](evals/field-review-round4.md),
+[`field-test-round4.md`](evals/field-test-round4.md) and
+[`field-review-round5.md`](evals/field-review-round5.md).
 
 Whatever is verified here, **code an agent writes for you is still not compiled** unless you build
-it. The field tests built a handful of answers; they say nothing about the next one, and `SKILL.md`
-rule 3 makes the agent say so every time.
+it, and `SKILL.md` rule 3 makes the agent say so every time.
 
 **Verified**
 
-- **The templates compile.** `E_SeqState`, `FB_Sequence` and `FB_ExampleTestSuite` build in XAE
-  4024.55 with no errors, the suite against TcUnit 1.3.2.
-- **The TcUnit suite fails loudly.** On a test controller it passed 2 of 2, and a test whose
-  condition never arrives failed through its watchdog after 10 s instead of hanging the suite.
-- **`tcpou.py` round-trips a real project.** A file made with `new`, `register`, `set` and
-  `reguid` opened in XAE with no repair prompt and built. Opening and building rewrote none of
-  the files `tcpou.py` wrote. A file written by `add-method` and `add-property` built clean too,
-  and `xae_build.ps1 -TreePath` lists the method it added.
-- **Agent-written code built as delivered** in two field-test tasks, twice: a new valve FB, and a
-  step added to `FB_Sequence` by editing the `.TcPOU` in place, in the first round and again in
-  the re-run on the fixed skill.
-- **The fixed reviewer, re-run on the production project it was tuned on,** reports 130
-  findings against 270 before the four false-positive fixes; 59 of them are CP24 and real. The
-  release round read every high-severity finding on that project: one is real (CP8, a measured
-  position compared exactly with its target) and two were E3 false positives on code added since
-  round 2, fixed here.
-- **No high-severity false positive is left** (R14). E3 takes only `POINTER TO` names and only a
-  whole identifier as an operand, and the re-run on the same project reports 130 findings and one
-  high, the real CP8: round 4's 132 without its two E3, finding for finding. At the project's
-  current `HEAD` it is 129, one X6 fewer: the project had guarded that `REFERENCE TO` input with
-  `__ISVALIDREF` since, so the finding was real.
+- **The templates compile** in XAE 4024.55, the TcUnit suite against TcUnit 1.3.2, and the suite
+  passed 2 of 2 on a test controller with its watchdog failing a hung test after 10 s.
+  `FB_Sequence`'s `bDone` latch, changed in 0.4.0, rebuilds with 0 errors and 0 warnings; its
+  runtime behaviour has not been observed on a controller since the change.
+- **`tcpou.py` round-trips a real project:** `new`, `register`, `set`, `reguid`, `add-method` and
+  `add-property` produce files XAE opens without a repair prompt and builds.
+- **Agent-written code built as delivered** in two field-test tasks, in two rounds.
+- **The reviewer on a production project:** no high-severity false positive left; the one
+  high finding is a real CP8. X12, CP7 and CP12 report nothing there, correctly: the project
+  has no code in their scope, so that shows no false positives, not that they catch defects.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
-- Every one of the 27 reviewer rules fires on a deliberately defective fixture, and the reviewer
-  stays silent on a second fixture collecting every shape that was once a false positive.
-- False positives swept across 440 real `.TcPOU` files while tuning the rules — Beckhoff's
-  samples, TcUnit, TcMatrix, a PackML example and Stefan Henneken's corpus — and across 1,230
-  files from ten public TwinCAT projects since 0.2.0.
-- The two scripts check each other: tests scaffold an FB with `tcpou.py` and review it with
-  `st_review.py`. The shipped templates pass the reviewer.
-- **The test suite passes on Windows** (R1). Two checks compared `get`'s stdout with LF bytes,
-  and a Windows text stream prints CRLF: 114 ok, 2 failed. They compare with line endings
-  normalised now, `tcpou.py` is unchanged, and the re-run is 116 ok, exit 0, from the clone and
-  the installed copy alike under cmd.exe. CI runs the suite on `windows-latest` as well as
-  `ubuntu-latest`.
-- **`code-equal` holds on a real project.** Over the 1,353 unmodified source files of a
-  production project against `HEAD` under `core.autocrlf=true`: 1,353 IDENTICAL, 0 DIFFERENT,
-  0 CANNOT COMPARE. Round 3's one false DIFFERENT, a CR kept inside a multi-line string literal,
-  was among them.
-- **`tcpou.py` moves a part safely from Windows PowerShell 5.1 and cmd.exe.** `get --out` then
-  `set --from-file` round-trips a part with `²` with no diff; a UTF-16 file from `>` is decoded,
-  and the `┬▓` it carries is named in one warning line; one trailing line break from a pipe or an
-  editor leaves no diff; a file that is neither UTF-8 nor UTF-16 with a BOM is refused in one
-  line with the target unchanged; `get` into a reader that stops early exits quietly.
-- **`tcpou.py pins` matches XAE's own PLCopen export.** Six LD callers of a 4024 production
-  project, 56 boxes and 1,076 pins, 0 mismatches: the rung input, negations, the owning method,
-  and the coil and RETURN rungs print as the export has them. One FBD network drawn in XAE
-  matched its export on every pin; XAE stores an unwired FBD input, input 0 included, as an
-  empty `BoxTreeOperand`, so `(unwired)` is right there.
-- **`xae_build.ps1`** built the scratch TcUnit solution with no XAE open (`Build complete -- 0
-  errors, 0 warnings`, exit 0). With the same solution open in XAE it warned first, that XAE
-  asked once to reload the `.xti`, and Yes was the end of it. A wrong `-PublicAssemblies` printed
-  one line and left no XAE running.
+- **All 30 reviewer rules fire** on a defective fixture, and the reviewer stays silent on every shape that was
+  once a false positive, swept across about 1,670 real files from public TwinCAT projects.
+- **The test suite passes on Windows and Linux**, from a clone and from an installed copy.
+- **`code-equal` holds on a real project:** about 1,350 unmodified files under
+  `core.autocrlf=true`, all IDENTICAL.
+- **`tcpou.py` moves a part losslessly from Windows PowerShell 5.1 and cmd.exe.**
+- **`tcpou.py pins` matches XAE's own PLCopen export** on LD and FBD networks, 0 mismatches.
+- **`xae_build.ps1`** builds with or without XAE open, and fails cleanly on a wrong path.
 - Agent behaviour in A/B evals on Opus and Haiku, as summarised under *Why*.
 
 **Not supported**
@@ -269,6 +239,14 @@ rule 3 makes the agent say so every time.
   PLC layer is CODESYS-V3-derived, but library names, the `.project` container, SoftMotion, OPC
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
+
+**Not yet verified on a TwinCAT install** (added since the last field round)
+
+- **The core-dump steps** in `references/twincat/tasks-and-exceptions.md` have not been walked
+  through on a controller. Of its examples, the `TestAndSet` one builds; `__TRY` is refused by
+  the x64 runtime, as the reference now says.
+- **The rewritten restart table** (`cyclic-execution-rules.md` Rule 9) restates InfoSys; it has
+  not been observed on a controller.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.

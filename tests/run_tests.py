@@ -26,6 +26,8 @@ defect this skill leads with. This is the other half of the gate:
     negations, the owning method, coil and RETURN rungs - and refuses a CFC body
   * code-equal is not fooled by CRLF inside a string literal (core.autocrlf)
   * a missing path is reported rather than raising
+  * SKILL.md's description fits the 1,024-character limit (0.2.0 shipped over
+    it) and its command block names every tcpou.py subcommand
 
 Every subprocess starts without PYTHONIOENCODING and PYTHONUTF8 unless a test sets
 them on purpose: the agent shell on the field-test PC inherits
@@ -148,6 +150,26 @@ x11 = sorted(f["line"] for f in review(FIXTURES / "positive")
              if f["rule"] == "X11" and f["object"] == "FB_LevelExecute")
 check("X11 fires on a level Execute in the call and on the member", x11 == [18, 19],
       repr(x11))
+
+# --- X12, CP7 and CP12 each name what they found ----------------------------
+# FB_ConditionalCalls has one of each block kind X12 covers called only inside a
+# CASE branch, a library and a house error output nobody reads, and an output
+# written from the body and a method. FB_ConditionalCallsClean holds the reset,
+# '=>' binding, member read, hand-on and one-unit IF/ELSE shapes on the other side.
+
+def named(rule):
+    return sorted(re.search(r"'(\w+)'", f["message"]).group(1)
+                  for f in positive if f["rule"] == rule and f["object"] == "FB_ConditionalCalls")
+
+
+positive = review(FIXTURES / "positive")
+check("X12 fires on a timer, a trigger and a motion block called only in a branch",
+      named("X12") == ["fbEdge", "fbMove", "tonWait"], repr(named("X12")))
+check("CP7 fires on an MC_ block and on a house FB whose Error nobody reads",
+      named("CP7") == ["fbDevice", "fbMove"], repr(named("CP7")))
+cp12 = [f["message"] for f in positive if f["rule"] == "CP12"]
+check("CP12 names both places that write the output",
+      len(cp12) == 1 and "FB_ConditionalCalls.CloseValve" in cp12[0], repr(cp12))
 
 # --- a graphical body's operands are uses, and only its operands -------------
 # CP24 read only <Implementation><ST>, so every variable wired in an LD network
@@ -824,6 +846,20 @@ with tempfile.TemporaryDirectory() as tmp:
           member)
     check("an interface member refuses an access modifier",
           tcpou("add-method", str(itf), "--name", "P2", "--access", "PRIVATE").returncode == 1)
+
+# --- SKILL.md stays loadable and documents every subcommand ------------------
+# 0.2.0 shipped a description over the limit, and add-method/add-property went
+# undocumented in SKILL.md for a release. Neither had anything guarding it.
+skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+desc = re.search(r'^description:\s*"(.*)"\s*$', skill, re.M)
+check("SKILL.md has a quoted description", desc is not None)
+if desc:
+    check("SKILL.md description is at most 1,024 characters", len(desc.group(1)) <= 1024,
+          f"{len(desc.group(1))} characters")
+subcommands = re.findall(r'add_parser\("([a-z-]+)"', TCPOU.read_text(encoding="utf-8"))
+undocumented = [c for c in subcommands if not re.search(rf"tcpou\.py {re.escape(c)}\s", skill)]
+check("SKILL.md names every tcpou.py subcommand", bool(subcommands) and not undocumented,
+      ", ".join(undocumented))
 
 print()
 if failures:

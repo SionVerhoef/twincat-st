@@ -53,17 +53,17 @@ The substantive family. Everything here is High unless marked.
 |---|---|---|---|
 | CP1 | High | Reach a structure member by name, never by memory offset. | ○ |
 | CP2 | High | All code is reachable and used. Dead POUs are a maintenance trap and may silently become live. *Reviewer: `--pedantic`, and only over the whole application — a library's public blocks look unused from inside it.* | ● |
-| CP3 | High | Every variable is initialised before it is read. Initial values apply on download and cold reset — **not** on a warm start — so code relying on "it starts at zero" is wrong. | ○ |
+| CP3 | High | Every variable is initialised before it is read. A plain `VAR` gets its initial value back on every download, reset and restart, but `RETAIN`/`PERSISTENT` variables do not, so code relying on "it starts at zero" after a restart is wrong for them (`cyclic-execution-rules.md` Rule 9). | ○ |
 | CP4 | High | Directly-addressed memory must not overlap. Two names over one address is an aliasing bug you cannot see. | ○ |
 | CP5 | High | Design the application before writing it: modularise, encapsulate, group related data into structures and arrays, keep FB internals private. | ○ |
 | CP6 | High | Avoid `VAR_EXTERNAL` inside functions and function blocks — a hidden global dependency destroys reusability and testability. | ● |
-| CP7 | High | **Test the error information a call returns.** If a block has `Error`/`ErrorID`, read them and change behaviour. Code that ignores them gives a reviewer nothing to go on: an oversight and a deliberate "this can't happen" look identical. | ○ |
+| CP7 | High | **Test the error information a call returns.** If a block has `Error`/`ErrorID`, read them and change behaviour. Code that ignores them gives a reviewer nothing to go on: an oversight and a deliberate "this can't happen" look identical. *Reviewer: `MC_*`, the `ADS*` blocks, `FB_File*`, and any FB in the scanned tree that declares an `Error` output. Read means a `.…Err…` member access, an `…Err… =>` binding, or the instance handed on whole.* | ◐ |
 | CP8 | High | Never compare floating point with `=` or `<>`. Compare against a tolerance. | ● |
 | CP28 | High | Same for `TIME` and physical measures — a scan steps *over* an exact value rather than landing on it. Use `>=`. | ● |
 | CP9 | High | Bound POU complexity and split what exceeds it. PLCopen declines to mandate one metric; the point is that you *have* a limit. | ○ |
 | CP10 | High | Don't write the same variable from more than one task. | ○ |
 | CP11 | High | Synchronise data shared across tasks. Multi-word data crossing a task boundary can be read mid-update; transfer it as one structure under a handshake. | ○ |
-| CP12 | High | Write each physical output exactly once per cycle, ideally in one place at the end. With several writes, the output image holds whichever ran last, and finding out which means tracing every one of them. | ○ |
+| CP12 | High | Write each physical output exactly once per cycle, ideally in one place at the end. With several writes, the output image holds whichever ran last, and finding out which means tracing every one of them. *Reviewer: outputs mapped `AT %Q`, written from more than one POU, method or action; several writes inside one unit are not reported. Reported at medium, below PLCopen's High, because the text cannot prove both writes run in one scan.* | ◐ |
 | CP13 | High | No recursion, direct or indirect. Stack depth is not bounded and vendor support varies. | ● |
 | CP14 | High | Single point of exit — avoid `RETURN` before the end of a POU. *The reviewer holds this back behind `--pedantic`: the early-return guard clause is widespread and defensible, and enforcing it by default buries real defects.* | ● |
 | CP15 | High | Read a variable written by another task only once per cycle; copy it locally and use the copy, or different parts of the scan see different values. | ○ |

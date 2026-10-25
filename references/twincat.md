@@ -4,7 +4,7 @@ Everything that does **not** transfer to other CODESYS V3 tools. Target build **
 
 The core rules in `cyclic-execution-rules.md`, `st-language.md` and `naming-conventions.md` apply unchanged. This file is the seam.
 
-Deeper material: [`twincat/project-files.md`](twincat/project-files.md) for editing project files and surviving git; [`twincat/ads-and-diagnostics.md`](twincat/ads-and-diagnostics.md) for ADS, EtherCAT triage and TcUnit; [`twincat/xae-automation.md`](twincat/xae-automation.md) for headless builds.
+Deeper material: [`twincat/project-files.md`](twincat/project-files.md) for editing project files and surviving git; [`twincat/ads-and-diagnostics.md`](twincat/ads-and-diagnostics.md) for ADS and EtherCAT triage; [`testing-tcunit.md`](testing-tcunit.md) for TcUnit; [`twincat/xae-automation.md`](twincat/xae-automation.md) for headless builds.
 
 ## Orienting in an unfamiliar project
 
@@ -106,16 +106,11 @@ CountPulses := nCount;
 
 ## Pragmas worth knowing
 
-```pascal
-{attribute 'qualified_only'}                    // enums and GVLs - always use
-{attribute 'hide'}                              // hide from the library browser
-{attribute 'no_init'}                           // skip zero-init (large arrays, startup time)
-{attribute 'TcCallAfterOutputUpdate'}           // run this POU after the output image is written
-{attribute 'analysis' := '-33'}                 // suppress one static-analysis rule, with a reason
-{region 'Error handling'} ... {endregion}       // folding
-```
+The common pragmas (`qualified_only`, `hide`, `no_init`, `analysis`, regions) are CODESYS-family and listed in `st-language.md` under *Useful pragmas*. One is TwinCAT's own:
 
-`{attribute 'qualified_only'}` is CODESYS-family, not TwinCAT-only. `TcCallAfterOutputUpdate` is TwinCAT.
+```pascal
+{attribute 'TcCallAfterOutputUpdate'}           // run this POU after the output image is written
+```
 
 ## Tooling
 
@@ -126,7 +121,7 @@ CountPulses := nCount;
 | **Automation Interface** | COM/DTE scripting of XAE — the route to headless builds and CI. `TcUnit-Runner` and `scripts/xae_build.ps1` use it. |
 | **Static Analysis** (TE1200) | Rule-based linting. If the project has a ruleset, treat it as the house standard — the skill and the linter must agree. |
 | **Scope View** (TE1300 for the professional version) | Signal tracing; the right tool for timing questions |
-| **TcUnit** | Open-source unit testing — see `twincat/ads-and-diagnostics.md` |
+| **TcUnit** | Open-source unit testing — see `testing-tcunit.md` |
 
 ## 4024 gotchas
 

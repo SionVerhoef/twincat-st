@@ -55,7 +55,7 @@ examples/house/
                    not from the spec sheet."
 ```
 
-No `LICENSE` file needed for your own code. Once it exists, prefer it over everything else here — `SKILL.md` step 1 says to read `examples/` before writing, and house code should win.
+No `LICENSE` file needed for your own code. Once it exists, prefer it over everything else here — `SKILL.md` step 1 sends the agent to `examples/` whenever style is the question, and house code should win.
 
 ## Verifying
 
