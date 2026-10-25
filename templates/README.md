@@ -30,8 +30,7 @@ py -3 scripts/tcpou.py get templates/E_SeqState.TcDUT --part decl --out enum.st
 py -3 scripts/tcpou.py set MyProject/PLC/DUTs/E_SeqState.TcDUT --part decl --from-file enum.st
 
 # REQUIRED - a file not in the .plcproj is silently not compiled
-py -3 scripts/tcpou.py register MyProject/PLC/PLC.plcproj \
-    MyProject/PLC/POUs/FB_Filling.TcPOU MyProject/PLC/DUTs/E_SeqState.TcDUT
+py -3 scripts/tcpou.py register MyProject/PLC/PLC.plcproj MyProject/PLC/POUs/FB_Filling.TcPOU MyProject/PLC/DUTs/E_SeqState.TcDUT
 
 # validate, then review what you wrote
 py -3 scripts/tcpou.py check MyProject/PLC/POUs/FB_Filling.TcPOU
