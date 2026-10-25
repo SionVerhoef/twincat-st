@@ -161,12 +161,14 @@ twincat-st/
 │   ├── patterns.md                     state machines, PackML, project structure
 │   ├── oop.md                          inheritance vs composition, SOLID for FBs
 │   ├── naming-conventions.md           conventions, measured against a real corpus
+│   ├── tools.md                        every reviewer flag and tcpou.py subcommand in full
 │   ├── testing-tcunit.md               the test lane
 │   ├── safety-boundary.md              the TwinSAFE/FSoE hard stop
 │   ├── twincat.md                      VENDOR — libraries, FB_init, online change, 4024
 │   ├── twincat/project-files.md        VENDOR — .TcPOU/.plcproj editing, git hygiene
 │   ├── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
-│   └── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   ├── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   └── twincat/tasks-and-exceptions.md VENDOR — shared data between tasks, PLC exceptions
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
 ├── tests/                              every rule must fire; fixed false positives must stay fixed
