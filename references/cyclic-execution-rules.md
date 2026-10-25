@@ -267,6 +267,8 @@ How each is stored decides how far to trust it. TwinCAT writes `RETAIN` to NOVRA
 - Write each physical output once per cycle, in one place (CP12).
 - Work must fit the cycle. File I/O, string parsing and large maths belong in a slower task.
 
+Which task owns a variable, how to lock when two tasks must write it, and why an ADS block cannot be shared between tasks: `twincat/tasks-and-exceptions.md`. The same file covers what to do when the PLC stops on an exception.
+
 ---
 
 ## Review rubric
