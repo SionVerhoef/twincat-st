@@ -273,6 +273,17 @@ rule 3 makes the agent say so every time.
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
 
+**Not yet verified on a TwinCAT install** (added since the last field round)
+
+- **Reviewer rules X12, CP7 and CP12.** Tuned on a 2,189-file public corpus, where they add 6
+  findings, all read as real; not yet run on the production project the other rules were
+  checked against.
+- **`references/twincat/tasks-and-exceptions.md`.** Its facts come from Beckhoff InfoSys; none
+  of its examples has been built, and the core-dump steps have not been walked through on a
+  controller.
+- **The rewritten restart table** (`cyclic-execution-rules.md` Rule 9) restates InfoSys; it has
+  not been observed on a controller.
+
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.
 
