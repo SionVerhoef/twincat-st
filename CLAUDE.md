@@ -38,6 +38,11 @@ sense with the original names in place, describe the pattern in prose instead.
 Naming a *product* is fine and often necessary: "TwinCAT 4024", "AX8000", "TcUnit" describe
 things anyone can buy or download. Naming *whose* machine it is, is not.
 
+**Use placeholders that identify nothing:** AMS NetId `1.2.3.4.1.1`, IP addresses from
+`192.0.2.0/24`, MAC addresses from `00:00:5E:00:53:xx`. CI runs `scripts/check_private.py`
+and fails on any other NetId, IP or MAC it finds. It cannot recognise a customer name — that
+part is on you.
+
 ## Everything here must apply to everybody
 
 This is a general-purpose skill, and its users work in shops that do not share one house

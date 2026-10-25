@@ -81,6 +81,10 @@ jobs:
           # the README's link to it is accurate. What must never appear is a path
           # into a sibling checkout, which the absolute-path check above covers.
 
+      # This repository is public: no real AMS NetId, IP or MAC address (see CLAUDE.md).
+      - name: no real network identities committed
+        run: python3 scripts/check_private.py
+
       - name: examples keep their upstream licences
         # MIT and BSD-2 both require the notice to travel with the files.
         run: |
