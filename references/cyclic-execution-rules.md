@@ -86,7 +86,7 @@ A bounded `WHILE` over data you control can be legitimate. Prove the bound, then
 WHILE pNode <> 0 DO   // lint:allow X1 list built at init, hard max 64 entries
 ```
 
-## Rule 2 — Keep calling a block while its operation is in flight. `CP20`
+## Rule 2 — Keep calling a block while its operation is in flight. `CP20`, `X12`
 
 A function block instance is a state machine that only advances when you call it. A PLCopen-style block — motion `MC_*`, communications, file access — that stops being called mid-operation never finishes, never times out and never reports an error. The machine simply stops, with no diagnostic.
 
@@ -176,7 +176,7 @@ END_IF
 
 Using a level where you meant an edge re-triggers every scan the button is held — hundreds of times.
 
-## Rule 5 — Timers are instances: called cyclically, reset explicitly. `X2`
+## Rule 5 — Timers are instances: called cyclically, reset explicitly. `X2`, `X12`
 
 `TON` accumulates only while called with `IN := TRUE`. Two traps.
 
@@ -223,6 +223,8 @@ ELSE
 END_IF
 ```
 
+A `CheckBounds` POU (an implicit check the compiler calls on every indexed access) is a commissioning aid, not this guard: by default it clamps the index and carries on. What it costs and what it hides: `twincat/tasks-and-exceptions.md`.
+
 ## Rule 8 — No allocation, no recursion, validate every pointer. `E1`, `E3`, `X5`, `X6`
 
 Deterministic execution means everything is allocated at download. No `__NEW`/`__DELETE` in cyclic code, no recursive function blocks, no unbounded string building. Fixed arrays and `STRING(n)` are the idiom — and `STRING` defaults to 80 characters plus terminator, so declare the length you need.
@@ -243,15 +245,24 @@ END_IF
 
 ## Rule 9 — Know what survives a restart.
 
-| Declaration | Warm reset | Power cycle | New download |
-|---|---|---|---|
-| `VAR` | no | no | no |
-| `VAR RETAIN` | yes | yes | no |
-| `VAR PERSISTENT` | yes | yes | yes, if written to the persistent file on shutdown |
+What keeps its value, on TwinCAT 3 (Beckhoff InfoSys, *Remanent Variables*):
 
-Initial values (`nCount : DINT := 5;`) apply on download and cold reset — **not** every cycle, and **not** on a warm start. Code relying on a variable "starting at zero" after a restart is wrong; initialise it in an init state.
+| Declaration | Online change | Download | Reset cold | Restart / power cycle | Reset origin |
+|---|---|---|---|---|---|
+| `VAR` | kept | initial value | initial value | initial value | initial value |
+| `VAR RETAIN` | kept | kept | kept | kept, if NOVRAM is mapped | initial value |
+| `VAR PERSISTENT` | kept | kept | kept | kept, if written at shutdown | initial value |
 
-`PERSISTENT` data is written on controlled shutdown. An unexpected power loss can lose it: treat it as best-effort, and never let machine behaviour that matters depend on it silently.
+**CODESYS differs, so check which runtime you are on.** There, `Reset warm` keeps `RETAIN` and `PERSISTENT`, but `Reset cold` and a download re-initialise `RETAIN`; only `PERSISTENT` survives a download. TwinCAT has no warm reset, and its `Reset cold` keeps both.
+
+The trap runs both ways:
+
+- **A plain `VAR` forgets.** It returns to its declared initial value (`nCount : DINT := 5;`, or zero) on every download, reset and restart: not every cycle, but every time the controller comes back. A step counter or a "has run once" latch in a plain `VAR` starts over, so the restart path into the init state must be safe from any step the machine was in.
+- **A remanent variable remembers — including things that stopped being true.** `RETAIN` and `PERSISTENT` skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it.
+
+**Asked to make a sequence or a homed state survive a restart, do not just declare it remanent.** A remanent step counter resumes the sequence in the middle of a step whose outputs, timers and drive commands were all reset. A remanent "homed" claims a position the axis may have lost while the power was off: it is only true when the position itself survives (an absolute encoder, or the drive keeping its own position), and then the thing to keep is that position, checked at start-up, not a flag. Say this to the user before changing anything, and ask what the drive and encoder are.
+
+How each is stored decides how far to trust it. TwinCAT writes `RETAIN` to NOVRAM at the end of every cycle, which works only on a controller that has NOVRAM mapped to the PLC's retain area. `PERSISTENT` goes to a boot-data file **at controlled shutdown**, or when `FB_WritePersistentData` is called: an unexpected power loss without a UPS loses everything since the last write. Treat it as best-effort, and never let machine behaviour that matters depend on it silently. `RETAIN` or `PERSISTENT` on a local of a `FUNCTION` has no effect, and a `POINTER TO` in persistent data points somewhere else after the next download.
 
 ## Rule 10 — Respect the process image and task boundaries. `CP12`, `CP15`
 
@@ -260,28 +271,32 @@ Initial values (`nCount : DINT := 5;`) apply on download and cold reset — **no
 - Write each physical output once per cycle, in one place (CP12).
 - Work must fit the cycle. File I/O, string parsing and large maths belong in a slower task.
 
+Which task owns a variable, how to lock when two tasks must write it, and why an ADS block cannot be shared between tasks: `twincat/tasks-and-exceptions.md`. The same file covers what to do when the PLC stops on an exception.
+
 ---
 
 ## Review rubric
 
-`scripts/st_review.py` covers the mechanical rows. These are the ones that need you.
+`scripts/st_review.py` covers the mechanical part of these rows. An id in brackets is a reviewer rule that checks part of the row; *by hand* marks a PLCopen rule the reviewer does not check at all.
 
 ```
 [ ]  1. Sequences are state machines, not loops; every wait has a timeout
         and a path to Error                                             (X1, X3)
 [ ]  2. Blocks with pending operations keep being called while Busy;
         Execute edges are dropped on Done/Error; no instance shared
-        between two concurrent operations                               (CP20, X11)
+        between two concurrent operations                          (CP20, X11, X12)
 [ ]  3. Every loop is bounded, and the total work fits the cycle time    (X1)
 [ ]  4. Edges via R_TRIG/F_TRIG wherever a one-shot was intended
-[ ]  5. Timers are per-wait instances, reset on entry, PT a TIME literal (X2)
+[ ]  5. Timers are per-wait instances, reset on entry, PT a TIME literal
+                                                                        (X2, X12)
 [ ]  6. No float or TIME equality; division guarded; integer widths fit  (CP8, CP28, X4)
 [ ]  7. Every computed array index is bounds-checked
 [ ]  8. No allocation or recursion; pointers and references validated    (E1, E3, X5, X6)
-[ ]  9. RETAIN/PERSISTENT chosen deliberately; no reliance on implicit
-        initialisation after a warm start
+[ ]  9. RETAIN/PERSISTENT chosen deliberately; plain VAR state that a
+        restart loses is safe to lose; remanent state is validated at init
 [ ] 10. Outputs written once per cycle; cross-task data transferred
-        coherently; no output read-back used as feedback                (CP12, CP15)
+        coherently; no output read-back used as feedback
+                                         (CP12 for AT %Q outputs; CP10, CP11, CP15 by hand)
 [ ] 11. Error state is reachable, reports an id, defines safe outputs,
         and can be reset                                                (X7)
 [ ] 12. Error/status outputs of called blocks are actually read          (CP7)

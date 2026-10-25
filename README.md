@@ -55,10 +55,11 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 
 **Write and review Structured Text**
 
-- **`st_review.py`** — 27 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
+- **`st_review.py`** — 30 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
   that document's own severity; `X` rules are this skill's own: blocking loops, timer presets
   typed as integers, unchecked pointer dereferences, state machines with no reachable error
-  state, `FB_init` without an online-change guard, and FBs that pair `Enable` with `Done`.
+  state, timers and motion blocks called only inside a branch, `FB_init` without an
+  online-change guard, and FBs that pair `Enable` with `Done`.
 - **Reads real projects** — `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking every
   method and property, not only the POU body. A top-level-only parse misses about 84% of the
   code in an OOP project.
@@ -150,7 +151,7 @@ matched — the tool says so on every run, and so should you.
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 27 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 30 rules, PLCopen-keyed
 │   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof
 │   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
@@ -161,12 +162,14 @@ twincat-st/
 │   ├── patterns.md                     state machines, PackML, project structure
 │   ├── oop.md                          inheritance vs composition, SOLID for FBs
 │   ├── naming-conventions.md           conventions, measured against a real corpus
+│   ├── tools.md                        every reviewer flag and tcpou.py subcommand in full
 │   ├── testing-tcunit.md               the test lane
 │   ├── safety-boundary.md              the TwinSAFE/FSoE hard stop
 │   ├── twincat.md                      VENDOR — libraries, FB_init, online change, 4024
 │   ├── twincat/project-files.md        VENDOR — .TcPOU/.plcproj editing, git hygiene
 │   ├── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
-│   └── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   ├── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   └── twincat/tasks-and-exceptions.md VENDOR — shared data between tasks, PLC exceptions
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
 ├── tests/                              every rule must fire; fixed false positives must stay fixed
@@ -213,7 +216,7 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 - **The reviewer on a production project:** no high-severity false positive left; the one
   high finding is a real CP8.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
-- **Every reviewer rule fires** on a defective fixture and stays silent on every shape that was
+- **All 30 reviewer rules fire** on a defective fixture, and the reviewer stays silent on every shape that was
   once a false positive, swept across about 1,670 real files from public TwinCAT projects.
 - **The test suite passes on Windows and Linux**, from a clone and from an installed copy.
 - **`code-equal` holds on a real project:** about 1,350 unmodified files under
@@ -233,6 +236,17 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
   PLC layer is CODESYS-V3-derived, but library names, the `.project` container, SoftMotion, OPC
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
+
+**Not yet verified on a TwinCAT install** (added since the last field round)
+
+- **Reviewer rules X12, CP7 and CP12.** Tuned on a 2,189-file public corpus, where they add 6
+  findings, all read as real; not yet run on the production project the other rules were
+  checked against.
+- **`references/twincat/tasks-and-exceptions.md`.** Its facts come from Beckhoff InfoSys; none
+  of its examples has been built, and the core-dump steps have not been walked through on a
+  controller.
+- **The rewritten restart table** (`cyclic-execution-rules.md` Rule 9) restates InfoSys; it has
+  not been observed on a controller.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.

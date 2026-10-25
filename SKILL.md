@@ -1,13 +1,13 @@
 ---
 name: twincat-st
-description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3 or CODESYS V3, even a one-liner: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, ladder-to-ST conversion, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Easy-looking questions hide the dialect traps (PT := 500, level-driven Execute, blocking loops, float equality); it knows them and ships a reviewer, so use it rather than answering from memory. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
+description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3 or CODESYS V3, even a one-liner: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Easy-looking questions hide the dialect traps (PT := 500, level-driven Execute, blocking loops, float equality); it knows them and ships a reviewer, so use it rather than answering from memory. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
 ---
 
 # Structured Text that survives contact with a machine
 
 > **Reference material only. Not for safety functions.** All code you generate must be reviewed and validated by a qualified engineer against the drive and platform documentation before it runs on a machine. Every hand-over ends with the fixed line in step 5.
 
-**Target: the CODESYS V3 dialect family.** TwinCAT 3 (build 4024.x) is the verified platform. Its PLC layer is CODESYS-V3-derived and shares the OOP extensions, so the vendor-neutral core here applies to CODESYS and the tools built on it; their library names, `.project` container and test tooling are **not covered**, and nothing in this skill was checked on a CODESYS install. On a CODESYS question, answer from the core and say that the vendor specifics are unverified rather than guess at them.
+**Target: the CODESYS V3 dialect family.** TwinCAT 3 (build 4024.x) is the verified platform. Its PLC layer is CODESYS-V3-derived, so the vendor-neutral core applies to CODESYS too; CODESYS library names, the `.project` container and its tooling are **not covered** and were never checked on a CODESYS install. On a CODESYS question, answer from the core and say the vendor specifics are unverified rather than guess.
 
 **Out of scope:** Siemens SCL, Rockwell Studio 5000 ST, OpenPLC/matiec. Those are different dialects — matiec implements IEC 61131-3 **2nd Edition** and has no `METHOD`, `PROPERTY`, `EXTENDS` or `INTERFACE` at all. Guidance from here would be fluent and wrong. Say so and stop.
 
@@ -43,9 +43,9 @@ Establish, and state what you assumed if you could not:
 - vendor and version; which **task** this runs in and its **cycle time**
 - the fault behaviour required — stop, hold, or continue degraded
 - whether any part of this is a safety function (if yes → rule 1)
-- what must survive a restart (→ `RETAIN` / `PERSISTENT`, see `references/cyclic-execution-rules.md`)
+- what must survive a restart, and whether it is still *true* after one — a remembered step or "homed" usually is not (`references/cyclic-execution-rules.md` Rule 9; ask before making it `RETAIN`)
 
-**Read `examples/` when style is the question** — new code going into an existing codebase, an unfamiliar convention, or "make this look like ours". It holds real working code from two published projects, and pattern-matching against working code beats following a written convention. It is also the most expensive thing here to read, so skip it for a contained change to code you can already see. If the team has added their own house code there, that outranks everything, including this skill.
+**Read `examples/` when style is the question** — new code going into an existing codebase, or "make this look like ours". Real working code beats a written convention, but it is the most expensive thing here to read: skip it for a contained change to code you can already see. House code the team added there outranks everything, including this skill.
 
 ### 2. Choose the shape before the syntax
 
@@ -81,25 +81,17 @@ Run the reviewer on anything you wrote or were asked to review:
 
 ```bash
 py -3 scripts/st_review.py <file-or-dir>...             # defect rules
-py -3 scripts/st_review.py src/ --pedantic              # + style rules
 py -3 scripts/st_review.py src/ --json                  # machine-readable
-py -3 scripts/st_review.py src/ --fail-on high          # CI gate (already the default)
-py -3 scripts/st_review.py src/ --min-severity medium   # hide the low findings
-py -3 scripts/st_review.py src/ --rules X1,X5,CP8       # only these rules
 py -3 scripts/st_review.py --list-rules                 # what it checks
 ```
 
-**Commands are written `py -3` because TwinCAT runs on Windows, which has no `python3`.** A bare `python3` there reaches the Microsoft Store alias stub and prints *"Python was not found"* **even when Python is installed** — read that as a wrong command, not a missing interpreter. On Linux or macOS use `python3`.
+**Commands here are written `py -3`, because TwinCAT runs on Windows.** A bare `python3` there reaches the Microsoft Store stub and prints *"Python was not found"* even when Python is installed. On Linux or macOS use `python3`.
 
-**Point it at the code you own, not at the whole `.plcproj`.** Vendor and framework libraries nobody on the team can change bury your findings (on one real project, 835 findings against 68 for the application folder alone). Scan the application folder.
+**Point it at the code you own, not at the whole `.plcproj`** — vendor and framework libraries bury your findings. Exit 1 means a finding at `--fail-on` (default `high`); exit 2 means a file could not be parsed, which is never a clean result. Every flag and exit status is in `references/tools.md`.
 
-**Exit status 1 means a finding at `--fail-on` or above (default `high`)**, so hundreds of `medium` findings still exit 0 — the gate working, not the tool ignoring them. `--min-severity` filters *before* the gate, so hiding a severity also stops it failing a build. **Exit 2 means a file could not be parsed**, and overrides `--fail-on never`: an unread file is never reported clean. It is listed on stderr and under `files_unreadable` in the JSON.
+Findings carry a rule id to cite — `CP8`, `X1`, `E3`. `CP`/`N`/`C`/`L`/`E` are PLCopen rules with that document's severity, `X` are this skill's own; `references/plcopen-rules.md` is the catalogue.
 
-It parses `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking **every** method and property, not just the POU body — where most of an OOP project's code lives.
-
-Findings carry a rule id you can cite in a review — `CP8`, `X1`, `E3`. `CP`/`N`/`C`/`L`/`E` are PLCopen Coding Guidelines rules with that document's severity; `X` ids are this skill's own, for scan-cycle failure modes and the PLCopen behaviour-model contract (`X9`). `references/plcopen-rules.md` is the full catalogue.
-
-The tool is a floor, not a ceiling. **You still read the code** for what it cannot see: is the shape right, is the error path meaningful, does the timeout make physical sense, is this secretly a safety function. `references/cyclic-execution-rules.md` has the rubric for that pass.
+The tool is a floor, not a ceiling. It cannot see intent, so **you still read the code** for the things it cannot check: is the shape right, is the error path meaningful, does the timeout value make physical sense, is this secretly a safety function. `references/cyclic-execution-rules.md` carries the review rubric for that pass.
 
 When the tool reports something you have judged acceptable, record the judgement in the code rather than ignoring the line:
 
@@ -120,7 +112,7 @@ Name the rung you reached. Never imply a higher one.
 | 3. **`scripts/st_review.py` + a human read** | Known defect patterns absent — **always do this** |
 | 4. Nothing | Then say "unverified, not compiled" plainly |
 
-There is deliberately no Linux syntax-check rung. `matiec` and `rusty` cannot parse the OOP constructs this dialect is built on, so a clean run there would prove almost nothing while looking like a pass.
+There is deliberately no Linux syntax-check rung: `matiec` and `rusty` cannot parse this dialect's OOP constructs, so a clean run there would look like a pass and prove almost nothing.
 
 Close with: what you wrote and which shape it uses · what was verified and what was not · the assumptions you made about I/O, cycle time and fault behaviour · what the human must do next.
 
@@ -149,6 +141,8 @@ Load a reference when the task reaches it — don't read them all up front.
 | `references/twincat/project-files.md` | Editing `.TcPOU`/`.plcproj`, or a git merge conflict in one. |
 | `references/twincat/ads-and-diagnostics.md` | ADS access, EtherCAT triage, reading a running machine. |
 | `references/twincat/xae-automation.md` | Asked for a build or compile check, and XAE is installed. What a build rewrites, and why activation stays manual. |
+| `references/twincat/tasks-and-exceptions.md` | Data shared between tasks or cores, locking, or a PLC that stopped on an exception — finding the line, core dumps, `CheckBounds`/`CheckDiv…` implicit checks, `__TRY`/`__CATCH`. |
+| `references/tools.md` | A reviewer or `tcpou.py` result you did not expect — every flag, exit status and subcommand in full. |
 
 **Routing rule of thumb:** if the answer names a `Tc2_`/`Tc3_` library, a `.TcPOU` file, ADS or XAE, it is TwinCAT-specific and belongs behind `references/twincat.md`, not in a general answer.
 
@@ -157,24 +151,24 @@ Load a reference when the task reaches it — don't read them all up front.
 | Path | For |
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
-| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. `new` scaffolds an object, `add-method`/`add-property` append an empty member to fill in with `set`, `reguid` re-stamps Ids after copying a file, `register` adds it to the `.plcproj`. `pins` lists FBD/LD wiring, `code-equal` proves an edit touched only comments. |
-| `scripts/xae_build.ps1` | Windows with XAE only: a real compiler run in a hidden XAE. Only when the user asked for a build — it rewrites `.tmc`/`.xti`/`_CompileInfo`. Never activates. See `references/twincat/xae-automation.md`. |
+| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. Commands below. |
+| `scripts/xae_build.ps1` | Windows with XAE only: a headless build with the real compiler output. Only when the user asked for a build — it rewrites `.tmc`/`.xti`/`_CompileInfo`. It never activates. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
-| `examples/` | Real working code, each folder with a `NOTES.md` on what to take from it — see step 1 for when to read it. |
+| `examples/` | Real working code from two published projects, each with a `NOTES.md` on what to take from it. When to read it: step 1. |
 
-The Python scripts need Python 3 and nothing else — no `pip install`.
+The Python scripts need Python 3 and nothing else.
 
 ### `tcpou.py`
 
-Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
+Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand, each explained in `references/tools.md`:
 
 ```bash
 py -3 scripts/tcpou.py show     <file>                                   # parts + encoding
 py -3 scripts/tcpou.py get      <file> --part impl [--out body.st]       # print or write one part
 py -3 scripts/tcpou.py set      <file> --part impl --from-file body.st   # replace one part
-py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # a name, not a path
-py -3 scripts/tcpou.py add-method   <file> --name Reset [--returns BOOL] # empty member, fill with set
-py -3 scripts/tcpou.py add-property <file> --name Speed --type LREAL     # [--no-set] = getter only
+py -3 scripts/tcpou.py new      --type fb --name FB_Filling --dir POUs/  # a name, not a path; --shape execute|enable|cyclic
+py -3 scripts/tcpou.py add-method   <file> --name Reset [--returns BOOL] # append an empty METHOD
+py -3 scripts/tcpou.py add-property <file> --name Speed --type LREAL     # append a PROPERTY (--no-set: read-only)
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
 py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
 py -3 scripts/tcpou.py check    <file>...                                # validate
@@ -182,9 +176,9 @@ py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD/L
 py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comments-only?
 ```
 
-- **Run `show` before `get`/`set` rather than guessing a part key, and check the exit status, not just the bytes.** A wrong key exits 1 and prints the real ones; a `set` that never ran looks exactly like one that changed nothing.
-- **`register` is not optional.** A new file that is not in the `.plcproj` silently does not compile. It is idempotent.
-- **From Windows PowerShell 5.1, move a part with `get --out` and `set --from-file`, never `>` or a pipe.** Both re-encode through the console code page and destroy non-ASCII characters (`²`) beyond repair. cmd.exe is fine.
-- **Run `pins` before calling a signal unused or unwired in an FBD/LD caller** — that wiring lives in the network XML, where a text search finds nothing. **Claim "comments only" with `code-equal`**, not by eye.
+The four that cause damage when missed:
 
-**Read `references/twincat/project-files.md` before your first `new`, `pins` or `code-equal`:** it has which `--shape` an FB gets (`execute`, `enable`, `cyclic`, or a framework base), the part keys, what `pins` prints, and `code-equal`'s exit codes.
+- **Run `show` before `get`/`set`** rather than guessing a part key (`decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`), and **check the exit status**: a `set` that never ran leaves the file exactly as unchanged as a `set` that changed nothing.
+- **A new file that is not registered in the `.plcproj` silently does not compile.** `register` is not optional; it is idempotent.
+- **From Windows PowerShell 5.1, move a part with `get --out` and `set --from-file`, never with `>` or a pipe** — both re-encode through the console code page and lose characters such as `²` for good.
+- **Run `pins` before concluding a signal is unused or unwired in an FBD or LD caller** — that wiring lives in the network XML, where a text search finds nothing. Claim "comments only" with `code-equal`, not by eye.

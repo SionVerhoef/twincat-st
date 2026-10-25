@@ -3,15 +3,22 @@
 ## 0.4.0 — 2026-10-23
 
 From field rounds 2–4 on a 4024 production project and a scratch TcUnit solution
-(`evals/field-review-v0.3.0.md`, `field-review-round3.md`, `field-review-round4.md`).
+(`evals/field-review-v0.3.0.md`, `field-review-round3.md`, `field-review-round4.md`), and a review
+of the skill as a whole.
 
-**Reviewer (`st_review.py`)**
+**Reviewer (`st_review.py`)**, now 30 rules
 
-- **New rule X11** (medium): an `MC_` block's `Execute` fed from a level.
+- **New rules:** **X11** (medium), an `MC_` block's `Execute` fed from a level; **X12** (medium), a
+  timer, trigger or `MC_` block called only inside a branch and never reset; **CP7** (high), an
+  error output nothing reads; **CP12** (medium), an `AT %Q` output written from more than one unit.
+  On a 2,189-file public corpus X12/CP7/CP12 add 6 findings, all real, and leave every other
+  rule's count unchanged.
 - False positives fixed: **CP8** on change detection against a latched copy, **CP24** on LD
   operands and on interface/`ABSTRACT` parameters, **E3** on comparisons through a
   `REFERENCE TO` or a dereferenced pointer. **X3/X7** judge a state variable across all its
-  `CASE`s. Output is UTF-8 on Windows.
+  `CASE`s. **CP20** honours `lint:allow`. Output is UTF-8 on Windows.
+- `fixture-project` now has five high findings, not three (two CP7 in `MAIN`), so eval numbers
+  do not compare one for one with the recorded `results-*.md` runs.
 
 **Project files (`tcpou.py`)**
 
@@ -25,16 +32,25 @@ output. It never activates; `references/twincat/xae-automation.md` lists what a 
 
 **Skill and docs**
 
+- **Restart semantics corrected** (`cyclic-execution-rules.md` Rule 9): on TwinCAT a plain `VAR`
+  is re-initialised on every download, reset and restart, and `RETAIN` survives a download and
+  `Reset cold`, per InfoSys; CODESYS differs and the rule says so. It no longer suggests making a
+  homed flag remanent.
+- **New reference `twincat/tasks-and-exceptions.md`:** data shared between tasks, locking, PLC
+  exceptions, core dumps, implicit checks, `__TRY`/`__CATCH`.
 - A fixed closing line on every code hand-over: not compiled, and a qualified engineer must
   review and validate it.
-- `SKILL.md` slimmed from 20 KB to 17 KB; `tcpou.py` detail moved to
-  `references/twincat/project-files.md`. Contradictions removed: `PT := 500` does not compile,
-  `.gitattributes` advice is `-text`, the template recipe uses `new` and `--out`/`--from-file`,
-  TcUnit routes to `testing-tcunit.md`, and duplicated sections have one home.
+- `SKILL.md` slimmed from 20.4 KB to 15.5 KB; flag, exit-status and subcommand detail moves to
+  the new `references/tools.md`. The description no longer offers ladder-to-ST conversion (trigger
+  evals 22/22). Contradictions removed: `PT := 500` does not compile, `.gitattributes` advice is
+  `-text`, the template recipe uses `new` and `--out`/`--from-file`, TcUnit routes to
+  `testing-tcunit.md`, and duplicated sections have one home.
 - **`FB_Sequence` keeps `bDone` latched until `bExecute` falls**, as PLCopen and
   `behaviour-model.md` say. This change was not rebuilt in XAE.
 - Tests guard the description's length and that `SKILL.md` names every `tcpou.py` subcommand.
   The suite also runs on `windows-latest`.
+- Five candidate evals for the new material (`evals/candidates.json`), scouted on Haiku 4.5: all
+  fail without the skill, four pass with it; `homed-survives-restart` still fails with it.
 
 **Removed:** `references/codesys.md`, which was never verifiable here. CODESYS specifics are
 stated as not covered.

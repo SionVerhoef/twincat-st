@@ -76,6 +76,13 @@ RULES: dict[str, tuple[str, str]] = {
                     "comment — it will not compile"),
     "X11": ("medium", "Execute of an MC_ motion block fed from a level expression — it "
                       "starts on a rising edge only, so it runs once and then never again"),
+    "X12": ("medium", "timer, edge trigger or MC_ block called only inside an IF or CASE "
+                      "branch — it stops updating whenever the branch is not taken"),
+    "CP7": ("high", "error output of a called block never read — a failure goes unnoticed"),
+    # PLCopen rates CP12 High. Held at medium here: the text shows two places that
+    # write an output, not that both run in the same scan.
+    "CP12": ("medium", "physical output (AT %Q) written from more than one POU, method or "
+                       "action — the output holds whichever write ran last"),
     "CP2": ("high", "function or function block never referenced anywhere in the scanned tree"),
     "CP6": ("high", "VAR_EXTERNAL inside a function, function block or method — a hidden "
                     "global dependency"),
@@ -163,6 +170,18 @@ PIN_EXECUTE = re.compile(r"^[ioq]?[bx]?Execute$", re.I)
 PIN_ENABLE = re.compile(r"^[ioq]?[bx]?Enable$", re.I)
 PIN_DONE = re.compile(r"^[ioq]?[bx]?Done$", re.I)
 PIN_VALID = re.compile(r"^[ioq]?[bx]?Valid$", re.I)
+PIN_ERROR = re.compile(r"^[ioq]?[bx]?Error$", re.I)
+
+# X12: blocks whose state only advances while they are called. A timer called in one
+# branch freezes with its elapsed time when the branch is left and can fire at once on
+# re-entry; an edge trigger misses or replays edges; a motion block stops mid-move. A
+# house FB is left out: a stateless helper called in one branch is correct (CP20).
+STATEFUL_STD = re.compile(r"^(?:L?TON|L?TOF|L?TP|R_TRIG|F_TRIG|MC_\w+)$", re.I)
+# CP7: library blocks whose Error output is part of their contract, on top of any FB in
+# the scanned tree that declares one. Named exactly, so an unknown block is never guessed at.
+ERROR_STD = re.compile(
+    r"^(?:MC_\w+|ADSREAD|ADSWRITE|ADSRDWRT|ADSRDSTATE|ADSWRTCTL|ADSRDDEVINFO"
+    r"|FB_File(?:Open|Close|Read|Write|Gets|Puts|Seek|Tell|Delete|Rename))$", re.I)
 
 # ST keywords that must never be mistaken for an identifier being called.
 KEYWORDS = {
@@ -558,7 +577,46 @@ def for_loops(text: str):
     return out
 
 
-def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
+def branch_depth(text: str, pos: int) -> int:
+    """How many IF/CASE blocks are still open at `pos` in noise-stripped code.
+
+    'ELSIF', 'END_IF' and 'END_CASE' are not word-boundary matches for IF or CASE,
+    so counting openers minus closers is enough, inline blocks included.
+    """
+    head = text[:pos].upper()
+    return (len(re.findall(r"\bIF\b", head)) - len(re.findall(r"\bEND_IF\b", head))
+            + len(re.findall(r"\bCASE\b", head)) - len(re.findall(r"\bEND_CASE\b", head)))
+
+
+def call_args(text: str, start: int) -> str:
+    """The argument text of a call whose '(' ends just before `start`."""
+    depth = 0
+    for j in range(start, len(text)):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            if depth == 0:
+                return text[start:j]
+            depth -= 1
+    return text[start:]
+
+
+def error_types(files: list) -> set[str]:
+    """Upper-cased names of every FUNCTION_BLOCK in the tree with an Error output (CP7)."""
+    out: set[str] = set()
+    for sf in files:
+        for unit in sf.units:
+            head = POU_HEADER.search(strip_noise(unit.decl))
+            if not head or head.group(1).upper() != "FUNCTION_BLOCK":
+                continue
+            if any(v.section == "VAR_OUTPUT" and v.type.upper() == "BOOL"
+                   and PIN_ERROR.match(v.name) for v in parse_variables(unit)):
+                out.add(head.group(2).upper())
+    return out
+
+
+def check_file(sf: SourceFile, enabled: set[str],
+               err_types: set[str] = frozenset()) -> list[Finding]:
     found: list[Finding] = []
     fname = str(sf.path)
 
@@ -602,6 +660,7 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         found.append(Finding(rule, sev, fname, unit.name, base + rel_line - 1, text, msg))
 
     x3_cases: dict[str, list] = {}       # selector -> every CASE over it, for X3
+    calls_of: dict[tuple, tuple] = {}    # (declaring unit, NAME) -> (var, X12?, CP7?, sites)
 
     for unit_idx, unit in enumerate(sf.units):
         owner_idx = owner_of[unit_idx] if unit_idx < len(owner_of) else 0
@@ -848,7 +907,9 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
         }
         for inst in sorted(fb_instances):
             calls = len(re.findall(rf"(?<![.\w]){re.escape(inst)}\s*\(", impl, re.I))
-            if calls > 1:
+            sites = [i for i, l in enumerate(lines)
+                     if re.search(rf"(?<![.\w]){re.escape(inst)}\s*\(", l, re.I)]
+            if calls > 1 and not any(suppressed(raw_lines, i, "CP20")[0] for i in sites):
                 idx = next((i for i, l in enumerate(lines) if re.search(rf"(?<![.\w]){re.escape(inst)}\s*\(", l, re.I)), 0)
                 add("CP20", unit, idx + 1, raw_lines[idx] if idx < len(raw_lines) else inst,
                     f"'{inst}' is called from {calls} sites in this body; confirm at most "
@@ -1003,6 +1064,84 @@ def check_file(sf: SourceFile, enabled: set[str]) -> list[Finding]:
                     f"starts once, on its first rising edge, and never again while it stays "
                     f"TRUE. Drive Execute from a step ('Execute := (eStep = E_Step.Move)') "
                     f"or a one-shot command (references/behaviour-model.md)", unit.impl_line)
+
+        # --- X12 / CP7 call sites, judged once the whole file is seen -----------------
+        # An instance of the POU can be called from any of its methods and actions, so
+        # sites are pooled per declaring unit: one unconditional call anywhere is enough.
+        own_names = {v.name.upper() for v in own_vars[unit_idx]} if unit_idx < len(own_vars) else set()
+        for v in scope_vars:
+            key_idx = unit_idx if v.name.upper() in own_names else owner_idx
+            typ = base_type(v.type)
+            if re.match(r"^\s*ARRAY\b", v.type, re.I) or is_pointerish(v.type):
+                continue                  # element calls and references are out of reach
+            stateful = bool(STATEFUL_STD.match(typ))
+            errors = bool(ERROR_STD.match(typ)) or typ in err_types
+            if not (stateful or errors):
+                continue
+            for m in re.finditer(rf"(?<![.\w]){re.escape(v.name)}\s*\(", impl, re.I):
+                i = impl.count("\n", 0, m.start())
+                site = (unit, i, branch_depth(impl, m.start()) > 0, call_args(impl, m.end()))
+                calls_of.setdefault((key_idx, v.name.upper()), (v, stateful, errors, []))[3].append(site)
+
+    # --- X12 a stateful block called only inside a branch --------------------------
+    # Only when every call site is conditional and none of them resets the block. A
+    # call with 'IN := FALSE' or 'Execute := FALSE', typically on the way into a state,
+    # is the documented reset (cyclic-execution-rules Rule 5): on a public corpus of
+    # 2,189 files it was what 11 of the first 18 findings had in common, each a timer
+    # managed state by state on purpose; 'CLK := FALSE' is the same for a trigger. A
+    # TcUnit test (one that calls TEST_FINISHED) runs its branch once per test run, so
+    # there is no re-entry to go wrong: 3 more of those 18. A name that appears in an
+    # LD/FBD network may be called there, where this cannot see.
+    graphics = "\n".join(u.graphic for u in sf.units).upper()
+    reset = re.compile(r"\b(?:IN|Execute|CLK)\s*:=\s*FALSE\b", re.I)
+    for (_, name), (v, stateful, _, sites) in calls_of.items():
+        if not stateful or not sites or not all(c for _, _, c, _ in sites):
+            continue
+        if any(reset.search(a) for *_, a in sites):
+            continue
+        if any(re.search(r"\bTEST_FINISHED\b", u.impl, re.I) for u, *_ in sites):
+            continue
+        if re.search(rf"\b{re.escape(name)}\b", graphics):
+            continue
+        unit, i, _, _ = sites[0]
+        raw_lines = unit.impl.splitlines()
+        if suppressed(raw_lines, i, "X12")[0]:
+            continue
+        kind = ("a motion block stops mid-move with Busy set and never reports Done or Error"
+                if v.type.upper().startswith("MC_") else
+                "an edge trigger misses the edges that happen while it is not called, or "
+                "reports a stale one on re-entry"
+                if re.match(r"^[RF]_TRIG$", v.type, re.I) else
+                "a timer keeps its elapsed time when the branch is left, so on re-entry it "
+                "can already be done")
+        add("X12", unit, i + 1, raw_lines[i] if i < len(raw_lines) else name,
+            f"'{v.name}' ({v.type}) is called only inside an IF/CASE branch; {kind}. Call it "
+            f"unconditionally and control it through its inputs, or reset it on the way "
+            f"into the branch (references/cyclic-execution-rules.md Rules 2 and 5)",
+            unit.impl_line)
+
+    # --- CP7 an error output nobody reads ----------------------------------------
+    # Read means any '.…Err…' member access on the instance, an '…Err… =>' binding in
+    # one of its calls, or the instance handed on whole (to a method, ADR or REF), where
+    # the receiver may check it. Uncalled instances are CP24's business, not this rule's.
+    for (_, name), (v, _, errors, sites) in calls_of.items():
+        if not errors or not sites:
+            continue
+        n = re.escape(name)
+        if (re.search(rf"(?<![.\w]){n}\s*\.\s*\w*ERR", all_impl, re.I)
+                or any(re.search(r"\w*Err\w*\s*=>", a, re.I) for *_, a in sites)
+                or re.search(rf"(?:[(,]|:=)\s*{n}\s*[,)]", all_impl, re.I)
+                or re.search(rf"\b(?:ADR|REF)\s*\(\s*{n}\s*\)", all_impl, re.I)
+                or re.search(rf"\b{n}\b", graphics)):
+            continue
+        unit, i, _, _ = sites[0]
+        raw_lines = unit.impl.splitlines()
+        if suppressed(raw_lines, i, "CP7")[0]:
+            continue
+        add("CP7", unit, i + 1, raw_lines[i] if i < len(raw_lines) else name,
+            f"'{v.name}' ({v.type}) has an Error output that nothing reads; a failure leaves "
+            f"the sequence waiting with no diagnostic. Bind Error/ErrorID and act on them, "
+            f"or say in a lint:allow why it cannot fail", unit.impl_line)
 
     # --- X3, decided per selector -------------------------------------------------
     # A second 'CASE eStep OF' that only picks a value per step leaves steps out on
@@ -1196,6 +1335,47 @@ def dead_pous(files: list) -> list[Finding]:
     return out
 
 
+def multi_written_outputs(files: list) -> list[Finding]:
+    """CP12: a physical output written from more than one POU, method or action.
+
+    Only variables mapped with 'AT %Q' are known to be outputs. One unit writing an
+    output in several branches of its own logic is the normal shape and is left alone;
+    writes from two units mean the output image holds whichever of them ran last. An
+    output declared in a GVL can be written from any file, one declared in a POU only
+    from that file. Statement writes and '=> name' bindings count; a write inside an
+    LD/FBD network does not, since the network XML is not read as code.
+    """
+    decl_at = re.compile(r"^\s*([A-Za-z_]\w*)\s+AT\s+%Q[^:]*:", re.I | re.M)
+    outputs = []                  # (file index, unit, GVL name or None, name, decl line)
+    for i, sf in enumerate(files):
+        for unit in sf.units:
+            decl = strip_noise(unit.decl)
+            gvl = unit.name if unit.kind == "GVL" else None
+            for m in decl_at.finditer(decl):
+                outputs.append((i, unit, gvl, m.group(1),
+                                unit.decl_line + decl.count("\n", 0, m.start())))
+    if not outputs:
+        return []
+    bodies = [[(u, strip_noise(u.impl)) for u in sf.units if u.impl.strip()] for sf in files]
+    out = []
+    for i, unit, gvl, name, line in outputs:
+        names = [name, f"{gvl}.{name}"] if gvl else [name]
+        bound = re.compile(rf"=>\s*(?:{re.escape(gvl)}\s*\.\s*)?{re.escape(name)}\b"
+                           if gvl else rf"=>\s*{re.escape(name)}\b", re.I)
+        writers = []
+        for j in (range(len(files)) if gvl else (i,)):
+            for u, body in bodies[j]:
+                if any(assignment(body, n) for n in names) or bound.search(body):
+                    writers.append(f"{files[j].path.stem}.{u.name}"
+                                   if files[j].path.stem.upper() != u.name.upper() else u.name)
+        if len(writers) > 1:
+            out.append(Finding("CP12", RULES["CP12"][0], str(files[i].path), unit.name, line,
+                               name, f"output '{name}' is written from {len(writers)} places "
+                               f"({', '.join(writers[:4])}{', …' if len(writers) > 4 else ''}); "
+                               f"compute it once and write it in one place per cycle"))
+    return out
+
+
 def collect(paths: list[str]) -> list[Path]:
     out: list[Path] = []
     wanted = XML_SUFFIXES | TEXT_SUFFIXES
@@ -1279,11 +1459,18 @@ def main() -> int:
             unreadable.append((f, f"{type(exc).__name__}: {exc}"))
             continue
         if sf.units:
-            findings.extend(check_file(sf, enabled))
             parsed.append(sf)
+
+    # CP7 needs to know which FBs anywhere in the tree have an Error output before
+    # any file is judged, so every file is parsed first.
+    err_types = error_types(parsed) if "CP7" in enabled else set()
+    for sf in parsed:
+        findings.extend(check_file(sf, enabled, err_types))
 
     if "CP2" in enabled:
         findings.extend(dead_pous(parsed))
+    if "CP12" in enabled:
+        findings.extend(multi_written_outputs(parsed))
 
     cut = SEVERITIES.index(args.min_severity)
     findings = [f for f in findings if SEVERITIES.index(f.severity) <= cut]

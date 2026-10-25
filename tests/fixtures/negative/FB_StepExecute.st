@@ -9,6 +9,9 @@ VAR_INPUT
     fPos    : LREAL;
     fVelo   : LREAL;
 END_VAR
+VAR_OUTPUT
+    bFault  : BOOL;
+END_VAR
 VAR
     eStep    : E_Step;
     fbMove   : MC_MoveAbsolute;
@@ -24,4 +27,5 @@ fbMove(Axis := axisX, Execute := (eStep = E_Step.Move) AND bEnable, Position := 
 fbJog(Axis := axisX, Execute := fbTrig.Q AND bEnable, Velocity := fVelo);
 fbHome(Axis := axisX, Execute := bHomeCmd);
 fbHome.Execute := bStart;
+bFault := fbMove.Error OR fbJog.Error OR fbHome.Error;
 END_FUNCTION_BLOCK
