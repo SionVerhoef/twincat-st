@@ -191,6 +191,27 @@ types = {v.name: v.type for v in st_review.parse_variables(
 check("a qualifier after the type is kept off the type", types.get("nPhase") == "INT",
       repr(types))
 
+# --- a declaration behind a pragma line is still a declaration -----------------
+# '{attribute 'hide'}' on its own line was read into the next declaration, which
+# then failed to parse: the variable vanished from every rule, silently. A
+# TcRetain attribute marks the variable remanent, as a VAR RETAIN block does.
+
+pragma = [(f["rule"], f["line"]) for f in positive if f["object"] == "FB_PragmaDecl"]
+check("a variable behind a pragma line is reported, on its own line",
+      ("CP24", 13) in pragma, repr(pragma))
+check("a TcRetain attribute counts as RETAIN for X13", ("X13", 17) in pragma, repr(pragma))
+
+# --- X12 accepts a guard that does not manage the block, and only that --------
+# Making pragma'd declarations visible gave X12 twenty TcOpen timers in two guards:
+# 'IF <timeout set> OR NOT inValue THEN', entered whenever the input drops, and
+# 'IF __ISVALIDREF(inoConfig) THEN', which only protects the preset's reference.
+# FB_GuardedTimer holds both; FB_NestedGuardTimer holds the near misses that must
+# still fire: the 'OR NOT' under an AND, and a reference check joined with a flag.
+
+check("X12 fires on an 'OR NOT' under an AND and on a reference check with a flag",
+      named_in("X12", "FB_NestedGuardTimer") == ["fbCheck", "fbTimer"],
+      repr(named_in("X12", "FB_NestedGuardTimer")))
+
 # --- a graphical body's operands are uses, and only its operands -------------
 # CP24 read only <Implementation><ST>, so every variable wired in an LD network
 # (<Implementation><NWL>; the field test first called these CFC) came back
