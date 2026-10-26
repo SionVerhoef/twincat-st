@@ -14,6 +14,10 @@
 - On the 2,189-file public corpus the two rules add no findings and every other rule's count is
   unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
   shows no false positives, not that the rules catch defects in the field.
+- **`tcpou.py code-equal` takes a directory**: every `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` under it,
+  with a count of each verdict at the end. Field round 4 needed 14 batches for one project,
+  because 1,353 paths do not fit on a Windows command line. A directory with no object file
+  exits 2, like any other "nothing to compare with".
 
 ## 0.4.1 — 2026-10-26
 
