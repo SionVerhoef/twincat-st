@@ -723,6 +723,13 @@ with tempfile.TemporaryDirectory() as tmp:
     r = tcpou("code-equal", str(base))
     check("code-equal on a file git does not know exits 2, not 0",
           r.returncode == 2, r.stdout.decode("utf-8", "replace").strip()[:200])
+    empty = Path(tmp) / "no_objects"
+    empty.mkdir()
+    r = tcpou("code-equal", str(empty))
+    check("code-equal on a directory with no object file exits 2, not 0",
+          r.returncode == 2, r.stdout.decode("utf-8", "replace").strip()[:200])
+    check("code-equal --against refuses a directory",
+          tcpou("code-equal", str(empty), "--against", str(base)).returncode == 2)
     # --ref HEAD is exercised in a repository this test makes, not in this
     # checkout: an installed copy of the skill is not a git checkout, and the
     # suite failed there on nothing but that. The committed copy has LF and the
@@ -763,6 +770,23 @@ with tempfile.TemporaryDirectory() as tmp:
         r = tcpou("code-equal", str(linked), "--ref", "HEAD")
         check("code-equal: a changed string literal at HEAD is still DIFFERENT",
               r.returncode == 1, (r.stdout + r.stderr).decode("utf-8", "replace").strip()[:300])
+        # A directory is every object file under it, in one run. A whole project
+        # does not fit on one Windows command line: field round 4 needed 14 batches.
+        sub = repo / "POUs"
+        sub.mkdir()
+        (sub / "FB_Same.TcPOU").write_bytes(pou("x := 1;\n").read_bytes())
+        git("add", "POUs")
+        git("commit", "-q", "-m", "sub")
+        r = tcpou("code-equal", str(repo))
+        out = r.stdout.decode("utf-8", "replace")
+        check("code-equal on a directory compares every object file under it",
+              r.returncode == 1 and "FB_Same.TcPOU vs HEAD" in out
+              and "2 files: 1 identical, 1 different, 0 cannot compare" in out, out[-300:])
+        (sub / "FB_New.TcPOU").write_bytes(pou("y := 2;\n").read_bytes())
+        r = tcpou("code-equal", str(sub))
+        out = r.stdout.decode("utf-8", "replace")
+        check("code-equal on a directory holding a file git does not know exits 2",
+              r.returncode == 2 and "CANNOT COMPARE" in out and "FB_Same" in out, out[-300:])
 
     # --- a reader that stops early is not an error ---------------------------
     # 'get ... | head' printed "! None: Broken pipe" from the OSError branch.
