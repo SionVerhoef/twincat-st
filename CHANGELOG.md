@@ -2,6 +2,8 @@
 
 ## 0.5.0 — 2026-10-26
 
+**Agents and skill**
+
 - **OpenAI Codex.** `agents/openai.yaml` gives Codex a display name and a one-line blurb, and
   `README.md` names the folder Codex reads skills from (`.agents/skills/`). Untested in Codex.
 - **A team's own coding standard comes first** (`SKILL.md` step 1). If the project has a
@@ -13,8 +15,6 @@
 - **The description says what the skill is before when to use it.** Every trigger term is
   unchanged. `run_trigger.py check` on Opus 5.5, 3 runs a query: 22 of 22 pass. The 11 that
   should fire fired in 32 of 33 runs; the 11 that should not fired in none.
-## Unreleased
-
 - **Rule 9 says where to check remembered state: on the first cycle, not in `FB_init`.** Per
   InfoSys, `RETAIN` and `PERSISTENT` values are read back only after `FB_init` has run, so a
   check there sees their initial values. `twincat.md` had `bInitRetains` as `TRUE` on a cold
@@ -22,7 +22,10 @@
   operating case, not whether stored values survived. On the `homed-survives-restart`
   candidate, no Haiku 4.5 run put the check in `FB_init` any more, but none passed either;
   Sonnet 5.5 passed with the same skill, so tuning for small models stops there.
-- **Reviewer rules X13 and X14** (medium), now 32 rules. **X13** reports a state machine whose
+
+**Reviewer (`st_review.py`)**, now 32 rules
+
+- **Reviewer rules X13 and X14** (medium). **X13** reports a state machine whose
   step is declared `RETAIN` or `PERSISTENT`: a `CASE` that assigns its own selector. After a
   restart the sequence would resume mid-step with its outputs and timers reset. A remembered
   mode or counter that selects a `CASE` without being stepped by it stays silent. **X14** reports
@@ -36,10 +39,6 @@
 - On the 2,189-file public corpus the two rules add no findings and every other rule's count is
   unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
   shows no false positives, not that the rules catch defects in the field.
-- **`tcpou.py code-equal` takes a directory**: every `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` under it,
-  with a count of each verdict at the end. Field round 4 needed 14 batches for one project,
-  because 1,353 paths do not fit on a Windows command line. A directory with no object file
-  exits 2, like any other "nothing to compare with".
 - **Declarations behind a pragma line are read** (`st_review.py`). A variable declared on the
   line after `{attribute 'hide'}`, or any other pragma, was dropped by the parser, so no rule
   saw it: silently, never as a false positive. On the public corpus that was 1,020 of 18,197
@@ -58,6 +57,13 @@
   public corpus the exemption skips 4 comparisons, all correctly, so no heuristic was worth the
   false positives it would bring back. Rule 6 now says what a settle check needs: a tolerance
   held for a time.
+
+**Project files (`tcpou.py`)**
+
+- **`tcpou.py code-equal` takes a directory**: every `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` under it,
+  with a count of each verdict at the end. Field round 4 needed 14 batches for one project,
+  because 1,353 paths do not fit on a Windows command line. A directory with no object file
+  exits 2, like any other "nothing to compare with".
 
 ## 0.4.1 — 2026-10-26
 
