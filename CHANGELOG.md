@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Rule 9 says where to check remembered state: on the first cycle, not in `FB_init`.** Per
+  InfoSys, `RETAIN` and `PERSISTENT` values are read back only after `FB_init` has run, so a
+  check there sees their initial values. `twincat.md` had `bInitRetains` as `TRUE` on a cold
+  start; it is `TRUE` on a download and `FALSE` on a TwinCAT restart, so it names the
+  operating case, not whether stored values survived. On the `homed-survives-restart`
+  candidate, no Haiku 4.5 run put the check in `FB_init` any more, but none passed either;
+  Sonnet 5.5 passed with the same skill, so tuning for small models stops there.
 - **Reviewer rules X13 and X14** (medium), now 32 rules. **X13** reports a state machine whose
   step is declared `RETAIN` or `PERSISTENT`: a `CASE` that assigns its own selector. After a
   restart the sequence would resume mid-step with its outputs and timers reset. A remembered
