@@ -14,6 +14,22 @@
 - On the 2,189-file public corpus the two rules add no findings and every other rule's count is
   unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
   shows no false positives, not that the rules catch defects in the field.
+- **`tcpou.py code-equal` takes a directory**: every `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` under it,
+  with a count of each verdict at the end. Field round 4 needed 14 batches for one project,
+  because 1,353 paths do not fit on a Windows command line. A directory with no object file
+  exits 2, like any other "nothing to compare with".
+- **Declarations behind a pragma line are read** (`st_review.py`). A variable declared on the
+  line after `{attribute 'hide'}`, or any other pragma, was dropped by the parser, so no rule
+  saw it: silently, never as a false positive. On the public corpus that was 1,020 of 18,197
+  variables, mostly TcOpen, which puts `hide` above nearly every member. Now visible, they add
+  86 findings (76 CP24, 6 X6, 3 CP20, 1 CP7), each a shape those rules already report
+  elsewhere. `{attribute 'TcRetain'}` counts as `RETAIN` for X13.
+- Three shapes the newly visible variables exposed are handled rather than reported. `REF=`
+  binds a reference and is no comparison, which also removes 4 earlier CP8/CP28 false
+  positives. X12 accepts a timer whose only guard always admits its reset (`… OR NOT bIn`) or
+  only checks the reference its preset is read through (`__ISVALIDREF(stCfg)`): 20 TcOpen
+  timers. CP24 skips the variables XAE declares for a UML state chart
+  (`{attribute 'implicit_…'}`).
 - **CP8's change-detection exemption is a documented blind spot**, not a fix
   (`references/tools.md`, Rule 6). A reading compared with its own latched copy (a settle check)
   looks the same as a setpoint compared with its latch, and only the second is right. On the

@@ -595,6 +595,16 @@ def code_parts(tc):
     return {k: code_only(tc.text[s:e].replace("\r\n", "\n")) for k, (s, e) in tc.parts().items()}
 
 
+OBJECT_SUFFIXES = (".tcpou", ".tcdut", ".tcgvl", ".tcio")
+
+
+def object_files(root):
+    """Every TwinCAT object file under a directory, sorted. A whole project does not
+    fit on one Windows command line: field round 4 ran 1,353 files in 14 batches."""
+    return sorted(os.path.join(d, f) for d, _, names in os.walk(root)
+                  for f in names if f.lower().endswith(OBJECT_SUFFIXES))
+
+
 def git_blob(path, rev):
     """The bytes of `path` at `rev`, or None when git has no such file there."""
     import subprocess
@@ -729,7 +739,7 @@ def main():
     p.add_argument("--box", help="regex on the instance name or box type")
 
     p = sub.add_parser("code-equal", help="prove an edit changed only comments and whitespace")
-    p.add_argument("files", nargs="+")
+    p.add_argument("files", nargs="+", help="object files, or directories to search for them")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--ref", default="HEAD", help="git revision to compare with (default: HEAD)")
     g.add_argument("--against", help="compare one file with this file on disk instead")
@@ -869,27 +879,40 @@ def main():
     if a.cmd == "code-equal":
         # Exit 1 when code differs, 2 when a file could not be compared at all:
         # "nothing to compare with" must never read as "identical".
-        if a.against and len(a.files) != 1:
+        if a.against and (len(a.files) != 1 or os.path.isdir(a.files[0])):
             print("refused: --against compares exactly one file", file=sys.stderr)
             return 2
-        status = 0
+        status, files = 0, []
         for path in a.files:
+            if not os.path.isdir(path):
+                files.append(path)
+            elif object_files(path):
+                files += object_files(path)
+            else:
+                print(f"CANNOT COMPARE {path}: no .TcPOU/.TcDUT/.TcGVL/.TcIO file under it")
+                status = 2
+        counts = {"IDENTICAL": 0, "DIFFERENT": 0, "CANNOT COMPARE": 0}
+        for path in files:
             if a.against:
                 old, base = TcFile(a.against), a.against
             else:
                 blob = git_blob(path, a.ref)
                 if blob is None:
                     print(f"CANNOT COMPARE {path}: not in git at {a.ref}")
+                    counts["CANNOT COMPARE"] += 1
                     status = 2
                     continue
                 old, base = TcFile(path, blob), a.ref
             new = TcFile(path)
             lines = code_diff(old, new)
             n = len(new.parts())
+            counts["DIFFERENT" if lines else "IDENTICAL"] += 1
             print(f"{'DIFFERENT' if lines else 'IDENTICAL'} code: {path} vs {base} ({n} parts)")
             if lines:
                 print("\n".join(lines))
                 status = max(status, 1)
+        if len(files) > 1:
+            print(f"{len(files)} files: " + ", ".join(f"{v} {k.lower()}" for k, v in counts.items()))
         return status
 
     if a.cmd == "check":

@@ -60,7 +60,7 @@ py -3 scripts/tcpou.py add-property <file> --name Speed --type LREAL     # appen
 py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make it compile
 py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
 py -3 scripts/tcpou.py check    <file>...                                # validate
-py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comments-only?
+py -3 scripts/tcpou.py code-equal <file|dir>... [--ref REV | --against FILE] # comments-only?
 ```
 
 - `new` takes a **`--name`, not a path**, and picks the extension itself (`.TcPOU`/`.TcDUT`/`.TcGVL`). `--type` is one of `fb`, `prg`, `fun`, `dut`, `gvl`; `fb` also takes `--extends`, `--implements` and `--shape`.
@@ -69,7 +69,7 @@ py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comme
 - `add-method` and `add-property` append an empty member to a POU or interface; fill its parts with `set`. `--access` takes `PUBLIC`, `PRIVATE`, `PROTECTED` or `INTERNAL` (none reads as `PUBLIC`); `add-property --no-set` makes it read-only.
 - Part keys come from `show`: `decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`.
 - **`pins` before concluding a signal is unused or unwired in an FBD or LD caller.** Which variable feeds which pin of a box is stored in the network XML, so a text search for `ibEmpty :=` finds nothing there. `pins` prints every box's inputs (`<-`, with operators as `OR(a, b)`, a negated operand as `NOT x`, an empty pin as `(unwired)` and, in LD, the rung input as `(rung: left rail, TRUE)`) and its wired outputs (`->`), each box tagged with the method its network lives in, `[MotionCycle]`. Coil rungs and conditional RETURN rungs have no box and are listed as `(coil) var <- AND(a, NOT b)` and `(return) <- NOT x`; `--pin var` finds the coil. It is read-only; the layout it reads was checked on 4024 LD networks and one FBD network drawn in XAE, against XAE's PLCopen export and in the editor. CFC is not supported: on a `<CFC>` body `pins` refuses with exit 2 rather than print an empty list, and nothing here reads a CFC box.
-- **Claim "comments only" with `code-equal`, not by eye.** It compares every source part with the same part at `--ref` (default `HEAD`) or in `--against` another file, after dropping comments and insignificant whitespace; string literals count as code. Exit 0 = IDENTICAL, 1 = the code changed (it prints the first difference per part), 2 = nothing to compare with. It reads the CDATA source only, not the XML around it.
+- **Claim "comments only" with `code-equal`, not by eye.** It compares every source part with the same part at `--ref` (default `HEAD`) or in `--against` another file, after dropping comments and insignificant whitespace; string literals count as code. Exit 0 = IDENTICAL, 1 = the code changed (it prints the first difference per part), 2 = nothing to compare with. A directory stands for every `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` under it, so a whole project is one command, with a count of each verdict at the end. It reads the CDATA source only, not the XML around it.
 
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 
