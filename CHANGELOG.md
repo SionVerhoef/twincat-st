@@ -32,6 +32,12 @@
   only checks the reference its preset is read through (`__ISVALIDREF(stCfg)`): 20 TcOpen
   timers. CP24 skips the variables XAE declares for a UML state chart
   (`{attribute 'implicit_…'}`).
+- **CP8's change-detection exemption is a documented blind spot**, not a fix
+  (`references/tools.md`, Rule 6). A reading compared with its own latched copy (a settle check)
+  looks the same as a setpoint compared with its latch, and only the second is right. On the
+  public corpus the exemption skips 4 comparisons, all correctly, so no heuristic was worth the
+  false positives it would bring back. Rule 6 now says what a settle check needs: a tolerance
+  held for a time.
 
 ## 0.4.1 — 2026-10-26
 

@@ -38,6 +38,13 @@ variable, a lock that is never released — is out of its reach (`twincat/tasks-
 An LD or FBD body is read only as a list of the names it mentions: a variable wired there counts
 as used, but no rule judges the network's logic.
 
+CP8 does not report a float compared with a copy latched from it (`fTarget := fSetpoint;` …
+`fTarget <> fSetpoint`). That is change detection, where exact is right, and half of CP8's high
+findings on one real project were this shape. The same text is also a settle check on a measured
+value (`fLast := fWeight;` … `fWeight = fLast`), where exact is wrong, and the reviewer cannot
+tell the two apart. On the 2,189-file public corpus the exemption skips 4 comparisons, all
+correctly; the settle check is judged by hand (Rule 6 in `cyclic-execution-rules.md`).
+
 ## `scripts/tcpou.py`
 
 Editing a `.TcPOU` as plain text is how you corrupt a project. Every subcommand:
