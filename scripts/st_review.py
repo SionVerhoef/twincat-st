@@ -79,7 +79,8 @@ RULES: dict[str, tuple[str, str]] = {
     "X12": ("medium", "timer, edge trigger or MC_ block called only inside an IF or CASE "
                       "branch — it stops updating whenever the branch is not taken"),
     "X13": ("medium", "state-machine variable declared RETAIN or PERSISTENT — after a "
-                      "restart the sequence resumes mid-step with its outputs and timers reset"),
+                      "restart the sequence resumes mid-step, claiming a machine state that "
+                      "may no longer be true"),
     # Held at medium until a compiler has confirmed the rejection: nothing here has
     # built this form, it only follows from where IEC 61131-3 puts the qualifier.
     "X14": ("medium", "RETAIN or PERSISTENT written after the type — the qualifier belongs "
@@ -798,10 +799,17 @@ def check_file(sf: SourceFile, enabled: set[str],
                 continue
             x13_seen.add(name)
             add("X13", unit, idx + 1, raw_lines[idx] if idx < len(raw_lines) else m.group(0),
+                # A run that read only "outputs and timers are reset" answered it by
+                # setting every output in every state and kept the step RETAIN. The
+                # point is the claim the step makes about the machine, so lead with it.
                 f"'{m.group(1)}' steps this state machine and is {remanent_names[name]}: "
-                f"after a restart the sequence resumes in that step, with its outputs, timers "
-                f"and drive commands back at their initial values. Keep the step in a plain "
-                f"VAR, start from the init state, and validate any remanent state there "
+                f"after a restart the sequence resumes in that step as if the machine were "
+                f"still where it left it (homed, clamped, in position), though anything may "
+                f"have moved while the power was off, and the step's timers and drive "
+                f"commands start over. Setting every output in every state does not change "
+                f"that. Keep the step in a plain VAR, start from the init state, and "
+                f"re-establish there what the step assumed: from live inputs, or from a "
+                f"position the drive or an absolute encoder kept "
                 f"(cyclic-execution-rules.md Rule 9)", unit.impl_line)
 
         # --- X4 unguarded division ------------------------------------------
