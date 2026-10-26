@@ -209,6 +209,8 @@ END_IF
 
 The same applies to `TIME` (CP28): a scan steps over an exact value rather than landing on it, so use `>=`.
 
+Comparing a value with its own earlier copy splits the same way. Asking whether a setpoint changed since it was latched is exact by design. Asking whether a reading has settled is not: a measured value jitters by a count or two, so `fWeight = fLastWeight` passes on the one scan where two readings happen to match, or never while the signal is noisy. A settled check is a tolerance held for a time: `ABS(fWeight - fLastWeight) < cSettleTol` must stay TRUE for a timer's preset. The reviewer cannot tell the two shapes apart and reports neither, so read every comparison against a latched copy by hand.
+
 Pick integer widths for the real range — `DINT`, not `INT`, for anything that can pass 32,767, because counters overflow silently — and convert explicitly rather than relying on promotion.
 
 ## Rule 7 — Bounds-check every computed index.

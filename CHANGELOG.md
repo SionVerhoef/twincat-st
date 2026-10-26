@@ -14,6 +14,12 @@
 - On the 2,189-file public corpus the two rules add no findings and every other rule's count is
   unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
   shows no false positives, not that the rules catch defects in the field.
+- **CP8's change-detection exemption is a documented blind spot**, not a fix
+  (`references/tools.md`, Rule 6). A reading compared with its own latched copy (a settle check)
+  looks the same as a setpoint compared with its latch, and only the second is right. On the
+  public corpus the exemption skips 4 comparisons, all correctly, so no heuristic was worth the
+  false positives it would bring back. Rule 6 now says what a settle check needs: a tolerance
+  held for a time.
 
 ## 0.4.1 — 2026-10-26
 
