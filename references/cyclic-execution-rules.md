@@ -245,24 +245,26 @@ END_IF
 
 ## Rule 9 — Know what survives a restart.
 
-What keeps its value, on TwinCAT 3 (Beckhoff InfoSys, *Remanent Variables*):
+What keeps its value, on TwinCAT 3 (Beckhoff InfoSys, *Remanent Variables*, and field round 5 on a 4024 controller):
 
 | Declaration | Online change | Download | Reset cold | Restart / power cycle | Reset origin |
 |---|---|---|---|---|---|
 | `VAR` | kept | initial value | initial value | initial value | initial value |
-| `VAR RETAIN` | kept | kept | kept | kept, if NOVRAM is mapped | initial value |
+| `VAR RETAIN` | kept | kept only with a retain handler | kept only with a retain handler | kept only with a retain handler | initial value |
 | `VAR PERSISTENT` | kept | kept | kept | kept, if written at shutdown | initial value |
 
-**CODESYS differs, so check which runtime you are on.** There, `Reset warm` keeps `RETAIN` and `PERSISTENT`, but `Reset cold` and a download re-initialise `RETAIN`; only `PERSISTENT` survives a download. TwinCAT has no warm reset, and its `Reset cold` keeps both.
+**`VAR RETAIN` needs a retain handler, and nothing warns when there is none.** The declaration only puts the variable into the PLC instance's *Retains* data area. What stores it is a retain handler, created under a NOV-DP-RAM device in the I/O tree and linked to that area, on a controller that has NOVRAM. Without one, the build reports nothing and `RETAIN` behaves like a plain `VAR`: it returns to its initial value on every download, `Reset cold` and restart, and only an online change keeps it. Before relying on `RETAIN`, check that the configuration has a retain handler. `PERSISTENT` needs none. The `VAR` and `PERSISTENT` rows, and `RETAIN` without a handler, were observed on a controller; the *kept* cells for `RETAIN` restate InfoSys.
+
+**CODESYS differs, so check which runtime you are on.** There, `Reset warm` keeps `RETAIN` and `PERSISTENT`, but `Reset cold` and a download re-initialise `RETAIN`; only `PERSISTENT` survives a download. TwinCAT has no warm reset; its `Reset cold` keeps `PERSISTENT`, and `RETAIN` when a retain handler is linked.
 
 The trap runs both ways:
 
 - **A plain `VAR` forgets.** It returns to its declared initial value (`nCount : DINT := 5;`, or zero) on every download, reset and restart: not every cycle, but every time the controller comes back. A step counter or a "has run once" latch in a plain `VAR` starts over, so the restart path into the init state must be safe from any step the machine was in.
-- **A remanent variable remembers — including things that stopped being true.** `RETAIN` and `PERSISTENT` skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it.
+- **A remanent variable remembers — including things that stopped being true.** `PERSISTENT`, and `RETAIN` with a retain handler, skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it.
 
 **Asked to make a sequence or a homed state survive a restart, do not just declare it remanent.** A remanent step counter resumes the sequence in the middle of a step whose outputs, timers and drive commands were all reset. A remanent "homed" claims a position the axis may have lost while the power was off: it is only true when the position itself survives (an absolute encoder, or the drive keeping its own position), and then the thing to keep is that position, checked at start-up, not a flag. Say this to the user before changing anything, and ask what the drive and encoder are.
 
-How each is stored decides how far to trust it. TwinCAT writes `RETAIN` to NOVRAM at the end of every cycle, which works only on a controller that has NOVRAM mapped to the PLC's retain area. `PERSISTENT` goes to a boot-data file **at controlled shutdown**, or when `FB_WritePersistentData` is called: an unexpected power loss without a UPS loses everything since the last write. Treat it as best-effort, and never let machine behaviour that matters depend on it silently. `RETAIN` or `PERSISTENT` on a local of a `FUNCTION` has no effect, and a `POINTER TO` in persistent data points somewhere else after the next download.
+How each is stored decides how far to trust it. The retain handler writes `RETAIN` to NOVRAM at the end of every cycle, so with one it survives even an unexpected power loss. `PERSISTENT` goes to a boot-data file **at controlled shutdown**, or when `FB_WritePersistentData` is called: an unexpected power loss without a UPS loses everything since the last write. Treat it as best-effort, and never let machine behaviour that matters depend on it silently. `RETAIN` or `PERSISTENT` on a local of a `FUNCTION` has no effect, and a `POINTER TO` in persistent data points somewhere else after the next download.
 
 ## Rule 10 — Respect the process image and task boundaries. `CP12`, `CP15`
 
@@ -293,7 +295,8 @@ Which task owns a variable, how to lock when two tasks must write it, and why an
 [ ]  7. Every computed array index is bounds-checked
 [ ]  8. No allocation or recursion; pointers and references validated    (E1, E3, X5, X6)
 [ ]  9. RETAIN/PERSISTENT chosen deliberately; plain VAR state that a
-        restart loses is safe to lose; remanent state is validated at init
+        restart loses is safe to lose; RETAIN has a retain handler;
+        remanent state is validated at init
 [ ] 10. Outputs written once per cycle; cross-task data transferred
         coherently; no output read-back used as feedback
                                          (CP12 for AT %Q outputs; CP10, CP11, CP15 by hand)

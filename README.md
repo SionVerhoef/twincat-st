@@ -102,7 +102,7 @@ git submodule add https://github.com/SionVerhoef/twincat-st .github/skills/twinc
 Pin a release rather than following `main`, and commit the pin:
 
 ```bash
-git -C .claude/skills/twincat-st checkout v0.4.0
+git -C .claude/skills/twincat-st checkout v0.4.1
 git add .claude/skills/twincat-st
 ```
 
@@ -209,9 +209,9 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 **Verified**
 
 - **The templates compile** in XAE 4024.55, the TcUnit suite against TcUnit 1.3.2, and the suite
-  passed 2 of 2 on a test controller with its watchdog failing a hung test after 10 s.
-  `FB_Sequence`'s `bDone` latch, changed in 0.4.0, rebuilds with 0 errors and 0 warnings; its
-  runtime behaviour has not been observed on a controller since the change.
+  passed 2 of 2 on a test controller with its watchdog failing a hung test after 10 s. It passes
+  2 of 2 against 0.4.0's `FB_Sequence` too, and on a controller that block's `bDone` stays TRUE
+  while `bExecute` is held and falls on the first scan that sees `bExecute` FALSE.
 - **`tcpou.py` round-trips a real project:** `new`, `register`, `set`, `reguid`, `add-method` and
   `add-property` produce files XAE opens without a repair prompt and builds.
 - **Agent-written code built as delivered** in two field-test tasks, in two rounds.
@@ -227,6 +227,14 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 - **`tcpou.py` moves a part losslessly from Windows PowerShell 5.1 and cmd.exe.**
 - **`tcpou.py pins` matches XAE's own PLCopen export** on LD and FBD networks, 0 mismatches.
 - **`xae_build.ps1`** builds with or without XAE open, and fails cleanly on a wrong path.
+- **`references/twincat/tasks-and-exceptions.md` on a 4024 x64 controller:** the core-dump steps
+  work as written. An integer division by zero stopped the PLC, the dump was in the folder the
+  reference names, and XAE loaded it logged out, with the faulting line, the variable values and
+  the call stack. The `TestAndSet` example builds; `__TRY` is refused at build time, as the
+  reference says.
+- **The restart table** (`cyclic-execution-rules.md` Rule 9) on a 4024 controller: the `VAR` and
+  `PERSISTENT` rows as printed, and `RETAIN` without a retain handler, which keeps its value only
+  through an online change.
 - Agent behaviour in A/B evals on Opus and Haiku, as summarised under *Why*.
 
 **Not supported**
@@ -240,13 +248,11 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
 
-**Not yet verified on a TwinCAT install** (added since the last field round)
+**Not yet verified on a TwinCAT install** (no field round had the hardware)
 
-- **The core-dump steps** in `references/twincat/tasks-and-exceptions.md` have not been walked
-  through on a controller. Of its examples, the `TestAndSet` one builds; `__TRY` is refused by
-  the x64 runtime, as the reference now says.
-- **The rewritten restart table** (`cyclic-execution-rules.md` Rule 9) restates InfoSys; it has
-  not been observed on a controller.
+- **`VAR RETAIN` with a retain handler.** Rule 9's *kept* cells for `RETAIN` restate InfoSys; no
+  controller with NOVRAM and a retain handler has been tried.
+- **`__TRY` on a 32-bit runtime.** Only an x64 runtime was available, and it refuses `__TRY`.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.

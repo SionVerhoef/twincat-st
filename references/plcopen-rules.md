@@ -53,7 +53,7 @@ The substantive family. Everything here is High unless marked.
 |---|---|---|---|
 | CP1 | High | Reach a structure member by name, never by memory offset. | ○ |
 | CP2 | High | All code is reachable and used. Dead POUs are a maintenance trap and may silently become live. *Reviewer: `--pedantic`, and only over the whole application — a library's public blocks look unused from inside it.* | ● |
-| CP3 | High | Every variable is initialised before it is read. A plain `VAR` gets its initial value back on every download, reset and restart, but `RETAIN`/`PERSISTENT` variables do not, so code relying on "it starts at zero" after a restart is wrong for them (`cyclic-execution-rules.md` Rule 9). | ○ |
+| CP3 | High | Every variable is initialised before it is read. A plain `VAR` gets its initial value back on every download, reset and restart, but `PERSISTENT` variables, and `RETAIN` ones with a retain handler, do not, so code relying on "it starts at zero" after a restart is wrong for them (`cyclic-execution-rules.md` Rule 9). | ○ |
 | CP4 | High | Directly-addressed memory must not overlap. Two names over one address is an aliasing bug you cannot see. | ○ |
 | CP5 | High | Design the application before writing it: modularise, encapsulate, group related data into structures and arrays, keep FB internals private. | ○ |
 | CP6 | High | Avoid `VAR_EXTERNAL` inside functions and function blocks — a hidden global dependency destroys reusability and testability. | ● |

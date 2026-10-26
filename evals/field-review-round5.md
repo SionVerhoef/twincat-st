@@ -16,6 +16,9 @@ started with code page 437 already set (`[Console]::OutputEncoding` = IBM437).
 **W1 to W6 pass. W7 to W10 were skipped**: no test controller was available. Since W7 gates the
 release, the gate is still open. No check failed, so no bead was filed.
 
+W7 to W10 ran a day later, against 0.4.0: see *Controller checks* at the end. W7, W8 and W9 pass,
+and W10 fails on the `RETAIN` row, fixed in 0.4.1.
+
 | # | Result | Evidence |
 |---|---|---|
 | W1 | pass | Clone and installed copy alike: exit 0, 122 `ok`, last line `all checks passed`. The two logs are byte-identical |
@@ -105,3 +108,111 @@ are written and built, but they are not in the restored scratch solution.
 is `FB_Sequence`'s `bDone` latch, and both suite tests hold `bExecute` TRUE throughout, so the new
 `IF NOT bExecute` branch is not reached inside them. W2 and W5 show the shipped code compiles.
 W7 runs with W9 and W10 when a controller is free.
+
+## Controller checks
+
+W7 to W10 ran on 2026-10-26 against v0.4.0 (`e680689`, the same tree as `c9d6dce`). The clone and
+the installed copy were reinstalled from it: 122 files, byte-identical. Engineering PC as above:
+TwinCAT XAE 3.1.4024.55, Python 3.12.10, Windows PowerShell 5.1. Target: a TwinCAT 3.1.4024
+controller with an x64 runtime (the exception reports RBP, RIP and RSP).
+
+**W7, W8 and W9 pass. W10 fails on the `RETAIN` row:** bead `twincat-st-zli.1`, fixed in 0.4.1.
+
+- **Setup.** The scratch solution was brought to 0.4.0: `FB_Sequence` was re-synced from the
+  template, and `code-equal` printed `IDENTICAL code: ... (4 parts)`. Three probe POUs were added
+  and called from `MAIN` after `TcUnit.RUN()`: `PRG_SeqProbe` (W8), `PRG_DivZero` (W9) and
+  `PRG_Remanence` (W10). `xae_build.ps1` exited 0 with `Build complete -- 0 errors, 0 warnings :
+  ready for download!`. The configuration has no I/O and no axes. The scratch solution was
+  restored afterwards.
+- **Deviation: not a free controller.** The checklist asks for a controller that holds no machine
+  project. None was free, so this one normally runs a machine project with EtherCAT drives
+  attached. The scratch configuration commands no drive. When it was activated, the machine
+  project's persistent data did not load: `Persistent data of symbol '<machine GVL>.<symbol>' not
+  restored. Symbol not found.`, and 3 further symbols. The tester accepted that. It is one reason
+  the checklist asks for a free controller: a project activated on the same PLC port finds the
+  machine project's persistent data, and when it writes its own at shutdown it can replace it.
+- Every activation, login, write, reset and restart was done by the tester. The agent only proposed
+  them.
+- **W8 deviation.** W8 runs only if a program already calls an `FB_Sequence`, and none did. So
+  `PRG_SeqProbe` was added. It calls one `FB_Sequence` every cycle from its own variables and
+  latches the cycle numbers on which `bExecute` and `bDone` fall.
+
+| # | Result | Evidence |
+|---|---|---|
+| W7 | pass | Error List, `PlcTask`: `Test suites: 1`, `Tests: 2`, `Successful tests: 2`, `Failed tests: 0`, `Duration: 5.200066e-1`. The suite ran against 0.4.0's `FB_Sequence` |
+| W8 | pass | The step inputs were set TRUE, then `bExecute` TRUE, then FALSE. `nDoneCycles` = 2693: `bDone` stayed TRUE for 2,693 cycles while `bExecute` was held. `nCycleExecFell` = `nCycleDoneFell` = 7944: `bDone` fell on the first scan that saw `bExecute` FALSE |
+| W9 | pass | `bArm` TRUE, logged out, 30 s. The PLC stopped, the dump was written where the doc says, and XAE loaded it logged out, with the faulting line, the variable values and the call stack. See *W9* |
+| W10 | fail | `nPlain` / `nRetain` / `nPers`, each written to 7 before every step. Online change 7 / 7 / 7. Download 5 / 0 / 7, twice. *Reset cold* 5 / 0 / 7. *Reset origin* 5 / 0 / 0 (XAE then required a download). TwinCAT restart 5 / 0 / 7. No retain handler and no NOVRAM mapped. Rule 9 said `RETAIN` is kept on download and *Reset cold*. See *W10* |
+
+### W9 -- the core dump, step by step
+
+- With XAE logged out, the controller's desktop showed a modal box: `TwinCAT Port_851 Server:
+  Exception (Exception Code: 0xc0000094, Integer divide by zero) in PLC Application PLC1 Instance,
+  Task PlcTask`, then the registers and an offset. TwinCAT stayed in Run.
+- The dump was `C:\TwinCAT\3.1\Boot\Plc\Port_851.<number>.core` (816,523 bytes), the 4024
+  location the doc gives. Twelve older `Port_851.<number>.core` files from 2025 and 2026 sat in
+  the same folder.
+- It was copied to the engineering PC and loaded with *PLC → Core Dump → Load*, against the same
+  build. Right-clicking the PLC project shows no core-dump entry.
+- XAE opened `PRG_DivZero` with line 7, `nResult := nNumerator / nDivisor;`, marked by the yellow
+  arrow. It showed the values the program held at the fault: `nNumerator` 100, `nDivisor` 0,
+  `nResult` 0, and `bArm`, `fbArm.Q` and `bDivide` TRUE.
+- *PLC → Windows → Call Stack*, not the *Debug* menu: `PRG_DivZero ... Line 7, Column 1 (Impl)`,
+  `MAIN ... Line 8, Column 1 (Impl)` (the `PRG_DivZero();` call), and `PlcTask ... ???` with
+  instance path `PlcTask.__fbTask.CycleUpdate`.
+
+Nothing in *Finding the line* was wrong. 0.4.1 adds the four things a reader would have wanted: the
+exception box on the controller's desktop, the file name and the old dumps that pile up, the two
+menu paths, and XAE's *A Core Dump created on the … is available on the device* when a project
+is activated.
+
+### W10 -- `RETAIN` without a retain handler
+
+```
+PROGRAM PRG_Remanence
+VAR
+    nPlain  : DINT := 5;
+    nCycles : UDINT;
+END_VAR
+VAR RETAIN
+    nRetain : DINT;
+END_VAR
+VAR PERSISTENT
+    nPers   : DINT;
+END_VAR
+nCycles := nCycles + 1;
+```
+
+Called from `MAIN`. Write all three to 7, then *Login* with download: 5 / 0 / 7.
+
+The configuration has no NOV-DP-RAM device and no retain handler. In it, `RETAIN` behaved like a
+plain `VAR` on download, *Reset cold* and restart, and kept its value only through an online
+change. The PLC instance does list a `PlcTask Retains` data area holding the variable
+(`_Config/PLC/PLC1.xti`), linked to nothing. The build gave no warning. `PERSISTENT` survived the
+TwinCAT restart, so it was written at shutdown.
+
+InfoSys's overview table (TC3 *Remanent Variables*) lists `RETAIN` as kept on download and *Reset
+cold*, as Rule 9 did. The same page names a NOVRAM memory area, written by the retain handler, as
+the prerequisite for `RETAIN` to work at all. 0.4.0 applied that condition to the restart column
+only. In 0.4.1 every `RETAIN` cell except online change depends on a retain handler, and Rule 9
+says that without one `RETAIN` is lost on download with no warning. Not checked: the same steps
+with a retain handler on a controller that has NOVRAM, which would confirm the *kept* cells.
+
+### What the controller checks retire
+
+- `FB_Sequence`'s `bDone` latch: runtime behaviour observed (W7, W8). The README caveat goes.
+- The core-dump steps: walked through on a 4024 controller (W9). The README line moves to
+  *Verified*.
+- The restart table: the `VAR` and `PERSISTENT` rows were observed as printed, and the `RETAIN`
+  row now matches what was observed without a retain handler. `RETAIN` with a retain handler stays
+  under *Not yet verified*.
+- `__TRY` on a 32-bit runtime: not checked, because this controller is x64. It stays under *Not
+  yet verified*.
+
+### State left behind
+
+- The scratch solution was restored to its pre-run copy. The sources of the three probe POUs stay
+  on the TwinCAT PC.
+- The tester handed the controller back to its machine project. The dump this run created is
+  still in the controller's `Boot\Plc`.
+- Nothing was committed or pushed from the TwinCAT PC's clone.

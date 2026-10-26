@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.1 — 2026-10-26
+
+From field round 5's controller checks, W7 to W10 on a 4024 x64 controller
+(`evals/field-review-round5.md`, *Controller checks*).
+
+- **`VAR RETAIN` needs a retain handler** (`cyclic-execution-rules.md` Rule 9). With no retain
+  handler linked to NOVRAM, `RETAIN` is lost on download, `Reset cold` and restart, like a plain
+  `VAR`, and the build does not warn. Only an online change keeps it. 0.4.0's table said download
+  and `Reset cold` keep it. The `VAR` and `PERSISTENT` rows were observed as printed. The review
+  rubric and `plcopen-rules.md` CP3 now say the same.
+- **The core-dump steps work as written** (`twincat/tasks-and-exceptions.md`). Four additions: the
+  exception box on the controller's desktop, the `Port_851.<number>.core` name and the old dumps
+  that pile up, the menu paths (*PLC → Core Dump → Load*, *PLC → Windows → Call Stack*, neither
+  under *Debug*), and XAE's notice on activation that a dump is on the device.
+- **README Status.** The TcUnit suite passes 2 of 2 against 0.4.0's `FB_Sequence`, and its `bDone`
+  latch behaves as documented on a controller. The core-dump steps and the restart table are
+  verified. `RETAIN` with a retain handler, and `__TRY` on a 32-bit runtime, stay under *Not yet
+  verified*.
+
 ## 0.4.0 — 2026-10-25
 
 From field rounds 2–5 on a 4024 production project and a scratch TcUnit solution
