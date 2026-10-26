@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Reviewer rules X13 and X14** (medium), now 32 rules. **X13** reports a state machine whose
+  step is declared `RETAIN` or `PERSISTENT`: a `CASE` that assigns its own selector. After a
+  restart the sequence would resume mid-step with its outputs and timers reset. A remembered
+  mode or counter that selects a `CASE` without being stepped by it stays silent. **X14** reports
+  `RETAIN`/`PERSISTENT` written after the type (`nStep : INT RETAIN;`), which is not where
+  IEC 61131-3 puts it; held at medium until a compiler confirms the rejection.
+- Why: in a re-run of the `homed-survives-restart` candidate on Haiku 4.5, all three runs read
+  Rule 9's warning and made the step remanent anyway in two of them, then took the reviewer's
+  "no findings" as approval. X13 catches both runs, X14 the second's syntax.
+- On the 2,189-file public corpus the two rules add no findings and every other rule's count is
+  unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
+  shows no false positives, not that the rules catch defects in the field.
+
 ## 0.4.1 — 2026-10-26
 
 From field round 5's controller checks, W7 to W10 on a 4024 x64 controller

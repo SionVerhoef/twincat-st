@@ -78,6 +78,12 @@ RULES: dict[str, tuple[str, str]] = {
                       "starts on a rising edge only, so it runs once and then never again"),
     "X12": ("medium", "timer, edge trigger or MC_ block called only inside an IF or CASE "
                       "branch — it stops updating whenever the branch is not taken"),
+    "X13": ("medium", "state-machine variable declared RETAIN or PERSISTENT — after a "
+                      "restart the sequence resumes mid-step with its outputs and timers reset"),
+    # Held at medium until a compiler has confirmed the rejection: nothing here has
+    # built this form, it only follows from where IEC 61131-3 puts the qualifier.
+    "X14": ("medium", "RETAIN or PERSISTENT written after the type — the qualifier belongs "
+                      "on the VAR block, and the compiler is expected to reject this form"),
     "CP7": ("high", "error output of a called block never read — a failure goes unnoticed"),
     # PLCopen rates CP12 High. Held at medium here: the text shows two places that
     # write an output, not that both run in the same scan.
@@ -232,6 +238,8 @@ class Variable:
     line: int
     unit: str
     constant: bool = False
+    remanent: str = ""              # "RETAIN" or "PERSISTENT", from the block or the type
+    qualifier_after_type: bool = False   # 'nStep : INT RETAIN;' — X14
 
 
 @dataclass
@@ -403,6 +411,7 @@ def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
     out: list[Variable] = []
     section = None
     constant = False
+    remanent = ""
     clean = strip_noise(unit.decl)
     buf, buf_line = "", 0
     for n, line in enumerate(clean.splitlines(), start=1):
@@ -417,6 +426,8 @@ def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
             # Kept apart from the section name, which callers compare exactly:
             # 'VAR_GLOBAL CONSTANT' is still VAR_GLOBAL to CP24.
             constant = bool(re.search(r"\bCONSTANT\b", line, re.I))
+            rem = re.search(r"\b(RETAIN|PERSISTENT)\b", line, re.I)
+            remanent = rem.group(1).upper() if rem else ""
             buf = ""
             continue
         if section is None:
@@ -431,9 +442,16 @@ def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
         dm = DECL_LINE.match(buf.strip() if buf.strip().endswith(";") else buf.strip() + ";")
         if dm:
             typ = re.sub(r"\s+", " ", dm.group(2)).strip()
+            # An agent wrote 'nStep : INT RETAIN;'. Kept off the type, so every
+            # type check below still sees an INT, and remembered for X13 and X14.
+            after = re.search(r"\s+(RETAIN|PERSISTENT)$", typ, re.I)
+            if after:
+                typ = typ[:after.start()]
             for nm in (x.strip() for x in dm.group(1).split(",")):
                 if nm:
-                    out.append(Variable(nm, typ, section, buf_line, unit.name, constant))
+                    out.append(Variable(nm, typ, section, buf_line, unit.name, constant,
+                                        after.group(1).upper() if after else remanent,
+                                        bool(after)))
         buf = ""
     return out
 
@@ -660,6 +678,7 @@ def check_file(sf: SourceFile, enabled: set[str],
         found.append(Finding(rule, sev, fname, unit.name, base + rel_line - 1, text, msg))
 
     x3_cases: dict[str, list] = {}       # selector -> every CASE over it, for X3
+    x13_seen: set[str] = set()           # remanent step variables already reported
     calls_of: dict[tuple, tuple] = {}    # (declaring unit, NAME) -> (var, X12?, CP7?, sites)
 
     for unit_idx, unit in enumerate(sf.units):
@@ -758,6 +777,32 @@ def check_file(sf: SourceFile, enabled: set[str],
                     x3_cases.setdefault(selector, []).append((
                         unit, start, raw_lines[start] if start < len(raw_lines) else line,
                         has_else, suppressed(raw_lines, start, "X3")[0]))
+
+        # --- X13 a state machine whose step survives a restart -------------
+        # A CASE that assigns its own selector is stepping a sequence. Declared
+        # RETAIN or PERSISTENT, the step comes back after a restart while the
+        # outputs, timers and drive commands of that step do not. In the
+        # homed-survives-restart eval Haiku did this in 2 of 3 runs after reading
+        # Rule 9, then took the reviewer's silence as approval. A remembered mode
+        # or recipe index selects a CASE without being assigned in it, and is fine.
+        remanent_names = {v.name.upper(): v.remanent for v in scope_vars if v.remanent}
+        for m in re.finditer(r"\bCASE\s+([A-Za-z_]\w*)\s+OF\b", impl, re.I):
+            name = m.group(1).upper()
+            if name not in remanent_names or name in x13_seen:
+                continue
+            if not re.search(rf"(?<![.\w]){re.escape(m.group(1))}\s*:=",
+                             case_block(impl, m.end()), re.I):
+                continue
+            idx = impl.count("\n", 0, m.start())
+            if suppressed(raw_lines, idx, "X13")[0]:
+                continue
+            x13_seen.add(name)
+            add("X13", unit, idx + 1, raw_lines[idx] if idx < len(raw_lines) else m.group(0),
+                f"'{m.group(1)}' steps this state machine and is {remanent_names[name]}: "
+                f"after a restart the sequence resumes in that step, with its outputs, timers "
+                f"and drive commands back at their initial values. Keep the step in a plain "
+                f"VAR, start from the init state, and validate any remanent state there "
+                f"(cyclic-execution-rules.md Rule 9)", unit.impl_line)
 
         # --- X4 unguarded division ------------------------------------------
         const_names = {v.name.upper() for v in scope_vars if v.constant}
@@ -1157,6 +1202,23 @@ def check_file(sf: SourceFile, enabled: set[str],
         add("X3", unit, start + 1, text,
             "add an ELSE branch so an unexpected state is caught rather than silently "
             "ignored", unit.impl_line)
+
+    # --- X14 the remanence qualifier written after the type --------------------
+    # The same eval's other shape: 'qxHomed : BOOL RETAIN;'. One finding per
+    # declaration line, so 'a, b : INT RETAIN;' is one mistake, not two.
+    x14_lines: set[tuple[str, int]] = set()
+    for v in file_vars:
+        if not v.qualifier_after_type or (v.unit, v.line) in x14_lines:
+            continue
+        x14_lines.add((v.unit, v.line))
+        unit = next((u for u in sf.units if u.name == v.unit), sf.units[0])
+        raw_decl = unit.decl.splitlines()
+        if suppressed(raw_decl, v.line - 1, "X14")[0]:
+            continue
+        add("X14", unit, v.line,
+            raw_decl[v.line - 1] if 0 < v.line <= len(raw_decl) else f"{v.name} : {v.type}",
+            f"'{v.name}' has {v.remanent} after its type; declare it in a "
+            f"'VAR {v.remanent}' block instead", unit.decl_line)
 
     # --- X6 REFERENCE TO never validated --------------------------------------
     for v in ref_vars:
