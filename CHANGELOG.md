@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-10-26
+
+- **OpenAI Codex.** `agents/openai.yaml` gives Codex a display name and a one-line blurb, and
+  `README.md` names the folder Codex reads skills from (`.agents/skills/`). Untested in Codex.
+- **A team's own coding standard comes first** (`SKILL.md` step 1). If the project has a
+  conventions skill, or a standards document the user or the agent instructions point to, the
+  agent loads it before writing or reviewing. It outranks `naming-conventions.md`, `templates/`
+  and the published examples, never the three rules. The agent does not search for one.
+- **Scope traces route to `twincat-scope`** when that skill is installed. Neither skill
+  requires the other.
+- **The description says what the skill is before when to use it.** Every trigger term is
+  unchanged. `run_trigger.py check` on Opus 5.5, 3 runs a query: 22 of 22 pass. The 11 that
+  should fire fired in 32 of 33 runs; the 11 that should not fired in none.
+
 ## 0.4.1 — 2026-10-26
 
 From field round 5's controller checks, W7 to W10 on a 4024 x64 controller

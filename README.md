@@ -2,7 +2,8 @@
 
 An agent skill for writing, reviewing and debugging IEC 61131-3 **Structured Text** in the
 CODESYS V3 dialect family, verified on **Beckhoff TwinCAT 3** (build 4024.x). Tested with Claude
-Code and with GitHub Copilot in VS Code, from the same files.
+Code and with GitHub Copilot in VS Code, from the same files. OpenAI Codex reads them too, with
+its display name from `agents/openai.yaml`; that is untested.
 
 Companion skill: **[twincat-scope](https://github.com/SionVerhoef/twincat-scope)** records and
 triages TwinCAT 3 Scope measurements — what the code written here actually does on the machine.
@@ -85,7 +86,9 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 - TwinCAT specifics: libraries, `FB_init`, online change, ADS and EtherCAT triage. CODESYS
   vendor specifics are not covered, and the skill says so when asked.
 - Naming conventions measured against a real corpus — and the rule that **the project you are
-  editing wins** over any of them.
+  editing wins** over any of them. If your team keeps a written coding standard as a skill or a
+  document your agent instructions point to, the agent loads it first and it outranks the
+  skill's defaults, though never the three hard rules.
 - Three hard rules: no safety logic, no writes to a live machine, and no claim that code
   compiles when it has not been compiled.
 
@@ -97,12 +100,15 @@ git submodule add https://github.com/SionVerhoef/twincat-st .claude/skills/twinc
 
 # GitHub Copilot in VS Code
 git submodule add https://github.com/SionVerhoef/twincat-st .github/skills/twincat-st
+
+# OpenAI Codex (untested)
+git submodule add https://github.com/SionVerhoef/twincat-st .agents/skills/twincat-st
 ```
 
 Pin a release rather than following `main`, and commit the pin:
 
 ```bash
-git -C .claude/skills/twincat-st checkout v0.4.1
+git -C .claude/skills/twincat-st checkout v0.5.0
 git add .claude/skills/twincat-st
 ```
 
@@ -150,6 +156,7 @@ matched — the tool says so on every run, and so should you.
 ```
 twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
+├── agents/openai.yaml                  display name and blurb for OpenAI Codex
 ├── scripts/
 │   ├── st_review.py                    the reviewer — 30 rules, PLCopen-keyed
 │   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof

@@ -28,6 +28,7 @@ defect this skill leads with. This is the other half of the gate:
   * a missing path is reported rather than raising
   * SKILL.md's description fits the 1,024-character limit (0.2.0 shipped over
     it) and its command block names every tcpou.py subcommand
+  * agents/openai.yaml carries the two strings Codex lists, at lengths it accepts
 
 Every subprocess starts without PYTHONIOENCODING and PYTHONUTF8 unless a test sets
 them on purpose: the agent shell on the field-test PC inherits
@@ -860,6 +861,12 @@ subcommands = re.findall(r'add_parser\("([a-z-]+)"', TCPOU.read_text(encoding="u
 undocumented = [c for c in subcommands if not re.search(rf"tcpou\.py {re.escape(c)}\s", skill)]
 check("SKILL.md names every tcpou.py subcommand", bool(subcommands) and not undocumented,
       ", ".join(undocumented))
+# Codex shows these two strings in its skill list; OpenAI asks for 25-64 characters.
+openai_yaml = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
+for key, lo, hi in (("display_name", 1, 64), ("short_description", 25, 64)):
+    m = re.search(rf'^  {key}: "(.*)"$', openai_yaml, re.M)
+    check(f"agents/openai.yaml {key} is quoted and {lo}-{hi} characters",
+          m is not None and lo <= len(m.group(1)) <= hi, m.group(1) if m else "missing")
 
 print()
 if failures:

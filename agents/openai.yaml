@@ -1,0 +1,3 @@
+interface:
+  display_name: "TwinCAT Structured Text"
+  short_description: "Write, review and debug TwinCAT 3 Structured Text"

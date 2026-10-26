@@ -1,6 +1,6 @@
 ---
 name: twincat-st
-description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3 or CODESYS V3, even a one-liner: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Easy-looking questions hide the dialect traps (PT := 500, level-driven Execute, blocking loops, float equality); it knows them and ships a reviewer, so use it rather than answering from memory. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
+description: "Writes, reviews and debugs Structured Text for Beckhoff TwinCAT 3 and CODESYS V3, and ships a reviewer for the dialect traps that easy-looking questions hide (PT := 500, level-driven Execute, blocking loops, float equality). Use when the user has any Structured Text question or task, even a one-liner, rather than answering from memory: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
 ---
 
 # Structured Text that survives contact with a machine
@@ -10,6 +10,8 @@ description: "Use for any Structured Text question or task on Beckhoff TwinCAT 3
 **Target: the CODESYS V3 dialect family.** TwinCAT 3 (build 4024.x) is the verified platform. Its PLC layer is CODESYS-V3-derived, so the vendor-neutral core applies to CODESYS too; CODESYS library names, the `.project` container and its tooling are **not covered** and were never checked on a CODESYS install. On a CODESYS question, answer from the core and say the vendor specifics are unverified rather than guess.
 
 **Out of scope:** Siemens SCL, Rockwell Studio 5000 ST, OpenPLC/matiec. Those are different dialects — matiec implements IEC 61131-3 **2nd Edition** and has no `METHOD`, `PROPERTY`, `EXTENDS` or `INTERFACE` at all. Guidance from here would be fluent and wrong. Say so and stop.
+
+**Scope traces and recordings** — reading a `.svdx`, sizing a recording, diagnosing an axis from measured data — belong to the companion skill `twincat-scope`. Load it if it is installed.
 
 ## Why a skill, rather than just writing the code
 
@@ -46,6 +48,8 @@ Establish, and state what you assumed if you could not:
 - what must survive a restart, and whether it is still *true* after one — a remembered step or "homed" usually is not (`references/cyclic-execution-rules.md` Rule 9; ask before making it `RETAIN`, which on TwinCAT also needs a retain handler)
 
 **Read `examples/` when style is the question** — new code going into an existing codebase, or "make this look like ours". Real working code beats a written convention, but it is the most expensive thing here to read: skip it for a contained change to code you can already see. House code the team added there outranks everything, including this skill.
+
+**If the project has its own written coding standard, load it before writing or reviewing** — a conventions skill in your list of available skills, or a standards document the user or the project's agent instructions point to. Don't search the repository for one. Its rules outrank this skill's defaults — `references/naming-conventions.md`, `templates/` and the published projects in `examples/` — but never the three rules above.
 
 ### 2. Choose the shape before the syntax
 
