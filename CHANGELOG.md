@@ -15,6 +15,9 @@ From field round 5's controller checks, W7 to W10 on a 4024 x64 controller
   exception box on the controller's desktop, the `Port_851.<number>.core` name and the old dumps
   that accumulate, the menu paths (*PLC → Core Dump → Load*, *PLC → Windows → Call Stack*, neither
   under *Debug*), and XAE's notice on activation that a dump is on the device.
+- **A test controller that holds a machine project** (`twincat/xae-automation.md`,
+  `testing-tcunit.md`): in round 5 re-activating the machine project did not bring its persistent
+  values back, as it had in round 2. Back up the boot folder first; it is the only copy.
 - **README Status.** The TcUnit suite passes 2 of 2 against 0.4.0's `FB_Sequence`, and its `bDone`
   latch behaves as documented on a controller. The core-dump steps are verified, and so is the
   restart table except `RETAIN`'s cells with a retain handler. Those, and `__TRY` on a 32-bit

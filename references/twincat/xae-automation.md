@@ -91,6 +91,8 @@ What to tell the user when the test controller also holds a machine project, lea
 1. **Back up `C:\TwinCAT\3.1\Boot\Plc\` on the controller first.** Activating a scratch project
    there made persistent values of the machine project fail to restore, twice.
 2. **Re-activating the machine project afterwards is part of the test**, not an optional clean-up.
-   Its persistent values came back only through that re-activation.
+   In field round 2 its persistent values came back through that re-activation. In round 5,
+   which also restarted TwinCAT with the scratch project active, they stayed reset. Do not count
+   on re-activation to restore them: the backup is the only copy.
 3. Keep scratch test configurations free of axes and I/O.
 4. If no free controller is available, the honest report is "built, not run".

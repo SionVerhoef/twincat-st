@@ -218,7 +218,9 @@ with a retain handler on a controller that has NOVRAM, which would confirm the *
   on the TwinCAT PC.
 - The tester handed the controller back to its machine project. The dump this run created is
   still in the controller's `Boot\Plc`.
-- Not recorded: whether the boot folder was backed up before the scratch solution was activated,
-  and whether the machine project's persistent values came back when it was re-activated. W10
-  also restarted TwinCAT while the scratch project was active.
+- After the hand-back the maintainer checked the machine project: its persistent values had been
+  reset. Re-activation did not bring them back, as it had in round 2. W10 also restarted TwinCAT
+  while the scratch project was active; whether that is the difference was not checked. Whether
+  the boot folder was backed up first was not recorded. `xae-automation.md` and
+  `testing-tcunit.md` now say re-activation cannot be counted on.
 - Nothing was committed or pushed from the TwinCAT PC's clone.
