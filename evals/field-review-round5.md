@@ -100,7 +100,8 @@ None filed: no check failed.
 ## Still to do
 
 W7, when a test controller is free. W9 and W10 can run on the same activation. Their scratch POUs
-are written and built, but they are not in the restored scratch solution.
+are written and built, but they are not in the restored scratch solution. (All three ran on
+2026-10-26: see *Controller checks*.)
 
 ## Maintainer decision (2026-10-25)
 
@@ -128,9 +129,9 @@ controller with an x64 runtime (the exception reports RBP, RIP and RSP).
   project. None was free, so this one normally runs a machine project with EtherCAT drives
   attached. The scratch configuration commands no drive. When it was activated, the machine
   project's persistent data did not load: `Persistent data of symbol '<machine GVL>.<symbol>' not
-  restored. Symbol not found.`, and 3 further symbols. The tester accepted that. It is one reason
-  the checklist asks for a free controller: a project activated on the same PLC port finds the
-  machine project's persistent data, and when it writes its own at shutdown it can replace it.
+  restored. Symbol not found.`, and 3 further symbols. The tester accepted that. Round 2 saw the
+  same, and there the values came back only when the machine project was re-activated, after its
+  boot folder had been backed up (`field-review-v0.3.0.md`).
 - Every activation, login, write, reset and restart was done by the tester. The agent only proposed
   them.
 - **W8 deviation.** W8 runs only if a program already calls an `FB_Sequence`, and none did. So
@@ -150,8 +151,7 @@ controller with an x64 runtime (the exception reports RBP, RIP and RSP).
   Exception (Exception Code: 0xc0000094, Integer divide by zero) in PLC Application PLC1 Instance,
   Task PlcTask`, then the registers and an offset. TwinCAT stayed in Run.
 - The dump was `C:\TwinCAT\3.1\Boot\Plc\Port_851.<number>.core` (816,523 bytes), the 4024
-  location the doc gives. Twelve older `Port_851.<number>.core` files from 2025 and 2026 sat in
-  the same folder.
+  location the doc gives. Twelve older `Port_851.<number>.core` files sat in the same folder.
 - It was copied to the engineering PC and loaded with *PLC → Core Dump → Load*, against the same
   build. Right-clicking the PLC project shows no core-dump entry.
 - XAE opened `PRG_DivZero` with line 7, `nResult := nNumerator / nDivisor;`, marked by the yellow
@@ -183,7 +183,9 @@ END_VAR
 nCycles := nCycles + 1;
 ```
 
-Called from `MAIN`. Write all three to 7, then *Login* with download: 5 / 0 / 7.
+Called from `MAIN`. Write all three to 7, then *Login* with download: 5 / 0 / 7. `nRetain` has no
+initial value, so its 0 shows the value was lost; it does not tell a restored initial value from
+a zeroed one.
 
 The configuration has no NOV-DP-RAM device and no retain handler. In it, `RETAIN` behaved like a
 plain `VAR` on download, *Reset cold* and restart, and kept its value only through an online
@@ -193,14 +195,15 @@ TwinCAT restart, so it was written at shutdown.
 
 InfoSys's overview table (TC3 *Remanent Variables*) lists `RETAIN` as kept on download and *Reset
 cold*, as Rule 9 did. The same page names a NOVRAM memory area, written by the retain handler, as
-the prerequisite for `RETAIN` to work at all. 0.4.0 applied that condition to the restart column
-only. In 0.4.1 every `RETAIN` cell except online change depends on a retain handler, and Rule 9
-says that without one `RETAIN` is lost on download with no warning. Not checked: the same steps
+the prerequisite for full `RETAIN` behaviour. 0.4.0 applied that condition to the restart column
+only. In 0.4.1 every `RETAIN` cell except online change and *Reset origin* depends on a retain
+handler, and Rule 9 says that without one `RETAIN` is lost on download with no build warning. Not checked: the same steps
 with a retain handler on a controller that has NOVRAM, which would confirm the *kept* cells.
 
 ### What the controller checks retire
 
-- `FB_Sequence`'s `bDone` latch: runtime behaviour observed (W7, W8). The README caveat goes.
+- `FB_Sequence`'s `bDone` latch: runtime behaviour observed (W8), and the TcUnit suite passes
+  against it (W7). The README caveat goes.
 - The core-dump steps: walked through on a 4024 controller (W9). The README line moves to
   *Verified*.
 - The restart table: the `VAR` and `PERSISTENT` rows were observed as printed, and the `RETAIN`
@@ -215,4 +218,7 @@ with a retain handler on a controller that has NOVRAM, which would confirm the *
   on the TwinCAT PC.
 - The tester handed the controller back to its machine project. The dump this run created is
   still in the controller's `Boot\Plc`.
+- Not recorded: whether the boot folder was backed up before the scratch solution was activated,
+  and whether the machine project's persistent values came back when it was re-activated. W10
+  also restarted TwinCAT while the scratch project was active.
 - Nothing was committed or pushed from the TwinCAT PC's clone.

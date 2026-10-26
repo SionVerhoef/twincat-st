@@ -227,14 +227,14 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 - **`tcpou.py` moves a part losslessly from Windows PowerShell 5.1 and cmd.exe.**
 - **`tcpou.py pins` matches XAE's own PLCopen export** on LD and FBD networks, 0 mismatches.
 - **`xae_build.ps1`** builds with or without XAE open, and fails cleanly on a wrong path.
-- **`references/twincat/tasks-and-exceptions.md` on a 4024 x64 controller:** the core-dump steps
-  work as written. An integer division by zero stopped the PLC, the dump was in the folder the
+- **The core-dump steps** in `references/twincat/tasks-and-exceptions.md` work as written on a
+  4024 x64 controller. An integer division by zero stopped the PLC, the dump was in the folder the
   reference names, and XAE loaded it logged out, with the faulting line, the variable values and
-  the call stack. The `TestAndSet` example builds; `__TRY` is refused at build time, as the
-  reference says.
+  the call stack. Of the same file's examples, `TestAndSet` builds, and an x64 target refuses
+  `__TRY` at build time, as the reference says.
 - **The restart table** (`cyclic-execution-rules.md` Rule 9) on a 4024 controller: the `VAR` and
-  `PERSISTENT` rows as printed, and `RETAIN` without a retain handler, which keeps its value only
-  through an online change.
+  `PERSISTENT` rows as printed (a TwinCAT restart, not a power cycle), and `RETAIN` without a
+  retain handler, which keeps its value only through an online change.
 - Agent behaviour in A/B evals on Opus and Haiku, as summarised under *Why*.
 
 **Not supported**
@@ -248,7 +248,7 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
   UA and the CODESYS test tooling are not covered. Nothing here was checked on a CODESYS
   install, so the skill says so rather than guess.
 
-**Not yet verified on a TwinCAT install** (no field round had the hardware)
+**Not yet verified on a TwinCAT install** (not yet tried in a field round)
 
 - **`VAR RETAIN` with a retain handler.** Rule 9's *kept* cells for `RETAIN` restate InfoSys; no
   controller with NOVRAM and a retain handler has been tried.

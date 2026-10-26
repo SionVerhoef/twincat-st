@@ -3,7 +3,8 @@
 Two ways a PLC program fails that no single POU shows: two tasks touching the same data, and
 a runtime exception that stops the PLC. The rules in the first half are vendor-neutral (PLCopen
 CP10, CP11, CP15, CP26); the library names, Static Analysis rules and core-dump handling are
-**TwinCAT-specific**, checked against Beckhoff InfoSys for 4024 and 4026.
+**TwinCAT-specific**, checked against Beckhoff InfoSys for 4024 and 4026. The core-dump steps
+were also walked through on a 4024 controller (field round 5).
 
 ## Data shared between tasks
 
@@ -105,18 +106,19 @@ which, rather than assuming either.
 - **XAE logged in when it happens:** the debugger stops on the faulting line and the call stack
   window shows how it got there. Read the call stack before anything else; the faulting line is
   often a library or helper and the cause is its caller.
-- **Nobody logged in:** the controller's own desktop shows a modal box, *TwinCAT Port_851 Server:
-  Exception*, with the exception code (`0xc0000094` is an integer division by zero) and the task.
-  On a panel PC that box is the first thing a technician sees, so ask for its text.
-- The runtime also writes a core dump on the target by itself, into the boot folder
-  (`C:\TwinCAT\3.1\Boot\Plc` before 4026, `C:\ProgramData\Beckhoff\TwinCAT\3.1\Boot\Plc\CoreDump`
-  from 4026), as `Port_851.<number>.core` for the first PLC instance. Old dumps pile up there and
-  nothing removes them: take the newest. The next time a project is activated on that target, XAE
-  reports *A Core Dump created on the … is available on the device*.
+- **Nobody logged in:** on a Windows controller with a desktop, a modal box appears there,
+  *TwinCAT Port_851 Server: Exception* for the first PLC instance, with the exception code
+  (`0xc0000094` is an integer division by zero) and the task. On a panel PC that box is the first
+  thing a technician sees, so ask for its text.
+- With nobody logged in, the runtime also writes a core dump on the target by itself, into the
+  boot folder (`C:\TwinCAT\3.1\Boot\Plc` before 4026, `C:\ProgramData\Beckhoff\TwinCAT\3.1\Boot\Plc\CoreDump`
+  from 4026). On 4024 the first PLC instance's dump is `Port_851.<number>.core`. Old dumps
+  accumulate there, so take the one whose time matches the fault. When a project is activated on
+  that target, XAE reports *A Core Dump created on the … is available on the device*.
 - Copy it to the engineering PC and open it with *PLC → Core Dump → Load*. This works logged out. XAE
   opens the POU at the faulting line and shows the variable values at the exception. The call
-  tree is under *PLC → Windows → Call Stack*. The *Debug* menu has neither command, and the PLC
-  project's context menu has no core-dump entry.
+  tree is under *PLC → Windows → Call Stack*. In XAE 4024 the *Debug* menu has neither command, and
+  the PLC project's context menu has no core-dump entry.
 - **A core dump only opens against the exact build that produced it** — the same project and its
   `.compileinfo` from `_CompileInfo`. Archive them together, or the dump is unreadable later.
 - From 4026.14, `CreateCallstackCoreDump()` writes a call-stack-only dump from code, without
