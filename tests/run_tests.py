@@ -172,6 +172,26 @@ cp12 = [f["message"] for f in positive if f["rule"] == "CP12"]
 check("CP12 names both places that write the output",
       len(cp12) == 1 and "FB_ConditionalCalls.CloseValve" in cp12[0], repr(cp12))
 
+# --- X13 and X14: a remanent step, in both forms an agent wrote ---------------
+# The homed-survives-restart eval: Haiku made the step RETAIN in a VAR RETAIN block
+# and as 'nStep : INT RETAIN;'. Both must be caught, the second also by X14.
+# FB_RemanentMode holds a remembered mode and counter on the other side.
+
+def named_in(rule, obj):
+    return sorted(re.search(r"'(\w+)'", f["message"]).group(1)
+                  for f in positive if f["rule"] == rule and f["object"] == obj)
+
+
+check("X13 fires on a RETAIN block step and on a step with PERSISTENT after its type",
+      named_in("X13", "FB_RemanentStep") == ["nPhase", "nStep"],
+      repr(named_in("X13", "FB_RemanentStep")))
+check("X14 fires on the qualifier after the type, and only there",
+      named_in("X14", "FB_RemanentStep") == ["nPhase"], repr(named_in("X14", "FB_RemanentStep")))
+types = {v.name: v.type for v in st_review.parse_variables(
+    st_review.parse_text(FIXTURES / "positive" / "FB_RemanentStep.st").units[0])}
+check("a qualifier after the type is kept off the type", types.get("nPhase") == "INT",
+      repr(types))
+
 # --- a graphical body's operands are uses, and only its operands -------------
 # CP24 read only <Implementation><ST>, so every variable wired in an LD network
 # (<Implementation><NWL>; the field test first called these CFC) came back

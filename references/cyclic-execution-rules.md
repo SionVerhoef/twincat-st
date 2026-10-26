@@ -243,7 +243,7 @@ END_IF
 
 **A pointer stored across cycles can dangle after an online change.** Re-take it; do not cache it. Only `=` and `<>` are defined on pointers — ordering comparisons rely on undocumented memory layout (E3).
 
-## Rule 9 — Know what survives a restart.
+## Rule 9 — Know what survives a restart. `X13`, `X14`
 
 What keeps its value, on TwinCAT 3 (Beckhoff InfoSys, *Remanent Variables*, and field round 5 on a 4024 controller):
 
@@ -298,7 +298,7 @@ Which task owns a variable, how to lock when two tasks must write it, and why an
 [ ]  8. No allocation or recursion; pointers and references validated    (E1, E3, X5, X6)
 [ ]  9. RETAIN/PERSISTENT chosen deliberately; plain VAR state that a
         restart loses is safe to lose; RETAIN has a retain handler;
-        remanent state is validated at init
+        remanent state is validated at init; the step is not remanent   (X13, X14)
 [ ] 10. Outputs written once per cycle; cross-task data transferred
         coherently; no output read-back used as feedback
                                          (CP12 for AT %Q outputs; CP10, CP11, CP15 by hand)

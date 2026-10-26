@@ -56,11 +56,12 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
 
 **Write and review Structured Text**
 
-- **`st_review.py`** — 30 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
+- **`st_review.py`** — 32 rules. PLCopen Coding Guidelines rules (`CP`/`N`/`C`/`L`/`E`) carry
   that document's own severity; `X` rules are this skill's own: blocking loops, timer presets
   typed as integers, unchecked pointer dereferences, state machines with no reachable error
-  state, timers and motion blocks called only inside a branch, `FB_init` without an
-  online-change guard, and FBs that pair `Enable` with `Done`.
+  state or with a step declared `RETAIN`/`PERSISTENT`, timers and motion blocks called only
+  inside a branch, `FB_init` without an online-change guard, and FBs that pair `Enable` with
+  `Done`.
 - **Reads real projects** — `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` and plain `.st`, walking every
   method and property, not only the POU body. A top-level-only parse misses about 84% of the
   code in an OOP project.
@@ -158,7 +159,7 @@ twincat-st/
 ├── SKILL.md                            entry point — rules, workflow, routing
 ├── agents/openai.yaml                  display name and blurb for OpenAI Codex
 ├── scripts/
-│   ├── st_review.py                    the reviewer — 30 rules, PLCopen-keyed
+│   ├── st_review.py                    the reviewer — 32 rules, PLCopen-keyed
 │   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof
 │   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
@@ -226,7 +227,7 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
   high finding is a real CP8. X12, CP7 and CP12 report nothing there, correctly: the project
   has no code in their scope, so that shows no false positives, not that they catch defects.
 - **`PT := 500` is a compile error**, as the skill says: `Cannot convert type 'INT' to type 'TIME'`.
-- **All 30 reviewer rules fire** on a defective fixture, and the reviewer stays silent on every shape that was
+- **All 32 reviewer rules fire** on a defective fixture, and the reviewer stays silent on every shape that was
   once a false positive, swept across about 1,670 real files from public TwinCAT projects.
 - **The test suite passes on Windows and Linux**, from a clone and from an installed copy.
 - **`code-equal` holds on a real project:** about 1,350 unmodified files under
@@ -260,6 +261,9 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 - **`VAR RETAIN` with a retain handler.** Rule 9's *kept* cells for `RETAIN` restate InfoSys; no
   controller with NOVRAM and a retain handler has been tried.
 - **`__TRY` on a 32-bit runtime.** Only an x64 runtime was available, and it refuses `__TRY`.
+- **Reviewer rule X14's premise.** It reports `nStep : INT RETAIN;` because IEC 61131-3 puts the
+  qualifier on the `VAR` block; no compiler has been asked to reject that form, so it is
+  medium, not high.
 
 The most useful contributions are a run of `st_review.py` on your own project with each finding
 judged real or false, and real house code for `examples/` — see `examples/README.md`.
