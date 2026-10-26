@@ -10,7 +10,9 @@
   IEC 61131-3 puts it; held at medium until a compiler confirms the rejection.
 - Why: in a re-run of the `homed-survives-restart` candidate on Haiku 4.5, all three runs read
   Rule 9's warning and made the step remanent anyway in two of them, then took the reviewer's
-  "no findings" as approval. X13 catches both runs, X14 the second's syntax.
+  "no findings" as approval. X13 catches both runs, X14 the second's syntax. X13's message
+  leads with the claim the step makes about the machine (homed, clamped, in position), after a
+  run kept the step and argued it had set every output; in the next three runs none kept it.
 - On the 2,189-file public corpus the two rules add no findings and every other rule's count is
   unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
   shows no false positives, not that the rules catch defects in the field.
