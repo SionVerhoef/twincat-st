@@ -15,6 +15,13 @@
   should fire fired in 32 of 33 runs; the 11 that should not fired in none.
 ## Unreleased
 
+- **Rule 9 says where to check remembered state: on the first cycle, not in `FB_init`.** Per
+  InfoSys, `RETAIN` and `PERSISTENT` values are read back only after `FB_init` has run, so a
+  check there sees their initial values. `twincat.md` had `bInitRetains` as `TRUE` on a cold
+  start; it is `TRUE` on a download and `FALSE` on a TwinCAT restart, so it names the
+  operating case, not whether stored values survived. On the `homed-survives-restart`
+  candidate, no Haiku 4.5 run put the check in `FB_init` any more, but none passed either;
+  Sonnet 5.5 passed with the same skill, so tuning for small models stops there.
 - **Reviewer rules X13 and X14** (medium), now 32 rules. **X13** reports a state machine whose
   step is declared `RETAIN` or `PERSISTENT`: a `CASE` that assigns its own selector. After a
   restart the sequence would resume mid-step with its outputs and timers reset. A remembered
@@ -23,10 +30,34 @@
   IEC 61131-3 puts it; held at medium until a compiler confirms the rejection.
 - Why: in a re-run of the `homed-survives-restart` candidate on Haiku 4.5, all three runs read
   Rule 9's warning and made the step remanent anyway in two of them, then took the reviewer's
-  "no findings" as approval. X13 catches both runs, X14 the second's syntax.
+  "no findings" as approval. X13 catches both runs, X14 the second's syntax. X13's message
+  leads with the claim the step makes about the machine (homed, clamped, in position), after a
+  run kept the step and argued it had set every output; in the next three runs none kept it.
 - On the 2,189-file public corpus the two rules add no findings and every other rule's count is
   unchanged. The corpus holds only three remanent variables and none selects a `CASE`, so that
   shows no false positives, not that the rules catch defects in the field.
+- **`tcpou.py code-equal` takes a directory**: every `.TcPOU`/`.TcDUT`/`.TcGVL`/`.TcIO` under it,
+  with a count of each verdict at the end. Field round 4 needed 14 batches for one project,
+  because 1,353 paths do not fit on a Windows command line. A directory with no object file
+  exits 2, like any other "nothing to compare with".
+- **Declarations behind a pragma line are read** (`st_review.py`). A variable declared on the
+  line after `{attribute 'hide'}`, or any other pragma, was dropped by the parser, so no rule
+  saw it: silently, never as a false positive. On the public corpus that was 1,020 of 18,197
+  variables, mostly TcOpen, which puts `hide` above nearly every member. Now visible, they add
+  86 findings (76 CP24, 6 X6, 3 CP20, 1 CP7), each a shape those rules already report
+  elsewhere. `{attribute 'TcRetain'}` counts as `RETAIN` for X13.
+- Three shapes the newly visible variables exposed are handled rather than reported. `REF=`
+  binds a reference and is no comparison, which also removes 4 earlier CP8/CP28 false
+  positives. X12 accepts a timer whose only guard always admits its reset (`… OR NOT bIn`) or
+  only checks the reference its preset is read through (`__ISVALIDREF(stCfg)`): 20 TcOpen
+  timers. CP24 skips the variables XAE declares for a UML state chart
+  (`{attribute 'implicit_…'}`).
+- **CP8's change-detection exemption is a documented blind spot**, not a fix
+  (`references/tools.md`, Rule 6). A reading compared with its own latched copy (a settle check)
+  looks the same as a setpoint compared with its latch, and only the second is right. On the
+  public corpus the exemption skips 4 comparisons, all correctly, so no heuristic was worth the
+  false positives it would bring back. Rule 6 now says what a settle check needs: a tolerance
+  held for a time.
 
 ## 0.4.1 — 2026-10-26
 

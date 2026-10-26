@@ -79,7 +79,8 @@ RULES: dict[str, tuple[str, str]] = {
     "X12": ("medium", "timer, edge trigger or MC_ block called only inside an IF or CASE "
                       "branch — it stops updating whenever the branch is not taken"),
     "X13": ("medium", "state-machine variable declared RETAIN or PERSISTENT — after a "
-                      "restart the sequence resumes mid-step with its outputs and timers reset"),
+                      "restart the sequence resumes mid-step, claiming a machine state that "
+                      "may no longer be true"),
     # Held at medium until a compiler has confirmed the rejection: nothing here has
     # built this form, it only follows from where IEC 61131-3 puts the qualifier.
     "X14": ("medium", "RETAIN or PERSISTENT written after the type — the qualifier belongs "
@@ -240,6 +241,7 @@ class Variable:
     constant: bool = False
     remanent: str = ""              # "RETAIN" or "PERSISTENT", from the block or the type
     qualifier_after_type: bool = False   # 'nStep : INT RETAIN;' — X14
+    generated: bool = False         # {attribute 'implicit_...'}: XAE made it, a graphic body uses it
 
 
 @dataclass
@@ -413,7 +415,7 @@ def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
     constant = False
     remanent = ""
     clean = strip_noise(unit.decl)
-    buf, buf_line = "", 0
+    buf, buf_line, buf_first = "", 0, 0
     for n, line in enumerate(clean.splitlines(), start=1):
         if END_VAR.match(line):
             if section is not None and buf.strip():
@@ -432,14 +434,20 @@ def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
             continue
         if section is None:
             continue
-        # A declaration may wrap across lines; accumulate until the semicolon.
+        # A declaration may wrap across lines; accumulate until the semicolon. A
+        # pragma line in front of it ({attribute 'hide'}) belongs to the same
+        # statement, but the declaration starts after it. Matched with the pragma
+        # still in front, every such variable was dropped, and no rule saw it.
         if not buf.strip():
+            buf_first = n
+        if not PRAGMA.sub(" ", buf).strip():
             buf_line = n
         buf += " " + line
         if ";" not in buf:
             continue
         flag(buf.strip(), buf_line)
-        dm = DECL_LINE.match(buf.strip() if buf.strip().endswith(";") else buf.strip() + ";")
+        body = PRAGMA.sub(" ", buf).strip()
+        dm = DECL_LINE.match(body if body.endswith(";") else body + ";")
         if dm:
             typ = re.sub(r"\s+", " ", dm.group(2)).strip()
             # An agent wrote 'nStep : INT RETAIN;'. Kept off the type, so every
@@ -447,11 +455,18 @@ def parse_variables(unit: Unit, stray: list | None = None) -> list[Variable]:
             after = re.search(r"\s+(RETAIN|PERSISTENT)$", typ, re.I)
             if after:
                 typ = typ[:after.start()]
+            # An attribute's name is a string, which strip_noise blanked: read it raw.
+            raw = "\n".join(raw_decl[buf_first - 1:n]) if PRAGMA.search(buf) else ""
+            tc_retain = re.search(r"\{\s*attribute\s+'TcRetain'", raw, re.I)
+            # XAE declares a UML state chart's own state this way and uses it from
+            # the chart, which is not ST: two CP24 findings on the public corpus.
+            generated = bool(re.search(r"\{\s*attribute\s+'implicit_", raw, re.I))
             for nm in (x.strip() for x in dm.group(1).split(",")):
                 if nm:
                     out.append(Variable(nm, typ, section, buf_line, unit.name, constant,
-                                        after.group(1).upper() if after else remanent,
-                                        bool(after)))
+                                        after.group(1).upper() if after
+                                        else "RETAIN" if tc_retain else remanent,
+                                        bool(after), generated))
         buf = ""
     return out
 
@@ -595,6 +610,35 @@ def for_loops(text: str):
     return out
 
 
+def guard_is_benign(text: str, pos: int, args: str) -> bool:
+    """True when the IF around a call at `pos` does not manage the block, so X12's
+    concern does not apply. Either its condition only checks references the call
+    reads through ('IF __ISVALIDREF(stCfg) THEN fbTon(..., PT := stCfg.tTime)'), or it
+    is entered whenever the call's input is FALSE ('IF tTimeout <> T#0S OR NOT bIn
+    THEN fbTon(IN := bIn, ...)'), which resets the block as an unconditional call would."""
+    opened: list[int] = []
+    for m in re.finditer(r"\b(END_IF|IF)\b", text[:pos], re.I):
+        if m.group(1).upper() == "IF":
+            opened.append(m.end())
+        elif opened:
+            opened.pop()
+    if not opened:
+        return False
+    then = re.search(r"\bTHEN\b", text[opened[-1]:pos], re.I)
+    if not then or re.search(r"\b(ELSE|ELSIF)\b", text[opened[-1] + then.end():pos], re.I):
+        return False
+    cond = text[opened[-1]:opened[-1] + then.start()]
+    if re.fullmatch(r"\s*__ISVALIDREF\s*\(\s*[\w.]+\s*\)(?:\s+AND\s+__ISVALIDREF\s*\(\s*[\w.]+\s*\))*\s*",
+                    cond, re.I):
+        return True
+    a = re.search(r"\b(?:IN|Execute|CLK)\s*:=\s*([A-Za-z_]\w*)\s*(?:,|$)", args, re.I)
+    if not a:
+        return False
+    # 'A AND (B OR NOT bIn)' is not entered when A is FALSE: only a top-level OR counts.
+    return any(cond[:m.start()].count("(") == cond[:m.start()].count(")")
+               for m in re.finditer(rf"\bOR\s+NOT\s+{re.escape(a.group(1))}\b(?!\s*\.)", cond, re.I))
+
+
 def branch_depth(text: str, pos: int) -> int:
     """How many IF/CASE blocks are still open at `pos` in noise-stripped code.
 
@@ -680,6 +724,7 @@ def check_file(sf: SourceFile, enabled: set[str],
     x3_cases: dict[str, list] = {}       # selector -> every CASE over it, for X3
     x13_seen: set[str] = set()           # remanent step variables already reported
     calls_of: dict[tuple, tuple] = {}    # (declaring unit, NAME) -> (var, X12?, CP7?, sites)
+    benign_guard: set[tuple] = set()     # same keys: a call whose IF does not manage it
 
     for unit_idx, unit in enumerate(sf.units):
         owner_idx = owner_of[unit_idx] if unit_idx < len(owner_of) else 0
@@ -798,10 +843,17 @@ def check_file(sf: SourceFile, enabled: set[str],
                 continue
             x13_seen.add(name)
             add("X13", unit, idx + 1, raw_lines[idx] if idx < len(raw_lines) else m.group(0),
+                # A run that read only "outputs and timers are reset" answered it by
+                # setting every output in every state and kept the step RETAIN. The
+                # point is the claim the step makes about the machine, so lead with it.
                 f"'{m.group(1)}' steps this state machine and is {remanent_names[name]}: "
-                f"after a restart the sequence resumes in that step, with its outputs, timers "
-                f"and drive commands back at their initial values. Keep the step in a plain "
-                f"VAR, start from the init state, and validate any remanent state there "
+                f"after a restart the sequence resumes in that step as if the machine were "
+                f"still where it left it (homed, clamped, in position), though anything may "
+                f"have moved while the power was off, and the step's timers and drive "
+                f"commands start over. Setting every output in every state does not change "
+                f"that. Keep the step in a plain VAR, start from the init state, and "
+                f"re-establish there what the step assumed: from live inputs, or from a "
+                f"position the drive or an absolute encoder kept "
                 f"(cyclic-execution-rules.md Rule 9)", unit.impl_line)
 
         # --- X4 unguarded division ------------------------------------------
@@ -885,6 +937,11 @@ def check_file(sf: SourceFile, enabled: set[str],
                 # rule exists for.
                 if line[:m.start(2)].rstrip().endswith(":"):
                     continue          # ':=' assignment, not a comparison
+                # 'rTimeout REF= tTimeout;' binds a reference. Read as 'REF = tTimeout' it
+                # reported 7 TIME comparisons on one public library, once its pragma'd
+                # members became visible.
+                if lhs.upper() == "REF" and m.end(1) == m.start(2):
+                    continue
                 lroot, rroot = lhs.split(".")[0], rhs.split(".")[0]
                 float_lit = bool(re.fullmatch(r"\d+\.\d+|\.\d+", rhs))
                 if frozenset((lhs.upper(), rhs.upper())) in latched:
@@ -1127,6 +1184,8 @@ def check_file(sf: SourceFile, enabled: set[str],
                 i = impl.count("\n", 0, m.start())
                 site = (unit, i, branch_depth(impl, m.start()) > 0, call_args(impl, m.end()))
                 calls_of.setdefault((key_idx, v.name.upper()), (v, stateful, errors, []))[3].append(site)
+                if site[2] and guard_is_benign(impl, m.start(), site[3]):
+                    benign_guard.add((key_idx, v.name.upper()))
 
     # --- X12 a stateful block called only inside a branch --------------------------
     # Only when every call site is conditional and none of them resets the block. A
@@ -1139,10 +1198,16 @@ def check_file(sf: SourceFile, enabled: set[str],
     # LD/FBD network may be called there, where this cannot see.
     graphics = "\n".join(u.graphic for u in sf.units).upper()
     reset = re.compile(r"\b(?:IN|Execute|CLK)\s*:=\s*FALSE\b", re.I)
-    for (_, name), (v, stateful, _, sites) in calls_of.items():
+    # TcOpen calls its task timers in one of two guards: 'IF <timeout set> OR NOT
+    # inValue THEN t(IN := inValue, ...)', entered whenever the input drops, so the
+    # timer resets there; or 'IF __ISVALIDREF(inoConfig) THEN t(..., PT :=
+    # inoConfig.ErrorTime)', which only protects the reference PT is read through.
+    # Those were all 20 findings X12 gained (12 and 8) when declarations behind
+    # '{attribute 'hide'}' became visible to it.
+    for (k, name), (v, stateful, _, sites) in calls_of.items():
         if not stateful or not sites or not all(c for _, _, c, _ in sites):
             continue
-        if any(reset.search(a) for *_, a in sites):
+        if any(reset.search(a) for *_, a in sites) or (k, name) in benign_guard:
             continue
         if any(re.search(r"\bTEST_FINISHED\b", u.impl, re.I) for u, *_ in sites):
             continue
@@ -1259,7 +1324,7 @@ def check_file(sf: SourceFile, enabled: set[str],
                 and (not u.has_body or re.search(r"^\s*(METHOD|PROPERTY)\b[^\n]*\bABSTRACT\b",
                                                  strip_noise(u.decl), re.I | re.M))}
     for v in file_vars:
-        if v.section in ("VAR_EXTERNAL", "VAR_GLOBAL") or v.unit in bodiless:
+        if v.section in ("VAR_EXTERNAL", "VAR_GLOBAL") or v.unit in bodiless or v.generated:
             continue
         if v.name in FIXED_SIGNATURE_PARAMS.get(v.unit.upper(), ()):
             continue

@@ -209,6 +209,8 @@ END_IF
 
 The same applies to `TIME` (CP28): a scan steps over an exact value rather than landing on it, so use `>=`.
 
+Comparing a value with its own earlier copy splits the same way. Asking whether a setpoint changed since it was latched is exact by design. Asking whether a reading has settled is not: a measured value jitters by a count or two, so `fWeight = fLastWeight` passes on the one scan where two readings happen to match, or never while the signal is noisy. A settled check is a tolerance held for a time: `ABS(fWeight - fLastWeight) < cSettleTol` must stay TRUE for a timer's preset. The reviewer cannot tell the two shapes apart and reports neither, so read every comparison against a latched copy by hand.
+
 Pick integer widths for the real range — `DINT`, not `INT`, for anything that can pass 32,767, because counters overflow silently — and convert explicitly rather than relying on promotion.
 
 ## Rule 7 — Bounds-check every computed index.
@@ -265,6 +267,8 @@ The trap runs both ways:
 - **A remanent variable remembers — including things that stopped being true.** `PERSISTENT`, and `RETAIN` with a retain handler, skip their initial value on a restart, so code that relies on `bHomed := FALSE` at start-up gets yesterday's `TRUE`. Validate remanent state in the init state rather than trusting it.
 
 **Asked to make a sequence or a homed state survive a restart, do not just declare it remanent.** A remanent step counter resumes the sequence in the middle of a step whose outputs, timers and drive commands were all reset. A remanent "homed" claims a position the axis may have lost while the power was off: it is only true when the position itself survives (an absolute encoder, or the drive keeping its own position), and then the thing to keep is that position, checked at start-up, not a flag. Say this to the user before changing anything, and ask what the drive and encoder are.
+
+**Check remembered state on the first cycle, not in `FB_init`.** Per InfoSys (*Operating cases*), `FB_init` runs before the first task cycle, and at start-up a `RETAIN` or `PERSISTENT` variable first gets its declared value, then `FB_init` runs, and only then is the stored value read back. A remembered flag read in `FB_init` is still its initial value. Put the check in the step the sequence starts in, before it accepts a command, and base it on what the machine reports now: "homed" holds only if the axis reports a position it kept (an absolute encoder, or a drive that stores its own); otherwise it re-homes. A remembered flag never proves it. `bInitRetains` does not answer this either: it is `TRUE` on a download and `FALSE` on a TwinCAT restart or an online change (InfoSys, *FB_init*), so it names the operating case, not whether the stored values survived.
 
 How each is stored decides how far to trust it. Per InfoSys, the retain handler writes `RETAIN` to NOVRAM at the end of every cycle, so with one the last completed cycle should outlast an unexpected power loss; that has not been observed here. `PERSISTENT` goes to a boot-data file **at controlled shutdown**, or when `FB_WritePersistentData` is called: an unexpected power loss without a UPS loses everything since the last write. Treat it as best-effort, and never let machine behaviour that matters depend on it silently. `RETAIN` or `PERSISTENT` on a local of a `FUNCTION` has no effect, and a `POINTER TO` in persistent data points somewhere else after the next download.
 

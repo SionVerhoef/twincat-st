@@ -177,7 +177,7 @@ py -3 scripts/tcpou.py register <PLC.plcproj> <file>...                  # make 
 py -3 scripts/tcpou.py reguid   <file>...                                # re-stamp Ids
 py -3 scripts/tcpou.py check    <file>...                                # validate
 py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD/LD box wiring
-py -3 scripts/tcpou.py code-equal <file>... [--ref REV | --against FILE] # comments-only?
+py -3 scripts/tcpou.py code-equal <file|dir>... [--ref REV | --against FILE] # comments-only?
 ```
 
 The four that cause damage when missed:

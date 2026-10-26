@@ -56,7 +56,7 @@ The signature is fixed. The first two parameters are supplied by the runtime; an
 ```pascal
 METHOD FB_init : BOOL
 VAR_INPUT
-    bInitRetains : BOOL;   // TRUE on a cold start — retains are being initialised
+    bInitRetains : BOOL;   // TRUE on a download; FALSE on a TwinCAT restart or online change
     bInCopyCode  : BOOL;   // TRUE when the instance is being moved by an online change
     nBufferSize  : UDINT;  // your own configuration
 END_VAR
@@ -78,6 +78,8 @@ THIS^.pBuffer := __NEW(BYTE, nBufferSize);
 ```
 
 `scripts/st_review.py` reports this as `X8`, and deliberately only when `FB_init` does something non-idempotent — a plain assignment is harmless to repeat.
+
+`RETAIN` and `PERSISTENT` values are read back only after `FB_init` has run, so inside it they still hold their declared initial values: check remembered state on the first cycle instead (`cyclic-execution-rules.md` Rule 9).
 
 Related: **`FB_exit`** runs on shutdown and before an online change replaces an instance (free anything `FB_init` allocated), and **`FB_reinit`** runs after the instance has been copied.
 
