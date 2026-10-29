@@ -931,7 +931,7 @@ with tempfile.TemporaryDirectory() as tmp:
     plcproj = plc / "PLC1.plcproj"
     plcproj.write_text('<Project>\n  <ItemGroup>\n  </ItemGroup>\n</Project>\n')
     lock = plc / "PLC1.project.~u"
-    lock.write_text("user\r\nPC\r\n4242\r\n")
+    lock.write_bytes(b"user\r\nPC\r\n4242\r\n")    # bytes: write_text makes \r\r\n on Windows
     pou_before, proj_before = pou.read_bytes(), plcproj.read_bytes()
     body = b"nCount := nCount + 1;\n"
 
@@ -961,13 +961,13 @@ with tempfile.TemporaryDirectory() as tmp:
           r.returncode == 0, r.stderr.decode("utf-8", "replace"))
     # An XAE that stopped rewriting its lock, or a share whose clock runs behind, is still
     # caught by the PID: here this test's own, on this machine.
-    lock.write_text(f"user\r\n{socket.gethostname()}\r\n{os.getpid()}\r\n")
+    lock.write_bytes(f"user\r\n{socket.gethostname()}\r\n{os.getpid()}\r\n".encode())
     os.utime(lock, (stale, stale))
     r = tcpou("set", str(pou), "--part", "impl", stdin=body)
     check("a stale lock whose PID runs on this machine still blocks", r.returncode == 1,
           r.stderr.decode("utf-8", "replace"))
 
-    lock.write_text("user\r\nPC\r\n4242\r\n")
+    lock.write_bytes(b"user\r\nPC\r\n4242\r\n")
     lock = lock.replace(sln / "Line1.project.~u")
     check("a lock beside the .sln blocks", tcpou("set", str(pou), "--part", "impl",
                                                   stdin=body).returncode == 1)
@@ -979,7 +979,7 @@ with tempfile.TemporaryDirectory() as tmp:
           r.stderr.decode("utf-8", "replace"))
     (sln / "Line1.sln").unlink()
     lock = plc / "PLC1.project.~u"
-    lock.write_text("user\r\nPC\r\n4242\r\n")
+    lock.write_bytes(b"user\r\nPC\r\n4242\r\n")
     check("a file with no .sln above it is never refused",
           tcpou("set", str(pou), "--part", "impl", stdin=body).returncode == 0)
 
