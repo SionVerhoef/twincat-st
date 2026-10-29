@@ -9,9 +9,8 @@ Ctrl+Z, an online change, and a dialog left open. `references/twincat/xae-automa
 *Editing through the open XAE* has the measured facts.
 
 **Round 1 ran on 2026-10-29** (`field-review-xae-edit.md`). It found four defects, fixed since, and
-the expectations below now hold what it measured. A second round needs only E0, E9 (all of it,
-(e) and (f) included), E10, E18b's alias without a declaration, E16 and, optionally, E17. The
-rest passed, or was re-run after the fix.
+the expectations below now hold what it measured. Round 2 runs only what is left:
+`field-test-xae-edit-round2.md`.
 
 Same rules as the earlier rounds: the repository is public, the production project is called
 Project_A ("a packaging machine, TwinCAT 3.1.4024") and nothing else, no customer, site, machine
