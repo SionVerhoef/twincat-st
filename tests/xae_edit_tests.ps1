@@ -8,12 +8,14 @@ PowerShell 5.1, the only PowerShell the script supports.
     a BOM in front of cp1252 text included, is refused rather than written into a POU as U+FFFD
   * the guards, on fake tree items: the build guard finds unsaved POUs and fails closed on one it
     cannot read; a POU the user typed in after the tool's edit is refused; -Force goes ahead once
-    and never makes the user's edits pass as the tool's own afterwards
+    and never makes the user's edits pass as the tool's own afterwards; typing in a method of a
+    saved POU, which XAE keeps in a member document, counts as unsaved; the build guard lists an
+    unsaved document of a file its walk did not report
   * CreateChild on fake tree items: a vInfo form XAE refuses is followed by the next one, and an
     error with the object created anyway stops instead of creating it twice
   * the script itself, run as a child process: its argument errors exit 2, 'list' with no XAE
-    exits 0 (so the C# interop compiles and the ROT enumerates), and a solution no XAE holds
-    exits 2 with the advice to open it
+    exits 0 (so the C# interop compiles and the ROT enumerates; skipped while an XAE runs), and a
+    solution no XAE holds exits 2 with the advice to open it
 
 Everything that needs an XAE is in evals/field-test-xae-edit.md.
 
@@ -70,6 +72,11 @@ $a.Type = 'fun'
 Check 'new takes a body for a function' ((Get-ArgumentError 'new' $a) -eq '')
 Check 'every -Type has a CreateChild code' (@('fb', 'prg', 'fun', 'dut', 'enum', 'union', 'alias', 'gvl', 'itf' |
     Where-Object { -not $script:NewTypes[$_] }).Count -eq 0)
+Check "an alias's base type comes from its declaration" (
+    ((Get-AliasBase "TYPE T_Mm : LREAL;`r`nEND_TYPE" '') -ceq 'LREAL') -and
+    ((Get-AliasBase "TYPE T_Mm : LREAL := 1.5;`nEND_TYPE" '') -ceq 'LREAL') -and
+    ((Get-AliasBase "TYPE T_Buf :`n    ARRAY[0..9] OF BYTE;`nEND_TYPE" '') -ceq 'ARRAY[0..9] OF BYTE'))
+Check '... or from -Returns without one' (((Get-AliasBase $null 'UDINT') -ceq 'UDINT') -and -not (Get-AliasBase '' ''))
 Check 'a vInfo form is printed with its type' (((Format-VInfo $null) -eq 'null') -and
     ((Format-VInfo 1) -eq 'Int32 1') -and ((Format-VInfo ([string[]] @('1', 'INT'))) -eq 'String[] [1, INT]'))
 
@@ -207,7 +214,30 @@ $Force = $false
 Check "after -Force, the user's edits never pass as the tool's own" (
     (Test-Guard $owner) -like 'STOP 1*' -and (Read-EditState $script:StateFile $PID).Count -eq 0)
 $fbA.VSProjectItem.Saved = $true
-Check 'a saved POU always goes ahead' ((Test-Guard $owner) -eq 'passed')
+Check 'a saved POU with no unsaved member document goes ahead' ((Test-Guard $owner) -eq 'passed')
+
+# Typing in a method leaves the POU's own Saved at True; XAE marks a document '<file>;<POU>.<member>'
+# instead (field run 2026-10-29). The guard has to see it, or set overwrites the typing.
+$doc = New-Object psobject -Property @{ FullName = 'C:\p\FB_A.TcPOU;FB_A.M_X'; Saved = $false }
+$other = New-Object psobject -Property @{ FullName = 'C:\p\FB_AB.TcPOU;FB_AB.M_X'; Saved = $false }
+$script:Xae = @{ Pid = $PID; Dte = @{ Documents = @($doc, $other) } }
+$m1.ImplementationText = 'M_X := TRUE; (* typed after a save *)'
+Check "an unsaved member document makes a saved POU unsaved" (-not (Test-OwnerSaved $fbA))
+Check "typing in a method of a saved POU is refused" ((Test-Guard $owner) -like 'STOP 1 refused*')
+$found = @(Find-Unsaved $root 'TIPC^PLC1^PLC1 Project')
+Check 'the build guard finds a POU whose method alone is unsaved' (
+    @($found | Where-Object { $_.Path -like '*^FB_A' -and -not $_.Unreadable }).Count -eq 1)
+# A cycle-time change shows only as the document PlcTask.TcTTO; whether the walk reaches the task
+# is not measured, so the document must be listed unless the walk reported its file.
+$task = New-Object psobject -Property @{ FullName = 'C:\p\PlcTask.TcTTO'; Saved = $false }
+$script:Xae.Dte.Documents = @($doc, $task)
+$docs = @(Get-UnsavedDocuments @{ 'c:\P\fb_a.TcPOU' = $true })
+Check "the build guard lists an unsaved PLC file it did not report, not a reported POU's method" (
+    $docs.Count -eq 1 -and $docs[0] -eq 'C:\p\PlcTask.TcTTO') ($docs -join ', ')
+$script:Xae.Dte.Documents = @($doc, $other)
+$doc.Saved = $true
+Check "another POU's document whose name starts the same does not count" (Test-OwnerSaved $fbA)
+$script:Xae = @{ Pid = $PID }
 
 # CreateChild: Beckhoff's documented vInfo forms disagree, so the tool tries them in turn.
 $pous = New-Fake 'POUs' 'C:\p' $true
@@ -252,9 +282,13 @@ $r = Invoke-Child @()
 Check 'no command: exit 2 and the usage' ($r.Code -eq 2 -and $r.Err -like '*usage:*') "exit $($r.Code): $($r.Err)"
 $r = Invoke-Child @('set', 'TIPC^PLC1', '-Solution', 'x.sln', '-FromFile', $body)
 Check 'set without -Part: exit 2 before touching XAE' ($r.Code -eq 2 -and $r.Err -like '*-Part*') "exit $($r.Code): $($r.Err)"
-$r = Invoke-Child @('list')
-Check "list with no XAE: exit 0 and says so (the interop compiles, the ROT enumerates)" (
-    $r.Code -eq 0 -and $r.Out -like '*no XAE*') "exit $($r.Code): $($r.Out) $($r.Err)"
+$running = @(Get-Process TcXaeShell, devenv -ErrorAction SilentlyContinue)
+if ($running) { [Console]::Out.WriteLine("skip  list with no XAE: an XAE or Visual Studio is running (PID $($running[0].Id))") }
+else {
+    $r = Invoke-Child @('list')
+    Check "list with no XAE: exit 0 and says so (the interop compiles, the ROT enumerates)" (
+        $r.Code -eq 0 -and $r.Out -like '*no XAE*') "exit $($r.Code): $($r.Out) $($r.Err)"
+}
 $r = Invoke-Child @('show', '-Solution', (Join-Path $tmp 'missing.sln'))
 Check 'a missing solution file: exit 2' ($r.Code -eq 2 -and $r.Err -like '*no such solution*') "exit $($r.Code): $($r.Err)"
 $sln = Join-Path $tmp 'Line1.sln'

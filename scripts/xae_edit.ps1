@@ -1,9 +1,10 @@
 <#
 Edit, save and build PLC objects through the XAE the user already has open, so XAE never asks to
 reload a file. It finds that XAE in the Running Object Table by the solution it holds and edits
-through the Automation Interface: the edit lands in XAE's memory, the open editor shows it at once
-with an unsaved *, and the file changes only when XAE saves it. It never starts an XAE, never logs
-in and never activates. With XAE closed, use tcpou.py and xae_build.ps1 instead.
+through the Automation Interface: a body edit lands in XAE's memory, the open editor shows it at
+once with an unsaved *, and the file changes only when XAE saves it. Setting a declaration makes XAE
+save that object at once. It never starts an XAE, never logs in and never activates. With XAE
+closed, use tcpou.py and xae_build.ps1 instead.
 
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 <command> [<TreePath>] -Solution <x.sln> [options]
 
@@ -17,13 +18,14 @@ in and never activates. With XAE closed, use tcpou.py and xae_build.ps1 instead.
                                                        union, alias, gvl, itf (interface)
   add-method <PouPath> -Name M_X [-Returns T] [-FromDecl f] [-FromImpl f]   a new method in a POU or interface
   add-property <PouPath> -Name P -Returns T [-FromDecl f] [-NoSet]  a new property with Get (and Set) accessors
-  save       <TreePath>                                save that object's file (a method saves its POU). Never Save All
+  save       <TreePath>                                save that object's file, its methods and accessors included. Never Save All
   build                                                build in this XAE and print the compiler output
 
   An accessor is a tree path too: set '<PouPath>^Speed^Get' -Part impl -FromFile get.st
 
   -Force           set, add-method, add-property, save: go ahead although the POU holds unsaved edits
-                   this tool did not make. set replaces the whole part, so those edits in that part are lost
+                   this tool did not make. set replaces the whole part, so those edits in that part are lost;
+                   a declaration write makes XAE save the POU, those edits included
   -SaveUserEdits   build: go ahead although it will save unsaved edits this tool did not make
   -PublicAssemblies '<IDE>\PublicAssemblies'   build: where envdte.dll lives for this XAE
 
@@ -59,8 +61,8 @@ $script:Commands = @('list', 'show', 'get', 'set', 'new', 'add-method', 'add-pro
 $script:Forced = @{}    # owners this run went ahead on with -Force: never recorded as its own
 $script:Usage = 'usage: xae_edit.ps1 list | show|get|set|new|add-method|add-property|save <TreePath> -Solution <x.sln> | build -Solution <x.sln>  (see the header of xae_edit.ps1)'
 
-# CreateChild sub types, from Beckhoff's Automation Interface table "Creating PLC objects". Only
-# 604 (function block) and 609 (method) have been measured; the field run checks the rest.
+# CreateChild sub types, from Beckhoff's Automation Interface table "Creating PLC objects", each
+# measured on 4024.55 (evals/field-review-xae-edit.md).
 $script:NewTypes = @{ prg = 602; fun = 603; fb = 604; enum = 605; dut = 606; union = 607; alias = 623; gvl = 615; itf = 618 }
 $script:ItfType = 618
 
@@ -90,6 +92,13 @@ function Format-VInfo($v) {
     if ($null -eq $v) { 'null' }
     elseif ($v -is [array]) { "$($v.GetType().Name) [$($v -join ', ')]" }
     else { "$($v.GetType().Name) $v" }
+}
+
+# An alias is created with its base type as vInfo ($null fails: 'Base class not specified',
+# measured): from 'TYPE T_X : <type>;' in the declaration, an initial value dropped, else -Returns.
+function Get-AliasBase([string] $decl, [string] $returns) {
+    if ($decl -match '(?s)\bTYPE\s+\w+\s*:\s*(.+?)\s*(:=[^;]*)?;') { return $Matches[1] }
+    $returns
 }
 
 # Graphical bodies (LD, FBD, CFC) come back as XmlArchive XML; Structured Text never starts with '<'.
@@ -447,6 +456,45 @@ function Get-Saved($item) {
     $null
 }
 
+# A member's edit (a method, a property accessor), typed or set, leaves the POU's own Saved at
+# True: XAE keeps it in a document of its own, '<file>;<POU>.<member>' (measured, 4024.55).
+function Get-MemberDocuments([string] $file) {
+    if (-not $file -or $null -eq $script:Xae -or $null -eq $script:Xae.Dte) { return }
+    foreach ($d in $script:Xae.Dte.Documents) {
+        $f = ''; try { $f = [string] $d.FullName } catch { }
+        if ($f.StartsWith("$file;", [StringComparison]::OrdinalIgnoreCase)) { $d }
+    }
+}
+
+# The files with a member document unsaved, or whose saved state cannot be read, as a set. Read
+# once per tree walk: asking every POU for its documents costs POUs x documents COM calls.
+function Get-UnsavedMemberFiles {
+    $files = @{}    # case-insensitive, as file names are
+    if ($null -eq $script:Xae -or $null -eq $script:Xae.Dte) { return $files }
+    foreach ($d in $script:Xae.Dte.Documents) {
+        $f = ''; $s = $null
+        try { $f = [string] $d.FullName; $s = $d.Saved } catch { }
+        $i = $f.IndexOf(';')
+        if ($i -gt 0 -and $s -ne $true) { $files[$f.Substring(0, $i)] = $true }
+    }
+    $files
+}
+
+# Saved: the object's file and every member document of it. $null when the object's own state
+# cannot be read, so a caller fails closed.
+function Test-OwnerSaved($item, [hashtable] $unsaved = (Get-UnsavedMemberFiles)) {
+    $s = Get-Saved $item
+    if ($s -ne $true) { return $s }
+    -not $unsaved[(Get-FileName $item)]
+}
+
+# Creating an object, or setting a declaration, makes XAE save the whole object at once
+# (measured); a body write does not.
+function Get-StateNote($owner) {
+    if (Test-OwnerSaved $owner.Item) { 'saved: XAE writes the file itself when it creates an object or a declaration is set' }
+    else { 'unsaved; the file changes on: xae_edit.ps1 save' }
+}
+
 # A POU, DUT, GVL or interface: an object with its own file, which XAE saves as one.
 function Test-FileObject($item) { ((Get-Saved $item) -is [bool]) -and (Test-ObjectFileName (Get-FileName $item)) }
 
@@ -477,20 +525,20 @@ function Get-OwnerFingerprint($item) {
 # Unsaved edits in the owner that this tool did not make are the user's: refuse to write over
 # them, or to save them, unless -Force.
 function Assert-OwnerClean($owner) {
-    if (Get-Saved $owner.Item) { return }
+    if (Test-OwnerSaved $owner.Item) { return }
     if ($script:State[$owner.Path] -eq (Get-OwnerFingerprint $owner.Item)) { return }
     if ($Force) {
         Say "warning: $($owner.Path) holds unsaved edits this tool did not make; going ahead (-Force)"
         $script:Forced[$owner.Path] = $true
         return
     }
-    Stop-Edit 1 "refused: $($owner.Path) holds unsaved edits this tool did not make, probably typed in XAE. Ask the user to save or undo them. -Force goes ahead anyway: set replaces the whole part, edits in it included, and save writes them all to disk."
+    Stop-Edit 1 "refused: $($owner.Path) holds unsaved edits this tool did not make, probably typed in XAE. Ask the user to save or undo them. -Force goes ahead anyway: set replaces the whole part, edits in it included, and save, or any declaration write, writes them all to disk."
 }
 
 # Remember the owner's text as this tool's own, so its next write or save goes ahead. Not after
 # -Force: the user's edits are in that text too, and must not pass as this tool's next time.
 function Update-OwnerState($owner) {
-    if ((Get-Saved $owner.Item) -or $script:Forced[$owner.Path]) { $script:State.Remove($owner.Path) }
+    if ((Test-OwnerSaved $owner.Item) -or $script:Forced[$owner.Path]) { $script:State.Remove($owner.Path) }
     else { $script:State[$owner.Path] = Get-OwnerFingerprint $owner.Item }
     Write-EditState $script:StateFile $script:Xae.Pid $script:State
 }
@@ -528,7 +576,7 @@ function Test-HasChild($item, [string] $name) {
 # Unsaved file-level objects under a PLC project, as @{ Item; Path; Unreadable }. Folders are
 # walked; an object's own children (methods, properties) live in its file and are not. An object
 # whose saved state cannot be read is reported too, as someone else's: the guard fails closed.
-function Find-Unsaved($item, [string] $path) {
+function Find-Unsaved($item, [string] $path, [hashtable] $unsaved = (Get-UnsavedMemberFiles)) {
     $n = $item.ChildCount
     for ($i = 1; $i -le $n; $i++) {
         $c = $item.Child($i)
@@ -537,28 +585,37 @@ function Find-Unsaved($item, [string] $path) {
         # A method here means $item was an object whose own file name could not be read.
         if ($file.Contains(';')) { @{ Item = $item; Path = $path; Unreadable = $true }; return }
         if (Test-ObjectFileName $file) {
-            $s = Get-Saved $c
+            $s = Test-OwnerSaved $c $unsaved
             if ($s -isnot [bool]) { @{ Item = $c; Path = $p; Unreadable = $true } }
             elseif (-not $s) { @{ Item = $c; Path = $p; Unreadable = $false } }
         }
-        else { Find-Unsaved $c $p }
+        else { Find-Unsaved $c $p $unsaved }
     }
 }
 
 function Get-UnsavedObjects {
     $roots = 0
+    $unsaved = Get-UnsavedMemberFiles
     foreach ($sm in $script:Sms) {
         $tipc = $sm.LookupTreeItem('TIPC')
         $nPlc = $tipc.ChildCount
         for ($i = 1; $i -le $nPlc; $i++) {
             $plc = $tipc.Child($i)
-            $nProj = $plc.ChildCount
-            for ($j = 1; $j -le $nProj; $j++) {
-                $proj = $plc.Child($j)
-                if ($proj.Name -notlike '* Project') { continue }
-                $roots++
-                Find-Unsaved $proj "TIPC^$($plc.Name)^$($proj.Name)"
+            # The PLC node's Child(i) lists only '<PLC> Instance' (measured, 4024.55), but
+            # LookupTreeItem finds '<PLC> Project' by path. The child walk stays as a fallback.
+            $projects = @()
+            $path = "TIPC^$($plc.Name)^$($plc.Name) Project"
+            $proj = $null
+            try { $proj = $sm.LookupTreeItem($path) } catch { }
+            if ($null -ne $proj) { $projects += @{ Item = $proj; Path = $path } }
+            else {
+                $nProj = $plc.ChildCount
+                for ($j = 1; $j -le $nProj; $j++) {
+                    $c = $plc.Child($j)
+                    if ($c.Name -like '* Project') { $projects += @{ Item = $c; Path = "TIPC^$($plc.Name)^$($c.Name)" } }
+                }
             }
+            foreach ($p in $projects) { $roots++; Find-Unsaved $p.Item $p.Path $unsaved }
         }
     }
     Assert-Answered 'looking for unsaved objects'
@@ -567,13 +624,15 @@ function Get-UnsavedObjects {
     }
 }
 
-# Unsaved open documents other than PLC objects, which the tree walk covers: a build saves those
-# too, an I/O or task editor of the .tsproj for one.
-function Get-UnsavedDocuments {
+# Unsaved open documents of files the tree walk did not report: a build saves those too, an I/O
+# editor of the .tsproj for one. '<file>;<POU>.<member>' belongs to <file>. Matched by file, not
+# by extension, so a PLC file the walk does not reach is listed: a cycle-time change shows as the
+# document PlcTask.TcTTO (measured).
+function Get-UnsavedDocuments([hashtable] $reported) {
     foreach ($d in $script:Xae.Dte.Documents) {
         $f = ''; $s = $true
         try { $f = [string] $d.FullName; $s = $d.Saved } catch { }
-        if ($s -eq $false -and -not (Test-ObjectFileName ($f -split ';')[0])) { $f }
+        if ($s -eq $false -and -not $reported[($f -split ';')[0]]) { $f }
     }
     Assert-Answered 'listing open documents'
 }
@@ -582,7 +641,7 @@ function Remove-SavedState {
     foreach ($k in @($script:State.Keys)) {
         $it = $null
         foreach ($sm in $script:Sms) { try { $it = $sm.LookupTreeItem($k) } catch { }; if ($null -ne $it) { break } }
-        if ($null -eq $it -or (Get-Saved $it)) { $script:State.Remove($k) }
+        if ($null -eq $it -or (Test-OwnerSaved $it)) { $script:State.Remove($k) }
     }
     Write-EditState $script:StateFile $script:Xae.Pid $script:State
 }
@@ -604,14 +663,14 @@ function Invoke-Show {
     $t = Find-TreeItem $(if ($TreePath) { $TreePath } else { 'TIPC' })
     $it = $t.Item
     $lang = Get-Language $it
-    $langName = if ($lang -eq 1) { ' (ST)' } elseif ($lang -eq 6) { ' (LD)' } else { '' }
+    $langName = if ($lang -eq 1) { ' (ST)' } elseif ($lang -eq 5) { ' (CFC)' } elseif ($lang -eq 6) { ' (LD)' } else { '' }
     Say $t.Path
     Say "  type      $($it.ItemType)"
     if ($null -ne $lang) { Say "  language  $lang$langName" }
     $owner = Get-Owner $t.Sm $t.Path
     if ($owner) {
         Say "  file      $(Get-FileName $owner.Item)"
-        $saved = Get-Saved $owner.Item
+        $saved = Test-OwnerSaved $owner.Item
         $by = if ($saved) { '' } elseif ($script:State[$owner.Path] -eq (Get-OwnerFingerprint $owner.Item)) { ', edited by this tool' } else { ', edited by someone else' }
         $of = if ($owner.Path -ne $t.Path) { " (its file object $($owner.Path))" } else { '' }
         Say "  saved     $saved$by$of"
@@ -637,8 +696,8 @@ function Invoke-Set {
     $current = Get-PartText $t.Item $Part
     Assert-Answered "reading the $Part of $($t.Path)"
     if ($null -eq $current) { Stop-Edit 1 "$($t.Path) has no $Part part" }
-    # Language codes after Beckhoff's Automation Interface (2 IL, 3 SFC, 4 FBD, 5 CFC, 6 LD); only
-    # 1 = ST and 6 = LD have been seen in the field. An XML body is graphical whatever its code.
+    # Language codes after Beckhoff's Automation Interface (2 IL, 3 SFC, 4 FBD, 5 CFC, 6 LD); 1 = ST,
+    # 5 = CFC and 6 = LD have been seen in the field. An XML body is graphical whatever its code.
     $lang = Get-Language $t.Item
     if ($Part -eq 'impl' -and ((Test-XmlBody $current) -or ($lang -ge 2 -and $lang -le 6))) {
         Stop-Edit 1 "refused: the body of $($t.Path) is not Structured Text (language $lang), and this tool sets Structured Text only. Edit it in XAE."
@@ -649,15 +708,16 @@ function Invoke-Set {
     Assert-OwnerClean $owner
     Write-Part $owner $t.Item $t.Path $Part $text
     Update-OwnerState $owner
-    Say "set the $Part of $($t.Path) in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
+    Say "set the $Part of $($t.Path) in XAE ($(Get-StateNote $owner))"
 }
 
 function Get-ItemType($item) { try { [int] $item.ItemType } catch { 0 } }
 
 # CreateChild with the first vInfo form XAE accepts, each tried only while the child does not
-# exist yet. Beckhoff's table and its own samples disagree on some forms, and only the function
-# block's and the method's were measured, so the form that worked is printed: the field run keeps
-# that one. Returns the new item inside a hashtable, which the pipeline does not unroll.
+# exist yet. Where a kind was measured (4024.55), its first form is the one XAE took; the others
+# are the layouts Beckhoff's table and samples give instead, kept for builds that differ, and
+# printed when one is used. Returns the new item inside a hashtable, which the pipeline does not
+# unroll.
 function New-TreeChild($t, [string] $name, [int] $code, [object[]] $forms) {
     $errors = @()
     for ($i = 0; $i -lt $forms.Count; $i++) {
@@ -666,7 +726,7 @@ function New-TreeChild($t, [string] $name, [int] $code, [object[]] $forms) {
         try { $child = $t.Item.CreateChild($name, $code, '', $forms[$i]) } catch { $errors += "vInfo $(Format-VInfo $forms[$i]): $($_.Exception.Message)" }
         Assert-Answered "creating $name"
         if ($null -ne $child) {
-            if ($forms.Count -gt 1) { Say "  created with vInfo form $($i + 1) of $($forms.Count): $(Format-VInfo $forms[$i])" }
+            if ($i -gt 0) { Say "  created with vInfo form $($i + 1) of $($forms.Count): $(Format-VInfo $forms[$i])" }
             return @{ Sm = $t.Sm; Item = $child; Path = "$($t.Path)^$name" }
         }
         if (Test-HasChild $t.Item $name) { Stop-Edit 1 "XAE reported an error but created $name in $($t.Path) anyway; check it in XAE. $($errors -join '; ')" }
@@ -685,16 +745,22 @@ function Invoke-New {
     $forms = @()
     if ($Type -in @('fb', 'prg')) { $forms += $lang }
     elseif ($Type -eq 'fun') { $forms += , ([string[]] @("$lang", $ret)); $forms += , ([object[]] @($lang, $ret)) }
+    elseif ($Type -eq 'alias') {
+        $base = Get-AliasBase $decl $Returns
+        if (-not $base) { Stop-Edit 1 "an alias needs its base type: -FromDecl with 'TYPE $Name : <type>;', or -Returns <type>" }
+        $forms += $base
+        # XAE's own skeleton is the bare base type, not a TYPE block (measured).
+        if ($null -eq $decl) { $decl = "TYPE $Name : $base;`r`nEND_TYPE`r`n" }
+    }
     else { $forms += , $null }
     $obj = New-TreeChild $t $Name $script:NewTypes[$Type] $forms
     if ($null -ne $decl) { Write-Part $obj $obj.Item $obj.Path 'decl' $decl }
     if ($null -ne $impl) { Write-Part $obj $obj.Item $obj.Path 'impl' $impl }
     Update-OwnerState $obj
-    $state = if (Get-Saved $obj.Item) { 'saved' } else { 'unsaved; the file changes on: xae_edit.ps1 save' }
-    Say "added $Type $($obj.Path) as $(Get-FileName $obj.Item) ($state). XAE registers it in the .plcproj itself"
+    Say "added $Type $($obj.Path) as $(Get-FileName $obj.Item) ($(Get-StateNote $obj)). XAE registers it in the .plcproj when the project is saved: a build saves it"
 }
 
-# A method of a POU (609, measured) or of an interface (610, from Beckhoff's table).
+# A method of a POU (609) or of an interface (610), both measured.
 function Invoke-AddMethod {
     $t = Find-TreeItem $TreePath
     $decl = if ($FromDecl) { Read-SourceFile $FromDecl } elseif ($Returns) { "METHOD $Name : $Returns`r`n" } else { $null }
@@ -714,11 +780,11 @@ function Invoke-AddMethod {
     if ($null -ne $decl) { Write-Part $owner $m.Item $m.Path 'decl' $decl }
     if ($null -ne $impl) { Write-Part $owner $m.Item $m.Path 'impl' $impl }
     Update-OwnerState $owner
-    Say "added method $($m.Path) in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
+    Say "added method $($m.Path) in XAE ($(Get-StateNote $owner))"
 }
 
 # A property (611; 612 in an interface) with its Get and, unless -NoSet, its Set accessor. XAE's
-# editor adds both with a new property; whether CreateChild does is not known, so the tool adds
+# editor adds both with a new property; CreateChild added none on 4024.55, so the tool adds
 # whichever is missing (613/614; 654/655 in an interface) and removes Set for -NoSet.
 function Invoke-AddProperty {
     $t = Find-TreeItem $TreePath
@@ -751,19 +817,30 @@ function Invoke-AddProperty {
     if ($null -ne $decl) { Write-Part $owner $p.Item $p.Path 'decl' $decl }
     Update-OwnerState $owner
     $kids = @(for ($i = 1; $i -le $p.Item.ChildCount; $i++) { $p.Item.Child($i).Name })
-    Say "added property $($p.Path) with $($kids -join ', ') in XAE (unsaved; the file changes on: xae_edit.ps1 save). Bodies: set '$($p.Path)^Get' -Part impl"
+    Say "added property $($p.Path) with $($kids -join ', ') in XAE ($(Get-StateNote $owner)). Bodies: set '$($p.Path)^Get' -Part impl"
+}
+
+# The object's file, then each member document still unsaved: VSProjectItem.Save() does not write
+# a member's edit while the object itself reads saved, and a member document's Save() does
+# (measured).
+function Save-Owner($owner) {
+    Assert-NoDialog
+    try {
+        if ((Get-Saved $owner.Item) -ne $true) { $owner.Item.VSProjectItem.Save() }
+        foreach ($d in @(Get-MemberDocuments (Get-FileName $owner.Item))) { if ($d.Saved -ne $true) { [void] $d.Save() } }
+    }
+    catch { Stop-Edit 1 "XAE did not save $($owner.Path): $($_.Exception.Message)" }
+    Assert-Answered "saving $($owner.Path)"
+    if (-not (Test-OwnerSaved $owner.Item)) { Stop-Edit 1 "XAE still reports $($owner.Path) unsaved" }
 }
 
 function Invoke-Save {
     $t = Find-TreeItem $TreePath
     $owner = Get-RequiredOwner $t
     $file = Get-FileName $owner.Item
-    if (Get-Saved $owner.Item) { Update-OwnerState $owner; Say "nothing to save: $file is up to date"; return }
+    if (Test-OwnerSaved $owner.Item) { Update-OwnerState $owner; Say "nothing to save: $file is up to date"; return }
     Assert-OwnerClean $owner
-    Assert-NoDialog
-    try { $owner.Item.VSProjectItem.Save() } catch { Stop-Edit 1 "XAE did not save $($owner.Path): $($_.Exception.Message)" }
-    Assert-Answered "saving $($owner.Path)"
-    if (-not (Get-Saved $owner.Item)) { Stop-Edit 1 "XAE still reports $($owner.Path) unsaved" }
+    Save-Owner $owner
     Update-OwnerState $owner
     Say "saved $($owner.Path) to $file"
 }
@@ -781,16 +858,16 @@ function Invoke-Build {
         if (-not $u.Unreadable -and $script:State[$u.Path] -eq (Get-OwnerFingerprint $u.Item)) { [void] $mine.Add($u) }
         else { [void] $theirs.Add($u) }
     }
-    $docs = @(Get-UnsavedDocuments)
+    $reported = @{}
+    foreach ($u in @($mine) + @($theirs)) { $f = Get-FileName $u.Item; if ($f) { $reported[$f] = $true } }
+    $docs = @(Get-UnsavedDocuments $reported)
     $named = @($theirs | ForEach-Object { if ($_.Unreadable) { "$($_.Path) (its saved state could not be read)" } else { $_.Path } }) + $docs
     if ($named.Count -and -not $SaveUserEdits) {
         Stop-Edit 1 "refused: a build saves every unsaved object, and these hold edits this tool did not make:`n  $($named -join "`n  ")`nAsk the user to save or undo them, or pass -SaveUserEdits."
     }
     foreach ($u in @($mine) + @($theirs)) {
         if ($u.Unreadable) { Say "left to the build's own save: $($u.Path)"; continue }
-        Assert-NoDialog
-        try { $u.Item.VSProjectItem.Save() } catch { Stop-Edit 1 "XAE did not save $($u.Path): $($_.Exception.Message)" }
-        Assert-Answered "saving $($u.Path)"
+        Save-Owner $u
         Say "saved $($u.Path)"
     }
     foreach ($d in $docs) { Say "left to the build's own save: $d" }

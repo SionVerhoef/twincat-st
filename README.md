@@ -262,9 +262,10 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 
 **Not yet verified on a TwinCAT install** (not yet tried in a field round)
 
-- **`xae_edit.ps1`.** Every call it makes was measured with probe scripts on XAE 4024.55 (no
-  prompt, file untouched until saved, the open editor showing the edit), but the tool itself has
-  not run there. `evals/field-test-xae-edit.md` is the runbook. Its unit tests run on Windows in CI.
+- **`xae_edit.ps1` online change, and the build guard's cost on a large project.** The tool ran
+  on XAE 4024.55 (`evals/field-review-xae-edit.md`); its defects there were fixed and re-run on
+  the same XAE. Whether Login offers an online change after its edits (E16) and how long `build`'s
+  check takes on a project of several hundred POUs (E17) are still open.
 - **`VAR RETAIN` with a retain handler.** Rule 9's *kept* cells for `RETAIN` restate InfoSys; no
   controller with NOVRAM and a retain handler has been tried.
 - **`__TRY` on a 32-bit runtime.** Only an x64 runtime was available, and it refuses `__TRY`.

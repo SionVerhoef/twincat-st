@@ -110,24 +110,25 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
 | Command | Does | Refuses |
 |---|---|---|
 | `list` | Every XAE in the Running Object Table, with its solution or the dialog it shows; and any XAE process missing from the table, which runs at another elevation | — |
-| `show` | Item type (604 function block, 609 method), language (1 ST, 6 LD), the file it lives in, whether that file is saved and by whom it was edited, and its children | — |
+| `show` | Item type (604 function block, 609 method), language (1 ST, 5 CFC, 6 LD), the file it lives in, whether that file and its methods and accessors are saved and by whom they were edited, and its children | — |
 | `get` | Writes the part's text, as XAE holds it, to `-Out` (UTF-8, no BOM, LF). `-Part` defaults to `impl`. An LD/CFC body comes out as its XML | — |
-| `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back | a body that is not Structured Text (LD, FBD, CFC, SFC, IL, or any XML body); a file of XML; a POU with unsaved edits it did not make; a path that two TwinCAT projects in the solution both have |
-| `new` | Creates an object in that folder, then sets its declaration and body when given. `-Type`: `fb` (default), `prg`, `fun`, `dut` (a struct), `enum`, `union`, `alias`, `gvl`, `itf` (an interface). `-Lang st` or `ld` for `fb`, `prg`, `fun`; `-Returns` gives a function's type (default `BOOL`). XAE writes the file and registers it in the `.plcproj`: no `register` needed | a name the folder already has; `-FromImpl` for an object with no body |
+| `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back. A declaration write makes XAE save the object at once, and the tool says so | a body that is not Structured Text (LD, FBD, CFC, SFC, IL, or any XML body); a file of XML; a POU with unsaved edits it did not make; a path that two TwinCAT projects in the solution both have |
+| `new` | Creates an object in that folder, then sets its declaration and body when given. `-Type`: `fb` (default), `prg`, `fun`, `dut` (a struct), `enum`, `union`, `alias`, `gvl`, `itf` (an interface). `-Lang st` or `ld` for `fb`, `prg`, `fun`; `-Returns` gives a function's type (default `BOOL`), or an alias's base type when `-FromDecl` gives none; the tool then writes `TYPE <Name> : <type>;`. XAE writes the file at once and registers it in the `.plcproj` when the project is saved (a `build` saves it): no `register` needed | a name the folder already has; `-FromImpl` for an object with no body |
 | `add-method` | Creates the method in that POU or interface, then sets its declaration (or `METHOD <Name> : <Returns>`) and body when given | a name the POU already has; a body for an interface method; a POU with unsaved edits it did not make |
 | `add-property` | Creates the property in that POU or interface with a `Get` and a `Set` accessor (`-NoSet`: `Get` only), then its declaration when given. Fill the accessors with `set '…^Speed^Get' -Part impl` | a name the POU already has; a POU with unsaved edits it did not make |
-| `save` | Saves the file the path lives in, so a method saves its POU. Never Save All | a POU with unsaved edits it did not make |
+| `save` | Saves the file the path lives in, its methods' and accessors' edits included, so a method saves its POU. Never Save All | a POU with unsaved edits it did not make |
 | `build` | Lists every unsaved PLC object and open document, saves the PLC objects itself one by one, builds in that XAE, prints the Build pane and the compiler entries of the Error List | when any of them holds edits it did not make, or is a PLC object whose saved state cannot be read |
 
 - **Input files** (`-FromFile`, `-FromDecl`, `-FromImpl`) are UTF-8 with or without a BOM, or UTF-16
   with one; anything else is refused rather than written into the POU as U+FFFD. `get` takes `-Out`
   and never prints to the console, whose code page loses characters such as `²`.
-- **A `set` is not on disk until `save`.** `st_review.py` and `git diff` read the disk, so save
-  before reviewing. Prefer `get -Out` to read code the user may have changed in XAE: the file can be
+- **A body `set` is not on disk until `save`; a declaration is on disk at once**, since XAE saves
+  the object when one is set, pending body edits in it included. `st_review.py` and `git diff` read
+  the disk, so save before reviewing. Prefer `get -Out` to read code the user may have changed in XAE: the file can be
   older than what XAE holds.
 - **`-Force`** lets `set`, `add-method`, `add-property` and `save` go ahead on a POU that holds someone else's
-  unsaved edits: `set` replaces the whole part, so their edits in that part are lost, and `save`
-  writes all of them to disk. It counts once: the POU is then not taken for the tool's own, so the
+  unsaved edits: `set` replaces the whole part, so their edits in that part are lost, and `save`,
+  or any declaration write, writes all of them to disk. It counts once: the POU is then not taken for the tool's own, so the
   next command on it needs `-Force` again. **`-SaveUserEdits`** lets `build` save them. Both are for
   when the user has said so. Without them the tool tells its own unsaved edits from the user's by a
   fingerprint of the POU's whole text, taken after each of its writes, kept in
@@ -136,12 +137,11 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
   System Manager configuration, or to a project file, with no document open is saved by the build
   without a word. If XAE is set to prompt before building, such a change makes the build wait for
   that prompt.
-- **`new`, `add-property` and interface methods are not yet verified on an XAE**: only a function
-  block and a POU method were measured. Their `CreateChild` codes come from Beckhoff's table, and
-  where Beckhoff's own samples pass a different `vInfo` form the tool tries each in turn and prints
-  `created with vInfo form N`. Put `EXTENDS`, `IMPLEMENTS`, a return type or a DUT's members in
-  `-FromDecl`; that is the same declaration text `set -Part decl` writes, so it works whichever form
-  created the object.
+- **Every `new` type, `add-property` and interface members were measured on XAE 4024.55.** Each
+  `CreateChild` call tries the `vInfo` form measured there first; Beckhoff's other documented forms
+  follow for builds that differ, and the tool prints `created with vInfo form N` when one of those
+  was needed. Put `EXTENDS`, `IMPLEMENTS`, a return type or a DUT's members in `-FromDecl`; that is
+  the same declaration text `set -Part decl` writes, so it works whichever form created the object.
 - **`build` needs `envdte.dll`** from the XAE's own `PublicAssemblies` folder, like `xae_build.ps1`:
   pass `-PublicAssemblies` when XAE is not installed in the default place. It rewrites `.tmc`,
   `.xti` and `_CompileInfo` like any build, without a prompt. Quote its `Build complete -- N errors,

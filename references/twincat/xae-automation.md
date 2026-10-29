@@ -102,9 +102,10 @@ project.
 
 `scripts/xae_edit.ps1` attaches to the XAE the user already has open and edits through its
 Automation Interface. The edit lands in XAE's memory, so XAE never sees a file change behind its
-back and asks nothing. An open editor shows the edit at once, and its tab gets the unsaved `*`. The
-file changes only when XAE saves it, in XAE's own format: the same bytes the user's Ctrl+S would
-write. Every command and option is in `../tools.md`.
+back and asks nothing. An open editor shows the edit at once, and its tab gets the unsaved `*`. A
+body's file changes only when XAE saves it, in XAE's own format: the same bytes the user's Ctrl+S
+would write. A declaration is different: setting one makes XAE save the whole object at once, and
+the tool reports that. Every command and option is in `../tools.md`.
 
 The workflow, after `list` has shown the solution open:
 
@@ -136,14 +137,21 @@ What the tool does to keep the user's XAE safe, and why:
   holds unsaved edits the tool did not make, unless `-Force`. It tells them apart by a fingerprint
   of the POU's whole text, methods included, taken after each of its own writes, kept per solution
   in `%TEMP%` and void once XAE restarts. After `-Force` it records no fingerprint, so the user's
-  edits never pass as its own later. That rests on one assumption the runbook checks: that text
-  typed in the editor shows in `DeclarationText`/`ImplementationText` before it is saved.
+  edits never pass as its own later. Text typed in the editor shows in
+  `DeclarationText`/`ImplementationText` before it is saved (measured). An edit in a method or
+  accessor, typed or set, leaves the POU's own `VSProjectItem.Saved` at True: XAE marks a DTE
+  document of that member, `<file>;<POU>.<member>`, unsaved instead. So "saved" means the POU
+  and every such document; reading the POU alone let `set` overwrite typing in a method.
 - **`build` checks first.** A build saves every unsaved object, so it would save the user's
   half-typed edits too. Measured: two edits pending in memory were on disk afterwards, with the
   build's time. The tool lists the unsaved PLC objects and open documents and refuses when any is
   not its own, or cannot be read, unless `-SaveUserEdits`. It then saves the PLC objects itself
   before building, so XAE's *Before building* option has none of them left to save or prompt
-  about. A System Manager change with no document open is not seen.
+  about. A System Manager change with no document open is not seen. It reaches the PLC project
+  by `LookupTreeItem('TIPC^<PLC>^<PLC> Project')`: the PLC node's `Child(i)` lists only
+  `<PLC> Instance`. An unsaved document counts as covered only when its file is one the walk
+  reported, so a PLC file the walk does not reach, such as the task's `.TcTTO` after a cycle-time
+  change, is listed too.
 - **It reads back every write**, and a difference other than line endings is exit 1.
 - **It sets Structured Text only.** On an LD or CFC body, `ImplementationText` returns the same
   XmlArchive XML as the file (`<NWL>…`, `<CFC>…`). Writing back modified CFC XML worked once, which
@@ -154,30 +162,36 @@ What the tool does to keep the user's XAE safe, and why:
 
 Measured on TwinCAT 3.1.4024.55 (TcXaeShell), Windows 10, Windows PowerShell 5.1, non-elevated,
 against a copy of the scratch TcUnit solution open in a visible XAE and driven from a separate
-`powershell.exe`, the way the tool runs. These were measured with probe scripts. The tool itself
-has not yet run on an XAE PC: `evals/field-test-xae-edit.md` is the runbook for that.
+`powershell.exe`, the way the tool runs: first with probe scripts, then with the tool itself
+(`evals/field-review-xae-edit.md`, XAE started by hand, a person typing in it).
 
 - **No interop assembly is needed.** The tree item's IDispatch exposes the members of every
   interface: `DeclarationText`, `ImplementationText`, `ImplementationXml`, `Language`,
   `CreateChild`, `LookupChild`, `Child(i)`, `ChildCount`, `PathName`, `VSProjectItem` and more.
   The project's `.Object` is the `ITcSysManager`; `LookupTreeItem(<path>)` finds the item.
-- **A set raises no dialog and leaves the file alone**, hash and mtime unchanged; `VSProjectItem.Saved`
-  goes from True to False, and the readback equals what was set. That held with the POU open in an
-  editor too. XAE's files are CRLF; the tool writes in the line endings of the text it replaces.
-- **`CreateChild(name, 609, '', $null)` adds a method; `CreateChild(name, 604, '', 1)` a function
-  block in ST, and language `6` one in LD** (an empty `<NWL>` network). A new POU's file is written
-  and registered in the `.plcproj` at once, before any save, so `tcpou.py register` is not needed on
-  this path. XAE generates the GUIDs.
-- **The other kinds are not measured yet.** Beckhoff's table of `CreateChild` sub types gives 602
-  program, 603 function, 605 enum, 606 struct, 607 union, 623 alias, 615 GVL, 618 interface, 610
-  and 612 an interface's method and property, 611 a property, 613/614 a property's Get/Set and
-  654/655 an interface property's. A function's return type is required in `vInfo`, after the
-  language. The table and Beckhoff's samples disagree on some `vInfo` layouts, and one sample passes
-  `6` for an ST block where the probes found `1` = ST and `6` = LD; the tool tries each documented
-  form and prints the one XAE took. `evals/field-test-xae-edit.md` E18 measures every kind.
-- **`VSProjectItem.Save()` on a POU saves that POU and its methods**, with no dialog. A method's own
-  `Save()` throws `NotImplementedException`, and its file name reads `<path>\FB_X.TcPOU;FB_X.M_Reset`;
-  the tool saves the POU instead.
+- **A body set raises no dialog and leaves the file alone**, hash and mtime unchanged; the POU's
+  `VSProjectItem.Saved` goes from True to False, and the readback equals what was set. That held
+  with the POU open in an editor too. XAE's files are CRLF; the tool writes in the line endings of
+  the text it replaces.
+- **A declaration set saves the object at once**, editor open or closed: a POU's, a method's, a
+  DUT's. Body edits pending in that object go to disk with it, and `Saved` is True afterwards.
+- **A method's or accessor's body set leaves the POU's `Saved` at True.** XAE opens a DTE document
+  for the member, `<path>\FB_X.TcPOU;FB_X.M_Reset` or `…;FB_X.Speed.Get`, with `Saved` False, even
+  with no editor window. Typing in the member's editor marks the same document. `VSProjectItem.Save()`
+  on the POU does not write it while the POU reads saved; the document's own `Save()` returns 1 and
+  does. A method's `VSProjectItem.Save()` throws `NotImplementedException`.
+- **`CreateChild` codes and `vInfo`, all measured:** 602 program and 604 function block with the
+  language (`1` ST, `6` LD, an empty `<NWL>` network); 603 function with
+  `[string[]] @('1', '<type>')`; 605 enum, 606 struct, 607 union, 615 GVL, 618 interface with
+  `$null`; 623 alias with its base type, `'LREAL'` (`$null` fails: *Base class not specified*),
+  which XAE writes as the declaration `LREAL` alone, so the tool sets the declaration after; 609
+  method with `$null`; 610 interface method with the return type, `'BOOL'`; 611 property with
+  `[string[]] @('1', '<type>')`; 612 interface property with `'<type>'`. Neither property kind gets
+  accessors from `CreateChild`: the tool adds 613/614 (654 in an interface) with `$null`. XAE
+  generates the GUIDs. A new object's file is written at once, but the `.plcproj` changes only when
+  the project is saved, which a build does; `tcpou.py register` is not needed on this path.
+- **Other numbers:** `TIPC` 14, a PLC 56, its instance 57, the PLC project 600, a folder 601, the
+  PLC task 621, References 617. CFC's `Language` is 5.
 - **An XAE save writes the project's own format.** On a project with *Write ProductVersion* on, it
   changed `ProductVersion="3.1.4024.0"` to `"3.1.4024.12"` and dropped the final line break. On a
   production project with the option off, 452 of 453 POUs carry no `ProductVersion` and no final
@@ -185,13 +199,14 @@ has not yet run on an XAE PC: `evals/field-test-xae-edit.md` is the runbook for 
   yet saved on that project).
 - **A build in the attached XAE raises no prompt**, `.xti` included: the XAE that rewrites it is the
   one holding it. `SolutionBuild.LastBuildInfo` counts failed projects.
-- `$dte.ExecuteCommand('Edit.Undo')` from a script reports the command unavailable. Whether the
-  user's Ctrl+Z undoes a script edit is not yet known.
-- Not yet tested: unsaved typing by the user in the same POU (the PLC editor exposes no text
-  buffer through DTE, so it could not be simulated; the runbook has a person type), an online
-  change after a script edit, XAE and the shell at different elevations, and XAE's *Auto-load
-  changes, if saved* option, which might silence the prompt for disk edits. Leave that option
-  alone: the tool does not need it.
+- **Ctrl+Z does not undo a script edit.** The tester's Ctrl+Z in the body after a `set` changed
+  nothing; `$dte.ExecuteCommand('Edit.Undo')` from a script reports the command unavailable.
+- **A floating tool window is not a dialog**, and an XAE run as administrator is reported as such.
+- **The lock** is `<solution>.project.~u` next to the `.sln`, rewritten on every edit, gone the
+  moment the solution closes.
+- Not yet tested: an online change after a script edit, the build guard's cost on a project of
+  several hundred POUs, and XAE's *Auto-load changes, if saved* option, which might silence the
+  prompt for disk edits. Leave that option alone: the tool does not need it.
 
 ## Activation is not scripted here
 

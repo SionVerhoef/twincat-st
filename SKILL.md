@@ -191,7 +191,7 @@ The five that cause damage when missed:
 
 ### `xae_edit.ps1`
 
-The same edits through the user's open XAE: they land in XAE's memory, the editor shows them with an unsaved `*`, and nothing asks to reload. Every edit `tcpou.py` makes has a command here; XAE stamps the GUIDs and registers new files itself, so `reguid` and `register` have no counterpart. Run each line as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 …` from Windows PowerShell 5.1, at the same elevation as XAE. Every option is in `references/tools.md`.
+The same edits through the user's open XAE: they land in XAE's memory, the editor shows them with an unsaved `*`, and nothing asks to reload. A declaration write is the exception: XAE saves that object at once, and the tool says so. Every edit `tcpou.py` makes has a command here; XAE stamps the GUIDs and registers new files itself, so `reguid` and `register` have no counterpart. Run each line as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 …` from Windows PowerShell 5.1, at the same elevation as XAE. Every option is in `references/tools.md`.
 
 ```powershell
 xae_edit.ps1 list                                                       # which XAE holds which solution; run it first

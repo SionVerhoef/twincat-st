@@ -18,9 +18,15 @@
   for one command only. `build` saves the PLC objects itself before building. It reads back every
   write. It sets Structured Text only: LD and CFC bodies come back as XML, and writing XML back
   worked once, which is too little to offer.
-- Built from probe scripts run on XAE 4024.55 by a field agent, not yet run as a tool there:
-  `evals/field-test-xae-edit.md` is the runbook. `tests/xae_edit_tests.ps1` tests what needs no
-  XAE, on Windows PowerShell 5.1 in CI.
+- Built from probe scripts run on XAE 4024.55 by a field agent, then run as a tool there
+  (`evals/field-review-xae-edit.md`). That run found four defects, fixed and re-run on the same
+  XAE: a method's or accessor's edit, typed or set, leaves the POU itself reading saved, so the
+  guard, `show` and `save` now also read XAE's per-member documents (`<file>;<POU>.<member>`);
+  without that, `set` overwrote typing in a method. `build` finds the PLC project by path, since
+  the PLC node's children do not list it. A declaration write makes XAE save the object at once,
+  which the tool now reports. An alias is created with its base type. After that run, `build`
+  also lists an unsaved PLC file its walk did not reach, such as the task after a cycle-time
+  change. `tests/xae_edit_tests.ps1` tests what needs no XAE, on Windows PowerShell 5.1 in CI.
 - **`tcpou.py` refuses to write a project an XAE has open**: `set`, `add-method`, `add-property`,
   `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file under the solution's
   folder is under two minutes old, or names a PID running on this machine. In the field test a disk edit there raised two reload prompts, and with an unsaved edit
