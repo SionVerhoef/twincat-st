@@ -34,9 +34,10 @@ build it raises a modal prompt, `<PLC>.xti … was modified outside of TwinCAT X
 reload it?`. **Yes** reloads it with no further prompt. **No** keeps the old `.xti` in memory and
 writes it back on the next save. The hidden XAE also rewrites the shared `.vs\<sln>\v15\.suo` when it
 quits. **So when the solution is open, build with `xae_edit.ps1 build` instead**, which builds in
-that XAE and raises no prompt. While a solution is open, XAE keeps a lock file beside it,
+that XAE and raises no prompt. While a solution is open, XAE keeps a lock file under its folder,
 `<project>.project.~u` (three lines: user, machine, PID; rewritten about every 35 s); when it names a
-live process `xae_build.ps1` prints a warning before building.
+live process `xae_build.ps1` prints a warning before building. Exactly where it lies is one of the
+things `evals/field-test-xae-edit.md` records.
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_build.ps1 -Solution C:\src\Line1\Line1.sln
@@ -127,15 +128,22 @@ What the tool does to keep the user's XAE safe, and why:
   call. Retrying, as `xae_build.ps1`'s message filter does, hung for good (killed after 180 s). A
   filter with a deadline gave up after 10 s, but the call it gave up on came back empty, not as an
   error. So the tool looks for dialogs through Win32 before the first call and before every write,
-  and treats a call given up on (after 30 s) as a failure. Exit 2 names the dialog.
+  and treats a call given up on (after 30 s) as a failure: before a write too, since the write
+  rests on what it read. Exit 2 names the dialog. A message box (`#32770`) counts, and so does a
+  disabled top-level window, which is what a modal dialog leaves behind; a floating tool window
+  does not.
 - **It leaves the user's unsaved edits alone.** `set`, `add-method` and `save` refuse a POU that
   holds unsaved edits the tool did not make, unless `-Force`. It tells them apart by a fingerprint
-  of the POU's whole text taken after its own last write, kept per solution in `%TEMP%` and void
-  once XAE restarts.
-- **`build` checks first.** A build saves every unsaved PLC object, so it would save the user's
+  of the POU's whole text, methods included, taken after each of its own writes, kept per solution
+  in `%TEMP%` and void once XAE restarts. After `-Force` it records no fingerprint, so the user's
+  edits never pass as its own later. That rests on one assumption the runbook checks: that text
+  typed in the editor shows in `DeclarationText`/`ImplementationText` before it is saved.
+- **`build` checks first.** A build saves every unsaved object, so it would save the user's
   half-typed edits too. Measured: two edits pending in memory were on disk afterwards, with the
-  build's time. The tool lists unsaved objects and refuses when any is not its own, unless
-  `-SaveUserEdits`.
+  build's time. The tool lists the unsaved PLC objects and open documents and refuses when any is
+  not its own, or cannot be read, unless `-SaveUserEdits`. It then saves the PLC objects itself
+  before building, so XAE's *Before building* option has none of them left to save or prompt
+  about. A System Manager change with no document open is not seen.
 - **It reads back every write**, and a difference other than line endings is exit 1.
 - **It sets Structured Text only.** On an LD or CFC body, `ImplementationText` returns the same
   XmlArchive XML as the file (`<NWL>…`, `<CFC>…`). Writing back modified CFC XML worked once, which

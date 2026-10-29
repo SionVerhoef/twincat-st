@@ -76,7 +76,7 @@ py -3 scripts/tcpou.py code-equal <file|dir>... [--ref REV | --against FILE] # c
 
 **A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional; it is idempotent, so running it twice is safe.
 
-**`set`, `add-method`, `add-property`, `register` and `reguid` refuse a project an XAE has open**, exit 1, and change nothing. They look for a `<project>.project.~u` lock file that XAE rewrote in the last two minutes, in the file's folder and each one above it up to the folder holding the `.sln`. A write there makes XAE ask to reload, and can lose edits it holds unsaved (`twincat/xae-automation.md`). Edit through that XAE with `xae_edit.ps1` instead. `--allow-open` writes anyway; use it only when the user has said to expect the reload prompt. `show`, `get`, `check`, `pins` and `code-equal` only read, and never refuse.
+**`set`, `add-method`, `add-property`, `register` and `reguid` refuse a project an XAE has open**, exit 1, and change nothing. They look for XAE's `<project>.project.~u` lock file in every folder from the file up to the one holding the `.sln`, and two levels below that one, as `xae_build.ps1` does. A lock counts while XAE rewrote it in the last two minutes, or while the PID on its third line runs on this machine. A file with no `.sln` above it is never refused. A write there makes XAE ask to reload, and can lose edits it holds unsaved (`twincat/xae-automation.md`). Edit through that XAE with `xae_edit.ps1` instead. `--allow-open` writes anyway; use it only when the user has said to expect the reload prompt. `show`, `get`, `check`, `pins` and `code-equal` only read, and never refuse.
 
 ## `scripts/xae_edit.ps1`
 
@@ -105,11 +105,11 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
 | `list` | Every XAE in the Running Object Table, with its solution or the dialog it shows; and any XAE process missing from the table, which runs at another elevation | — |
 | `show` | Item type (604 function block, 609 method), language (1 ST, 6 LD), the file it lives in, whether that file is saved and by whom it was edited, and its children | — |
 | `get` | Writes the part's text, as XAE holds it, to `-Out` (UTF-8, no BOM, LF). `-Part` defaults to `impl`. An LD/CFC body comes out as its XML | — |
-| `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back | an LD/FBD/CFC/SFC/IL body; a file of XML; a POU with unsaved edits it did not make |
+| `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back | a body that is not Structured Text (LD, FBD, CFC, SFC, IL, or any XML body); a file of XML; a POU with unsaved edits it did not make; a path that two TwinCAT projects in the solution both have |
 | `add-method` | Creates the method in that POU, then sets its declaration and body when given | a name the POU already has; a POU with unsaved edits it did not make |
 | `add-pou` | Creates a function block in that folder. XAE writes the `.TcPOU` and registers it in the `.plcproj` at once: no `register` needed | a name the folder already has |
 | `save` | Saves the file the path lives in, so a method saves its POU. Never Save All | a POU with unsaved edits it did not make |
-| `build` | Lists what the build will save, builds in that XAE, prints the Build pane and the compiler entries of the Error List | when an unsaved PLC object holds edits it did not make |
+| `build` | Lists every unsaved PLC object and open document, saves the PLC objects itself one by one, builds in that XAE, prints the Build pane and the compiler entries of the Error List | when any of them holds edits it did not make, or is a PLC object whose saved state cannot be read |
 
 - **Input files** (`-FromFile`, `-FromDecl`, `-FromImpl`) are UTF-8 with or without a BOM, or UTF-16
   with one; anything else is refused rather than written into the POU as U+FFFD. `get` takes `-Out`
@@ -119,10 +119,15 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
   older than what XAE holds.
 - **`-Force`** lets `set`, `add-method` and `save` go ahead on a POU that holds someone else's
   unsaved edits: `set` replaces the whole part, so their edits in that part are lost, and `save`
-  writes all of them to disk. **`-SaveUserEdits`** lets `build` save them. Both are for when the
-  user has said so. Without them the tool tells its own unsaved edits from the user's by a fingerprint of the POU
-  it takes after each write, kept in `%TEMP%\twincat-st-xae_edit-<hash>.txt` and void once XAE
-  restarts.
+  writes all of them to disk. It counts once: the POU is then not taken for the tool's own, so the
+  next command on it needs `-Force` again. **`-SaveUserEdits`** lets `build` save them. Both are for
+  when the user has said so. Without them the tool tells its own unsaved edits from the user's by a
+  fingerprint of the POU's whole text, taken after each of its writes, kept in
+  `%TEMP%\twincat-st-xae_edit-<hash>.txt` and void once XAE restarts.
+- **What `build` cannot see.** It walks the PLC objects and the open documents. A change to the
+  System Manager configuration, or to a project file, with no document open is saved by the build
+  without a word. If XAE is set to prompt before building, such a change makes the build wait for
+  that prompt.
 - **`add-pou` makes function blocks only**, in ST or LD. Programs, functions, properties, DUTs and
   GVLs take type codes nobody has verified yet; make those in XAE, or with `tcpou.py` while XAE is
   closed. To give a new block `EXTENDS`, `set` its declaration.
@@ -131,7 +136,9 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
   `.xti` and `_CompileInfo` like any build, without a prompt. Quote its `Build complete -- N errors,
   M warnings` line as the evidence.
 
-**Exit code:** 0 = done; 1 = failed, refused, a readback that differs from what was set, or a build
-with a failed project; 2 = could not run: no XAE holds the solution, several do, XAE shows a dialog
-or did not answer for 30 s, or the wrong PowerShell. On exit 2 because of a dialog, ask the user to
-answer it; never click it from a script.
+**Exit code:** 0 = done; 1 = failed, refused, a readback that differs from what was set, a build
+with a failed project, or an unexpected error (printed as `failed: …`); 2 = could not run and wrote
+nothing: bad arguments, no such `.sln`, no XAE or several hold it, XAE shows a dialog or did not
+answer (it rejected the call, or stayed busy for 30 s), no TwinCAT PLC project, no `envdte.dll`, or
+the wrong PowerShell. On exit 2 because of a dialog, ask the user to answer it; never click it from
+a script, and never fall back to `tcpou.py`: the dialog may be in the XAE that holds the solution.

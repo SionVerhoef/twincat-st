@@ -12,7 +12,7 @@ How to edit a real TwinCAT 3 (4024) project from outside the IDE without corrupt
 > every file changed behind its back, and an unsaved edit it held for that file can be lost
 > (measured: `xae-automation.md` → *Which tool*). While the solution is open, edit through XAE with
 > `scripts/xae_edit.ps1`; everything below is for a project XAE does not hold. `tcpou.py` refuses
-> to write while XAE's `<project>.project.~u` lock file is fresh.
+> to write while XAE's `<project>.project.~u` lock file under the solution's folder is live.
 
 ## The parsing trap, and why it matters when writing too
 

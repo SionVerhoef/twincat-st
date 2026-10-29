@@ -45,6 +45,7 @@ Standard library only, like everything else here.
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -956,15 +957,31 @@ with tempfile.TemporaryDirectory() as tmp:
     stale = time.time() - 600
     os.utime(lock, (stale, stale))
     r = tcpou("add-method", str(pou), "--name", "M_Reset")
-    check("a lock no XAE has rewritten for minutes does not block",
+    check("a lock no XAE has rewritten for minutes, naming another machine, does not block",
           r.returncode == 0, r.stderr.decode("utf-8", "replace"))
+    # An XAE that stopped rewriting its lock, or a share whose clock runs behind, is still
+    # caught by the PID: here this test's own, on this machine.
+    lock.write_text(f"user\r\n{socket.gethostname()}\r\n{os.getpid()}\r\n")
+    os.utime(lock, (stale, stale))
+    r = tcpou("set", str(pou), "--part", "impl", stdin=body)
+    check("a stale lock whose PID runs on this machine still blocks", r.returncode == 1,
+          r.stderr.decode("utf-8", "replace"))
+
+    lock.write_text("user\r\nPC\r\n4242\r\n")
+    lock = lock.replace(sln / "Line1.project.~u")
+    check("a lock beside the .sln blocks", tcpou("set", str(pou), "--part", "impl",
+                                                  stdin=body).returncode == 1)
 
     # The walk stops at the solution's folder: a lock above it is another project's.
-    os.utime(lock, None)
     lock.replace(Path(tmp) / "Other.project.~u")
     r = tcpou("set", str(pou), "--part", "impl", stdin=body)
     check("a lock above the solution folder is not this project's", r.returncode == 0,
           r.stderr.decode("utf-8", "replace"))
+    (sln / "Line1.sln").unlink()
+    lock = plc / "PLC1.project.~u"
+    lock.write_text("user\r\nPC\r\n4242\r\n")
+    check("a file with no .sln above it is never refused",
+          tcpou("set", str(pou), "--part", "impl", stdin=body).returncode == 0)
 
 # --- SKILL.md stays loadable and documents every subcommand ------------------
 # 0.2.0 shipped a description over the limit, and add-method/add-property went

@@ -4,11 +4,14 @@ PowerShell 5.1, the only PowerShell the script supports.
 
   * the pure helpers it decides with: argument checks, line endings, readback comparison, the
     graphical-body and file-object tests, tree paths, fingerprints and the state file
-  * input files: UTF-8 with or without a BOM and UTF-16 with one read the same; anything else is
-    refused rather than written into a POU as U+FFFD
+  * input files: UTF-8 with or without a BOM and UTF-16 with one read the same; anything else,
+    a BOM in front of cp1252 text included, is refused rather than written into a POU as U+FFFD
+  * the guards, on fake tree items: the build guard finds unsaved POUs and fails closed on one it
+    cannot read; a POU the user typed in after the tool's edit is refused; -Force goes ahead once
+    and never makes the user's edits pass as the tool's own afterwards
   * the script itself, run as a child process: its argument errors exit 2, 'list' with no XAE
-    exits 0 (so the C# interop compiles and the ROT and window enumeration run), and a solution
-    no XAE holds exits 2 with the advice to open it
+    exits 0 (so the C# interop compiles and the ROT enumerates), and a solution no XAE holds
+    exits 2 with the advice to open it
 
 Everything that needs an XAE is in evals/field-test-xae-edit.md.
 
@@ -82,6 +85,7 @@ Check 'an empty body is not XML' (-not (Test-XmlBody ''))
 Check 'a POU file is a file object' (Test-ObjectFileName 'C:\src\Line1\PLC1\POUs\FB_X.TcPOU')
 Check 'a GVL and a DUT are file objects' ((Test-ObjectFileName 'GVL_Io.TcGVL') -and (Test-ObjectFileName 'E_State.TcDUT'))
 Check "a method's file name is not" (-not (Test-ObjectFileName 'C:\src\POUs\FB_X.TcPOU;FB_X.M_Reset'))
+Check 'nor is a method whose name starts Tc' (-not (Test-ObjectFileName 'C:\src\POUs\FB_X.TcPOU;FB_X.TcpSend'))
 Check 'a folder is not' (-not (Test-ObjectFileName 'C:\src\Line1\PLC1\POUs'))
 Check 'the parent of a method is its POU' ((Get-ParentPath 'TIPC^PLC1^PLC1 Project^POUs^FB_X^M_Reset') -eq 'TIPC^PLC1^PLC1 Project^POUs^FB_X')
 Check 'the root has no parent' ((Get-ParentPath 'TIPC') -eq '')
@@ -129,12 +133,67 @@ $ansi = Join-Path $tmp 'cp1252.st'
 $threw = $false
 try { [void] (Read-SourceFile $ansi) } catch { $threw = $true }
 Check 'a cp1252 file is refused, not read as U+FFFD' $threw
+$bomAnsi = Join-Path $tmp 'bom-cp1252.st'
+[IO.File]::WriteAllBytes($bomAnsi, [byte[]] (0xEF, 0xBB, 0xBF, 0x2F, 0x2F, 0x20, 0xB2))
+$threw = $false
+try { [void] (Read-SourceFile $bomAnsi) } catch { $threw = $true }
+Check 'a UTF-8 BOM in front of cp1252 text is refused too' $threw
 
 Push-Location $tmp
 try { Write-Utf8File 'out.st' $text } finally { Pop-Location }
 $bytes = [IO.File]::ReadAllBytes((Join-Path $tmp 'out.st'))
 Check "-Out resolves against PowerShell's location, not the process directory" ($bytes.Length -gt 0)
 Check '-Out writes UTF-8 without a BOM' ($bytes[0] -ne 0xEF -and [Text.Encoding]::UTF8.GetString($bytes) -ceq $text)
+
+# --- the guards, against fake tree items --------------------------------------
+# A fake answers what the script asks a TwinCAT tree item: Name, the two texts, ChildCount,
+# Child(i), and VSProjectItem.Saved / FileNames(1). $file = $null: no VSProjectItem at all.
+function New-Fake([string] $name, $file, $saved, [string] $decl = '', [string] $impl = '', [object[]] $kids = @()) {
+    $pi = $null
+    if ($null -ne $file) {
+        $pi = New-Object psobject -Property @{ Saved = $saved; File = $file }
+        $pi | Add-Member ScriptMethod FileNames { param($i) $this.File }
+    }
+    $o = New-Object psobject -Property @{ Name = $name; VSProjectItem = $pi; DeclarationText = $decl
+                                          ImplementationText = $impl; Kids = $kids; ChildCount = $kids.Count }
+    $o | Add-Member ScriptMethod Child { param($i) $this.Kids[$i - 1] }
+    $o
+}
+
+Initialize-Interop
+Check 'this test process shows no dialog (window enumeration runs)' ([XaeWindows]::Blocking($PID) -eq '')
+
+$m1 = New-Fake 'M_X' 'C:\p\FB_A.TcPOU;FB_A.M_X' $null 'METHOD M_X' 'M_X := TRUE;'
+$fbA = New-Fake 'FB_A' 'C:\p\FB_A.TcPOU' $false 'FUNCTION_BLOCK FB_A' 'x := 1;' @($m1)
+$fbB = New-Fake 'FB_B' 'C:\p\FB_B.TcPOU' $true
+$fbT = New-Fake 'FB_T' 'C:\p\FB_T.TcPOU' $true '' '' @((New-Fake 'TcpSend' 'C:\p\FB_T.TcPOU;FB_T.TcpSend' $null))
+$fbU = New-Fake 'FB_U' $null $null '' '' @((New-Fake 'M_Y' 'C:\p\FB_U.TcPOU;FB_U.M_Y' $null))
+$fbO = New-Fake 'FB_O' 'C:\p\FB_O.TcPOU' 'yes'
+$root = New-Fake 'PLC1 Project' '' $null '' '' @((New-Fake 'POUs' 'C:\p' $true '' '' @($fbA, $fbB, $fbT, $fbU, $fbO)))
+$found = @(Find-Unsaved $root 'TIPC^PLC1^PLC1 Project')
+$seen = @($found | ForEach-Object { "$($_.Path -replace '^.*\^', '')=$($_.Unreadable)" }) -join ' '
+Check 'the build guard finds the unsaved POU, and counts unreadable ones as not its own' (
+    $seen -eq 'FB_A=False FB_U=True FB_O=True') $seen
+
+# Stop-Edit exits the process; here it throws, so a refusal can be checked.
+function Stop-Edit([int] $code, [string] $message) { throw "STOP $code $message" }
+function Test-Guard($owner) { try { Assert-OwnerClean $owner; 'passed' } catch { $_.Exception.Message } }
+$script:Xae = @{ Pid = 7 }; $script:StateFile = Join-Path $tmp 'guard.txt'; $script:State = @{}; $script:Forced = @{}
+$owner = @{ Item = $fbA; Path = 'TIPC^PLC1^PLC1 Project^POUs^FB_A' }
+Check 'unsaved edits nobody recorded are refused' ((Test-Guard $owner) -like 'STOP 1 refused*')
+Update-OwnerState $owner
+Check "the tool's own recorded edit goes ahead" ((Test-Guard $owner) -eq 'passed')
+Check 'and is kept in the state file' ((Read-EditState $script:StateFile 7).Count -eq 1)
+$m1.ImplementationText = 'M_X := FALSE; (* typed by the user *)'
+Check "typing in another part of the POU after the tool's edit is refused" ((Test-Guard $owner) -like 'STOP 1*')
+$Force = $true
+Check '-Force goes ahead' ((Test-Guard $owner) -eq 'passed')
+Update-OwnerState $owner
+$Force = $false
+Check "after -Force, the user's edits never pass as the tool's own" (
+    (Test-Guard $owner) -like 'STOP 1*' -and (Read-EditState $script:StateFile 7).Count -eq 0)
+$fbA.VSProjectItem.Saved = $true
+Check 'a saved POU always goes ahead' ((Test-Guard $owner) -eq 'passed')
 
 # --- the script as a child process --------------------------------------------
 function Invoke-Child([string[]] $argv) {
@@ -155,7 +214,7 @@ Check 'no command: exit 2 and the usage' ($r.Code -eq 2 -and $r.Err -like '*usag
 $r = Invoke-Child @('set', 'TIPC^PLC1', '-Solution', 'x.sln', '-FromFile', $body)
 Check 'set without -Part: exit 2 before touching XAE' ($r.Code -eq 2 -and $r.Err -like '*-Part*') "exit $($r.Code): $($r.Err)"
 $r = Invoke-Child @('list')
-Check "list with no XAE: exit 0 and says so (interop compiles, ROT and windows enumerate)" (
+Check "list with no XAE: exit 0 and says so (the interop compiles, the ROT enumerates)" (
     $r.Code -eq 0 -and $r.Out -like '*no XAE*') "exit $($r.Code): $($r.Out) $($r.Err)"
 $r = Invoke-Child @('show', '-Solution', (Join-Path $tmp 'missing.sln'))
 Check 'a missing solution file: exit 2' ($r.Code -eq 2 -and $r.Err -like '*no such solution*') "exit $($r.Code): $($r.Err)"

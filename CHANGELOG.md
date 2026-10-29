@@ -12,15 +12,17 @@
   starts an XAE, never logs in and never activates.
 - **It guards the user's XAE.** It stops with the dialog's text when XAE shows one, since XAE then
   rejects every call and a plain retry hangs. It refuses to edit or save a POU holding unsaved
-  edits it did not make, and to build while any exist, because a build saves them all (`-Force`,
-  `-SaveUserEdits`). It reads back every write. It sets Structured Text only: LD and CFC bodies
-  come back as XML, and writing XML back worked once, which is too little to offer.
+  edits it did not make, and to build while any unsaved PLC object or open document is not its
+  own, because a build saves them all. `-Force` and `-SaveUserEdits` override, and `-Force` counts
+  for one command only. `build` saves the PLC objects itself before building. It reads back every
+  write. It sets Structured Text only: LD and CFC bodies come back as XML, and writing XML back
+  worked once, which is too little to offer.
 - Built from probe scripts run on XAE 4024.55 by a field agent, not yet run as a tool there:
   `evals/field-test-xae-edit.md` is the runbook. `tests/xae_edit_tests.ps1` tests what needs no
   XAE, on Windows PowerShell 5.1 in CI.
 - **`tcpou.py` refuses to write a project an XAE has open**: `set`, `add-method`, `add-property`,
-  `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file is under two minutes
-  old. In the field test a disk edit there raised two reload prompts, and with an unsaved edit
+  `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file under the solution's
+  folder is under two minutes old, or names a PID running on this machine. In the field test a disk edit there raised two reload prompts, and with an unsaved edit
   held in XAE for the same POU, answering Yes lost that edit. `--allow-open` writes anyway.
 - `references/twincat/xae-automation.md` opens with which tool to use when, and `xae_build.ps1`'s
   "same solution open" advice points to `xae_edit.ps1 build`.

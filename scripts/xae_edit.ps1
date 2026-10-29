@@ -18,12 +18,14 @@ in and never activates. With XAE closed, use tcpou.py and xae_build.ps1 instead.
 
   -Force           set, add-method, save: go ahead although the POU holds unsaved edits this tool did not
                    make. set replaces the whole part, so those edits in that part are lost
-  -SaveUserEdits   build: go ahead although the build will save unsaved edits this tool did not make
+  -SaveUserEdits   build: go ahead although it will save unsaved edits this tool did not make
   -PublicAssemblies '<IDE>\PublicAssemblies'   build: where envdte.dll lives for this XAE
 
 A tree path looks like 'TIPC^PLC1^PLC1 Project^POUs^FB_X^M_Reset'; quote it.
-Exit code: 0 = done; 1 = failed, refused, a readback mismatch or a failed build; 2 = could not run
-(no XAE holds the solution, a dialog is open, XAE did not answer, wrong PowerShell).
+Exit code: 0 = done; 1 = failed, refused, a readback mismatch, a failed build, or an unexpected
+error (printed as 'failed: ...'); 2 = could not run, nothing written: bad arguments, no such .sln,
+no XAE or several hold it, XAE shows a dialog or did not answer, no TwinCAT PLC project, no
+envdte.dll, or the wrong PowerShell.
 Needs Windows PowerShell 5.1 (powershell.exe), run at the same elevation as XAE.
 See references/twincat/xae-automation.md.
 #>
@@ -45,6 +47,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $script:Commands = @('list', 'show', 'get', 'set', 'add-method', 'add-pou', 'save', 'build')
+$script:Forced = @{}    # owners this run went ahead on with -Force: never recorded as its own
 $script:Usage = 'usage: xae_edit.ps1 list | show|get|set|add-method|add-pou|save <TreePath> -Solution <x.sln> | build -Solution <x.sln>  (see the header of xae_edit.ps1)'
 
 # --- Pure helpers: no XAE, no COM. tests/xae_edit_tests.ps1 dot-sources this file for them. ---
@@ -69,8 +72,9 @@ function Test-Identifier([string] $name) { $name -match '^[A-Za-z_][A-Za-z0-9_]*
 # Graphical bodies (LD, FBD, CFC) come back as XmlArchive XML; Structured Text never starts with '<'.
 function Test-XmlBody([string] $text) { $text -match '^\s*<' }
 
-# A file-level object's VSProjectItem names its file; a method's names '<file>;<POU>.<method>'.
-function Test-ObjectFileName([string] $file) { $file -match '\.Tc[A-Za-z]+\z' }
+# A file-level object's VSProjectItem names its file; a method's names '<file>;<POU>.<method>',
+# which can end like a file too (FB_X.TcPOU;FB_X.TcpSend).
+function Test-ObjectFileName([string] $file) { $file -notmatch ';' -and $file -match '\.Tc[A-Za-z]+\z' }
 
 function Get-ParentPath([string] $path) {
     $i = $path.LastIndexOf('^')
@@ -115,11 +119,17 @@ function Resolve-FullPath([string] $path) {
 }
 
 # UTF-8 with or without a BOM, or UTF-16 with one. Anything else is refused rather than
-# written into the POU as U+FFFD.
+# written into the POU as U+FFFD. The BOM is read here, not by ReadAllText: on a UTF-8 BOM that
+# swaps in a decoder that never refuses.
 function Read-SourceFile([string] $path) {
-    $strict = New-Object Text.UTF8Encoding -ArgumentList $false, $true
-    try { [IO.File]::ReadAllText((Resolve-FullPath $path), $strict) }
-    catch [Text.DecoderFallbackException] { throw "$path is not UTF-8 (or UTF-16 with a BOM); save it as UTF-8" }
+    $b = [IO.File]::ReadAllBytes((Resolve-FullPath $path))
+    $skip = 0
+    $enc = New-Object Text.UTF8Encoding -ArgumentList $false, $true
+    if ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) { $skip = 3 }
+    elseif ($b.Length -ge 2 -and $b[0] -eq 0xFF -and $b[1] -eq 0xFE) { $skip = 2; $enc = New-Object Text.UnicodeEncoding -ArgumentList $false, $false, $true }
+    elseif ($b.Length -ge 2 -and $b[0] -eq 0xFE -and $b[1] -eq 0xFF) { $skip = 2; $enc = New-Object Text.UnicodeEncoding -ArgumentList $true, $false, $true }
+    try { $enc.GetString($b, $skip, $b.Length - $skip) }
+    catch { throw "$path is not UTF-8 (or UTF-16 with a BOM); save it as UTF-8" }
 }
 
 function Write-Utf8File([string] $path, [string] $text) {
@@ -221,29 +231,37 @@ public static class XaeWindows {
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+    static string Describe(IntPtr h, string cls) {
+        var t = new StringBuilder(512); GetWindowText(h, t, 512);
+        var sb = new StringBuilder("[" + cls + "] '" + t + "'");
+        EnumChildWindows(h, (ch, l) => {
+            var ct = new StringBuilder(2048); GetWindowText(ch, ct, 2048);
+            if (ct.Length > 0 && IsWindowVisible(ch)) sb.Append(" | " + ct.ToString().Replace("\r", " ").Replace("\n", " "));
+            return true; }, IntPtr.Zero);
+        return sb.ToString();
+    }
     // The dialogs blocking this process, with their texts, or "" when none. A modal dialog
-    // disables the main window it belongs to, and a message box has class #32770; a floating
-    // tool window does neither, so it does not count. Win32 only: works while COM is blocked.
-    public static string Blocking(int pid, IntPtr main) {
-        bool disabled = main != IntPtr.Zero && !IsWindowEnabled(main);
-        var found = new List<string>();
+    // disables the unowned window it belongs to, and a message box has class #32770; a floating
+    // tool window does neither, so it does not count. Which window is "main" is not asked:
+    // .NET can pick the message box itself. Win32 only, so it works while COM is blocked.
+    public static string Blocking(int pid) {
+        bool disabled = false;
+        var boxes = new List<string>(); var owned = new List<string>();
         EnumWindows((h, l) => {
             uint p; GetWindowThreadProcessId(h, out p);
-            if (p != (uint)pid || h == main || !IsWindowVisible(h)) return true;
+            if (p != (uint)pid || !IsWindowVisible(h)) return true;
             var c = new StringBuilder(256); GetClassName(h, c, 256);
-            if (!disabled && c.ToString() != "#32770") return true;
-            var t = new StringBuilder(512); GetWindowText(h, t, 512);
-            var sb = new StringBuilder("[" + c + "] '" + t + "'");
-            EnumChildWindows(h, (ch, l2) => {
-                var ct = new StringBuilder(2048); GetWindowText(ch, ct, 2048);
-                if (ct.Length > 0 && IsWindowVisible(ch)) sb.Append(" | " + ct.ToString().Replace("\r", " ").Replace("\n", " "));
-                return true; }, IntPtr.Zero);
-            found.Add(sb.ToString());
+            bool unowned = GetWindow(h, 4) == IntPtr.Zero;    // GW_OWNER
+            if (unowned && !IsWindowEnabled(h)) disabled = true;
+            if (c.ToString() == "#32770") boxes.Add(Describe(h, c.ToString()));
+            else if (!unowned) owned.Add(Describe(h, c.ToString()));
             return true; }, IntPtr.Zero);
-        if (disabled && found.Count == 0) found.Add("(main window disabled, as behind a modal dialog, but no dialog is visible)");
-        return string.Join(Environment.NewLine, found.ToArray());
+        if (disabled) boxes.AddRange(owned);
+        if (disabled && boxes.Count == 0) boxes.Add("(its window is disabled, as behind a modal dialog, but no dialog is visible)");
+        return string.Join(Environment.NewLine, boxes.ToArray());
     }
 }
 "@
@@ -284,19 +302,20 @@ public static class XaeDump {
 }
 
 function Get-Blocking([int] $xaePid) {
-    $p = Get-Process -Id $xaePid -ErrorAction SilentlyContinue
-    if (-not $p) { return "process $xaePid has exited" }
-    [XaeWindows]::Blocking($xaePid, $p.MainWindowHandle)
+    if (-not (Get-Process -Id $xaePid -ErrorAction SilentlyContinue)) { return "process $xaePid has exited" }
+    [XaeWindows]::Blocking($xaePid)
 }
 
+# Before every write: no dialog now, and every read the write rests on was answered.
 function Assert-NoDialog {
+    Assert-Answered 'reading what this write depends on'
     $d = Get-Blocking $script:Xae.Pid
     if ($d) { Stop-Edit 2 "XAE (PID $($script:Xae.Pid)) shows a dialog, so this stopped before writing anything more. Ask the user to answer it, then run this again:`n$d" }
 }
 
 function Assert-Answered([string] $what) {
     if ([XaeFilter]::Rejected -gt 0) {
-        Stop-Edit 2 "XAE did not answer while $what and this gave up after 30 s: a dialog is open or XAE is busy. 'xae_edit.ps1 list' shows the dialog."
+        Stop-Edit 2 "XAE did not answer while ${what}: it rejected the call, or stayed busy for 30 s. A dialog may be open; 'xae_edit.ps1 list' shows it."
     }
 }
 
@@ -310,8 +329,8 @@ function Get-XaeInstances {
         $sln = $null
         if (-not $blocking) {
             [XaeFilter]::Rejected = 0
-            try { $sln = [string] $e.Obj.Solution.FullName } catch { }
-            if ([XaeFilter]::Rejected) { $blocking = 'did not answer within 30 s (busy)' }
+            try { $sln = [string] $e.Obj.Solution.FullName } catch { $blocking = "could not be asked for its solution: $($_.Exception.Message)" }
+            if ([XaeFilter]::Rejected) { $blocking = 'did not answer (busy for 30 s, or it rejected the call)' }
         }
         [pscustomobject]@{ Rot = $e.Name.TrimStart('!'); Pid = $xaePid; Solution = $sln; Blocking = $blocking; Dte = $e.Obj }
     }
@@ -328,15 +347,21 @@ function Get-UnlistedHint($instances) {
 
 function Connect-Xae([string] $sln) {
     if (-not (Test-Path -LiteralPath $sln -PathType Leaf)) { Stop-Edit 2 "no such solution file: $sln" }
-    $full = (Resolve-Path -LiteralPath $sln).Path
+    $full = (Resolve-Path -LiteralPath $sln).ProviderPath    # .Path carries a provider prefix on a UNC path
     $all = @(Get-XaeInstances)
     $hits = @($all | Where-Object { $_.Solution -eq $full })
     if ($hits.Count -gt 1) {
         Stop-Edit 2 "$($hits.Count) XAE instances hold $full (PIDs $(($hits | ForEach-Object { $_.Pid }) -join ', ')). Ask the user to close all but their own; a hidden one may be left over from xae_build.ps1."
     }
     if ($hits.Count -eq 0) {
+        # An XAE that could not be asked may be the one holding it: send nobody to disk edits then.
+        $blocked = @($all | Where-Object { $_.Blocking })
+        if ($blocked) {
+            $msg = "could not tell which XAE holds ${full}. Ask the user to answer what XAE shows, then run this again:"
+            foreach ($b in $blocked) { $msg += "`nXAE PID $($b.Pid): $($b.Blocking)" }
+            Stop-Edit 2 $msg
+        }
         $msg = "no XAE holds $full. Ask the user to open it in XAE, or, with XAE closed, use tcpou.py and xae_build.ps1."
-        foreach ($b in @($all | Where-Object { $_.Blocking })) { $msg += "`nXAE PID $($b.Pid) could not say which solution it holds; it shows: $($b.Blocking)" }
         $hint = Get-UnlistedHint $all
         if ($hint) { $msg += "`n$hint" }
         Stop-Edit 2 $msg
@@ -359,12 +384,15 @@ function Connect-Xae([string] $sln) {
 # Tree items are returned inside a hashtable: PowerShell unrolls an enumerable COM object written
 # to the pipeline, and a tree item enumerates its children.
 function Find-TreeItem([string] $path) {
+    $found = New-Object Collections.ArrayList
     foreach ($sm in $script:Sms) {
         $it = $null
         try { $it = $sm.LookupTreeItem($path) } catch { }
-        if ($null -ne $it) { return @{ Sm = $sm; Item = $it; Path = $path } }
+        if ($null -ne $it) { [void] $found.Add(@{ Sm = $sm; Item = $it; Path = $path }) }
     }
     Assert-Answered "looking up $path"
+    if ($found.Count -gt 1) { Stop-Edit 1 "$path exists in $($found.Count) TwinCAT projects of this solution, and this tool cannot tell them apart. Edit it in XAE." }
+    if ($found.Count -eq 1) { return $found[0] }
     # Name what does exist, so the next try is not a guess.
     for ($p = Get-ParentPath $path; $p; $p = Get-ParentPath $p) {
         foreach ($sm in $script:Sms) {
@@ -428,12 +456,18 @@ function Get-OwnerFingerprint($item) {
 function Assert-OwnerClean($owner) {
     if (Get-Saved $owner.Item) { return }
     if ($script:State[$owner.Path] -eq (Get-OwnerFingerprint $owner.Item)) { return }
-    if ($Force) { Say "warning: $($owner.Path) holds unsaved edits this tool did not make; going ahead (-Force)"; return }
-    Stop-Edit 1 "refused: $($owner.Path) holds unsaved edits this tool did not make, probably typed in XAE. Ask the user to save or undo them. -Force goes ahead anyway: set replaces the whole part, edits in it included."
+    if ($Force) {
+        Say "warning: $($owner.Path) holds unsaved edits this tool did not make; going ahead (-Force)"
+        $script:Forced[$owner.Path] = $true
+        return
+    }
+    Stop-Edit 1 "refused: $($owner.Path) holds unsaved edits this tool did not make, probably typed in XAE. Ask the user to save or undo them. -Force goes ahead anyway: set replaces the whole part, edits in it included, and save writes them all to disk."
 }
 
+# Remember the owner's text as this tool's own, so its next write or save goes ahead. Not after
+# -Force: the user's edits are in that text too, and must not pass as this tool's next time.
 function Update-OwnerState($owner) {
-    if (Get-Saved $owner.Item) { $script:State.Remove($owner.Path) }
+    if ((Get-Saved $owner.Item) -or $script:Forced[$owner.Path]) { $script:State.Remove($owner.Path) }
     else { $script:State[$owner.Path] = Get-OwnerFingerprint $owner.Item }
     Write-EditState $script:StateFile $script:Xae.Pid $script:State
 }
@@ -444,17 +478,22 @@ function Get-RequiredOwner($t) {
     $owner
 }
 
-# Set one part, then read it back. Written in the line endings the replaced text uses.
-function Write-Part($item, [string] $path, [string] $part, [string] $text) {
+# Set one part, then read it back. Written in the line endings the replaced text uses. A failure
+# after the call still records the owner: whatever XAE now holds there, this tool put it there.
+function Write-Part($owner, $item, [string] $path, [string] $part, [string] $text) {
     Assert-NoDialog
     $text = ConvertTo-Eol $text (Get-Eol (Get-PartText $item $part))
-    try { Set-PartText $item $part $text } catch { Stop-Edit 1 "XAE refused the $part of ${path}: $($_.Exception.Message)" }
+    $failure = ''
+    try { Set-PartText $item $part $text } catch { $failure = "XAE refused the $part of ${path}: $($_.Exception.Message)" }
     Assert-Answered "setting the $part of $path"
-    $back = Get-PartText $item $part
-    Assert-Answered "reading back the $part of $path"
-    if (-not (Test-SameText $text $back)) {
-        Stop-Edit 1 "the $part of $path reads back differently from what was set, $(Get-FirstDifference $text $back). XAE holds the read-back text, unsaved; check it in the editor."
+    if (-not $failure) {
+        $back = Get-PartText $item $part
+        Assert-Answered "reading back the $part of $path"
+        if (-not (Test-SameText $text $back)) {
+            $failure = "the $part of $path reads back differently from what was set, $(Get-FirstDifference $text $back). XAE holds the read-back text, unsaved; check it in the editor."
+        }
     }
+    if ($failure) { Update-OwnerState $owner; Stop-Edit 1 $failure }
 }
 
 function Test-HasChild($item, [string] $name) {
@@ -463,14 +502,22 @@ function Test-HasChild($item, [string] $name) {
     $false
 }
 
-# Unsaved file-level objects under every PLC project. Folders are walked; an object's own
-# children (methods, properties) live in its file and are not.
+# Unsaved file-level objects under a PLC project, as @{ Item; Path; Unreadable }. Folders are
+# walked; an object's own children (methods, properties) live in its file and are not. An object
+# whose saved state cannot be read is reported too, as someone else's: the guard fails closed.
 function Find-Unsaved($item, [string] $path) {
     $n = $item.ChildCount
     for ($i = 1; $i -le $n; $i++) {
         $c = $item.Child($i)
         $p = "$path^$($c.Name)"
-        if (Test-FileObject $c) { if (-not (Get-Saved $c)) { @{ Item = $c; Path = $p } } }
+        $file = Get-FileName $c
+        # A method here means $item was an object whose own file name could not be read.
+        if ($file.Contains(';')) { @{ Item = $item; Path = $path; Unreadable = $true }; return }
+        if (Test-ObjectFileName $file) {
+            $s = Get-Saved $c
+            if ($s -isnot [bool]) { @{ Item = $c; Path = $p; Unreadable = $true } }
+            elseif (-not $s) { @{ Item = $c; Path = $p; Unreadable = $false } }
+        }
         else { Find-Unsaved $c $p }
     }
 }
@@ -495,6 +542,26 @@ function Get-UnsavedObjects {
     if ($roots -eq 0 -and -not $SaveUserEdits) {
         Stop-Edit 2 "found no 'TIPC^<PLC>^<PLC> Project' node, so cannot check what the build would save. Pass -SaveUserEdits to build anyway."
     }
+}
+
+# Unsaved open documents other than PLC objects, which the tree walk covers: a build saves those
+# too, an I/O or task editor of the .tsproj for one.
+function Get-UnsavedDocuments {
+    foreach ($d in $script:Xae.Dte.Documents) {
+        $f = ''; $s = $true
+        try { $f = [string] $d.FullName; $s = $d.Saved } catch { }
+        if ($s -eq $false -and -not (Test-ObjectFileName ($f -split ';')[0])) { $f }
+    }
+    Assert-Answered 'listing open documents'
+}
+
+function Remove-SavedState {
+    foreach ($k in @($script:State.Keys)) {
+        $it = $null
+        foreach ($sm in $script:Sms) { try { $it = $sm.LookupTreeItem($k) } catch { }; if ($null -ne $it) { break } }
+        if ($null -eq $it -or (Get-Saved $it)) { $script:State.Remove($k) }
+    }
+    Write-EditState $script:StateFile $script:Xae.Pid $script:State
 }
 
 # --- Commands ---
@@ -547,15 +614,17 @@ function Invoke-Set {
     $current = Get-PartText $t.Item $Part
     Assert-Answered "reading the $Part of $($t.Path)"
     if ($null -eq $current) { Stop-Edit 1 "$($t.Path) has no $Part part" }
+    # Language codes after Beckhoff's Automation Interface (2 IL, 3 SFC, 4 FBD, 5 CFC, 6 LD); only
+    # 1 = ST and 6 = LD have been seen in the field. An XML body is graphical whatever its code.
     $lang = Get-Language $t.Item
     if ($Part -eq 'impl' -and ((Test-XmlBody $current) -or ($lang -ge 2 -and $lang -le 6))) {
-        Stop-Edit 1 "refused: the body of $($t.Path) is graphical (language $lang), and this tool sets Structured Text only. Edit it in XAE."
+        Stop-Edit 1 "refused: the body of $($t.Path) is not Structured Text (language $lang), and this tool sets Structured Text only. Edit it in XAE."
     }
     $text = Read-SourceFile $FromFile
     if (Test-XmlBody $text) { Stop-Edit 1 "refused: $FromFile holds XML, not Structured Text" }
     $owner = Get-RequiredOwner $t
     Assert-OwnerClean $owner
-    Write-Part $t.Item $t.Path $Part $text
+    Write-Part $owner $t.Item $t.Path $Part $text
     Update-OwnerState $owner
     Say "set the $Part of $($t.Path) in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
 }
@@ -573,9 +642,10 @@ function Invoke-AddMethod {
     try { $m = $t.Item.CreateChild($Name, 609, '', $null) } catch { Stop-Edit 1 "XAE did not create method $Name in $($t.Path): $($_.Exception.Message)" }
     Assert-Answered "creating method $Name"
     if ($null -eq $m) { Stop-Edit 1 "XAE did not create method $Name in $($t.Path)" }
+    Update-OwnerState $owner
     $path = "$($t.Path)^$Name"
-    if ($null -ne $decl) { Write-Part $m $path 'decl' $decl }
-    if ($null -ne $impl) { Write-Part $m $path 'impl' $impl }
+    if ($null -ne $decl) { Write-Part $owner $m $path 'decl' $decl }
+    if ($null -ne $impl) { Write-Part $owner $m $path 'impl' $impl }
     Update-OwnerState $owner
     Say "added method $path in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
 }
@@ -589,6 +659,7 @@ function Invoke-AddPou {
     try { $pou = $t.Item.CreateChild($Name, 604, '', $code) } catch { Stop-Edit 1 "XAE did not create $Name in $($t.Path): $($_.Exception.Message)" }
     Assert-Answered "creating $Name"
     if ($null -eq $pou) { Stop-Edit 1 "XAE did not create $Name in $($t.Path)" }
+    Update-OwnerState @{ Item = $pou; Path = "$($t.Path)^$Name" }
     Say "added function block $($t.Path)^$Name ($($Lang.ToUpper())); XAE wrote $(Get-FileName $pou) and registered it in the .plcproj"
 }
 
@@ -606,20 +677,33 @@ function Invoke-Save {
     Say "saved $($owner.Path) to $file"
 }
 
-# A build saves every unsaved PLC object first, the user's half-typed edits included.
+# A build saves every unsaved object first, the user's half-typed edits included. So this lists
+# them, refuses on any it did not make, and saves the PLC objects itself, one by one, before it
+# builds: then XAE's own "before building" setting has none of them left to save or ask about.
 function Invoke-Build {
     if (-not (Test-Path -LiteralPath "$PublicAssemblies\envdte.dll")) {
         Stop-Edit 2 "envdte.dll not found in '$PublicAssemblies'. Pass -PublicAssemblies for this XAE install."
     }
     Initialize-ErrorReader
-    $mine = @(); $theirs = @()
+    $mine = New-Object Collections.ArrayList; $theirs = New-Object Collections.ArrayList
     foreach ($u in @(Get-UnsavedObjects)) {
-        if ($script:State[$u.Path] -eq (Get-OwnerFingerprint $u.Item)) { $mine += $u.Path } else { $theirs += $u.Path }
+        if (-not $u.Unreadable -and $script:State[$u.Path] -eq (Get-OwnerFingerprint $u.Item)) { [void] $mine.Add($u) }
+        else { [void] $theirs.Add($u) }
     }
-    if ($theirs.Count -and -not $SaveUserEdits) {
-        Stop-Edit 1 "refused: a build saves every unsaved PLC object, and these hold edits this tool did not make:`n  $($theirs -join "`n  ")`nAsk the user to save or undo them, or pass -SaveUserEdits."
+    $docs = @(Get-UnsavedDocuments)
+    $named = @($theirs | ForEach-Object { if ($_.Unreadable) { "$($_.Path) (its saved state could not be read)" } else { $_.Path } }) + $docs
+    if ($named.Count -and -not $SaveUserEdits) {
+        Stop-Edit 1 "refused: a build saves every unsaved object, and these hold edits this tool did not make:`n  $($named -join "`n  ")`nAsk the user to save or undo them, or pass -SaveUserEdits."
     }
-    foreach ($p in $mine + $theirs) { Say "the build saves: $p" }
+    foreach ($u in @($mine) + @($theirs)) {
+        if ($u.Unreadable) { Say "left to the build's own save: $($u.Path)"; continue }
+        Assert-NoDialog
+        try { $u.Item.VSProjectItem.Save() } catch { Stop-Edit 1 "XAE did not save $($u.Path): $($_.Exception.Message)" }
+        Assert-Answered "saving $($u.Path)"
+        Say "saved $($u.Path)"
+    }
+    foreach ($d in $docs) { Say "left to the build's own save: $d" }
+    Remove-SavedState
     Assert-NoDialog
     $sb = $script:Xae.Dte.Solution.SolutionBuild
     $sb.Build($true)
@@ -631,7 +715,7 @@ function Invoke-Build {
     Say ([XaeDump]::Errors($script:Xae.Dte, $true))
     $failed = $sb.LastBuildInfo
     Say "=== Projects failed: $failed ==="
-    Write-EditState $script:StateFile $script:Xae.Pid @{}
+    Remove-SavedState
     if ($failed -ne 0) { exit 1 }
 }
 
