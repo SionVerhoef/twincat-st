@@ -8,8 +8,9 @@
   so XAE no longer asks to reload a file after every agent edit. It finds that XAE in the Running
   Object Table by its solution and writes through the Automation Interface: the edit lands in
   XAE's memory, the open editor shows it with an unsaved `*`, and the file changes when XAE saves
-  it. Commands `list`, `show`, `get`, `set`, `add-method`, `add-pou`, `save` and `build`. It never
-  starts an XAE, never logs in and never activates.
+  it. Commands `list`, `show`, `get`, `set`, `new`, `add-method`, `add-property`, `save` and
+  `build`: every edit `tcpou.py` makes, `new` for every object type it scaffolds and more (enum,
+  union, alias, interface). It never starts an XAE, never logs in and never activates.
 - **It guards the user's XAE.** It stops with the dialog's text when XAE shows one, since XAE then
   rejects every call and a plain retry hangs. It refuses to edit or save a POU holding unsaved
   edits it did not make, and to build while any unsaved PLC object or open document is not its

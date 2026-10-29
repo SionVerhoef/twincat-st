@@ -76,8 +76,9 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
   touching its GUIDs, BOM or line endings; `new` scaffolds an object with a fresh GUID;
   `register` adds it to the `.plcproj`; `reguid` and `check` repair and validate; `pins` lists
   the wiring of FBD/LD boxes; `code-equal` proves an edit changed only comments.
-- **`xae_edit.ps1`** — on a Windows PC where the solution is open in XAE, edits, saves and builds
-  through that XAE, so it never asks to reload a file. It leaves the user's unsaved edits alone.
+- **`xae_edit.ps1`** — on a Windows PC where the solution is open in XAE, makes every edit
+  `tcpou.py` makes, saves and builds, all through that XAE, so it never asks to reload a file. It
+  leaves the user's unsaved edits alone.
 - **`xae_build.ps1`** — on a Windows PC with XAE, builds the solution in a hidden XAE and prints
   the real compiler output. It never activates.
 

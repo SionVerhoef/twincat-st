@@ -40,7 +40,7 @@ Every subcommand and flag — `new --shape`, part keys, the PowerShell encoding 
 
 ## The silent failure: `.plcproj` registration
 
-**A `.TcPOU` on disk that is not listed in `.plcproj` is not compiled — with no error.** The IDE adds the entry when you create a file through it, and so does `xae_edit.ps1 add-pou`; a file created from the shell will not have one.
+**A `.TcPOU` on disk that is not listed in `.plcproj` is not compiled — with no error.** The IDE adds the entry when you create a file through it, and so does `xae_edit.ps1 new`; a file created from the shell will not have one.
 
 ```xml
 <ItemGroup>

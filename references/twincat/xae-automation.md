@@ -110,7 +110,7 @@ The workflow, after `list` has shown the solution open:
 
 1. `show` the tree path, then `get -Out` the part you will change. Tree paths look like
    `TIPC^PLC1^PLC1 Project^POUs^FB_X^M_Reset`.
-2. Edit the file, then `set -FromFile` it, or `add-method` / `add-pou`.
+2. Edit the file, then `set -FromFile` it, or create with `new`, `add-method` or `add-property`.
 3. `save` the POU, then run `st_review.py` on its `.TcPOU`: the reviewer reads the disk, which
    holds the edit only after the save.
 4. `build`, if the user asked for one. It saves every unsaved PLC object first.
@@ -167,9 +167,14 @@ has not yet run on an XAE PC: `evals/field-test-xae-edit.md` is the runbook for 
 - **`CreateChild(name, 609, '', $null)` adds a method; `CreateChild(name, 604, '', 1)` a function
   block in ST, and language `6` one in LD** (an empty `<NWL>` network). A new POU's file is written
   and registered in the `.plcproj` at once, before any save, so `tcpou.py register` is not needed on
-  this path. XAE generates the GUIDs. Other kinds (program, function, property, DUT, GVL, action)
-  take other codes from Beckhoff's `ITcSmTreeItem::CreateChild` documentation; none is verified
-  here, so the tool does not offer them.
+  this path. XAE generates the GUIDs.
+- **The other kinds are not measured yet.** Beckhoff's table of `CreateChild` sub types gives 602
+  program, 603 function, 605 enum, 606 struct, 607 union, 623 alias, 615 GVL, 618 interface, 610
+  and 612 an interface's method and property, 611 a property, 613/614 a property's Get/Set and
+  654/655 an interface property's. A function's return type is required in `vInfo`, after the
+  language. The table and Beckhoff's samples disagree on some `vInfo` layouts, and one sample passes
+  `6` for an ST block where the probes found `1` = ST and `6` = LD; the tool tries each documented
+  form and prints the one XAE took. `evals/field-test-xae-edit.md` E18 measures every kind.
 - **`VSProjectItem.Save()` on a POU saves that POU and its methods**, with no dialog. A method's own
   `Save()` throws `NotImplementedException`, and its file name reads `<path>\FB_X.TcPOU;FB_X.M_Reset`;
   the tool saves the POU instead.
