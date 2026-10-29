@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+**Editing a project the user has open in XAE**
+
+- **`scripts/xae_edit.ps1`** edits, saves and builds through the XAE the user already has open,
+  so XAE no longer asks to reload a file after every agent edit. It finds that XAE in the Running
+  Object Table by its solution and writes through the Automation Interface: the edit lands in
+  XAE's memory, the open editor shows it with an unsaved `*`, and the file changes when XAE saves
+  it. Commands `list`, `show`, `get`, `set`, `new`, `add-method`, `add-property`, `save` and
+  `build`: every edit `tcpou.py` makes, `new` for every object type it scaffolds and more (enum,
+  union, alias, interface). It never starts an XAE, never logs in and never activates.
+- **It guards the user's XAE.** It stops with the dialog's text when XAE shows one, since XAE then
+  rejects every call and a plain retry hangs. It refuses to edit or save a POU holding unsaved
+  edits it did not make, and to build while any unsaved PLC object or open document is not its
+  own, because a build saves them all. `-Force` and `-SaveUserEdits` override, and `-Force` counts
+  for one command only. `build` saves the PLC objects itself before building. It reads back every
+  write. It sets Structured Text only: LD and CFC bodies come back as XML, and writing XML back
+  worked once, which is too little to offer.
+- Built from probe scripts run on XAE 4024.55 by a field agent, then run as a tool there
+  (`evals/field-review-xae-edit.md`). That run found four defects, fixed and re-run on the same
+  XAE: a method's or accessor's edit, typed or set, leaves the POU itself reading saved, so the
+  guard, `show` and `save` now also read XAE's per-member documents (`<file>;<POU>.<member>`);
+  without that, `set` overwrote typing in a method. `build` finds the PLC project by path, since
+  the PLC node's children do not list it. A declaration write makes XAE save the object at once,
+  which the tool now reports. An alias is created with its base type. After that run, `build`
+  also lists an unsaved PLC file its walk did not reach, such as the task after a cycle-time
+  change. `tests/xae_edit_tests.ps1` tests what needs no XAE, on Windows PowerShell 5.1 in CI.
+- **`tcpou.py` refuses to write a project an XAE has open**: `set`, `add-method`, `add-property`,
+  `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file under the solution's
+  folder is under two minutes old, or names a PID running on this machine. In the field test a disk edit there raised two reload prompts, and with an unsaved edit
+  held in XAE for the same POU, answering Yes lost that edit. `--allow-open` writes anyway.
+- `references/twincat/xae-automation.md` opens with which tool to use when, and `xae_build.ps1`'s
+  "same solution open" advice points to `xae_edit.ps1 build`.
+
 ## 0.5.0 — 2026-10-26
 
 **Agents and skill**

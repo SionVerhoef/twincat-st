@@ -1,8 +1,9 @@
-# Tools — the reviewer and the `.TcPOU` editor in full
+# Tools — the reviewer and the two editors in full
 
 `SKILL.md` carries the commands and the few rules that cause damage when missed. This file
-has the rest: what every flag and exit status means, and each `tcpou.py` subcommand's
-behaviour. Read it when a tool does something you did not expect, before working around it.
+has the rest: what every flag and exit status means, and each `tcpou.py` and `xae_edit.ps1`
+subcommand's behaviour. Read it when a tool does something you did not expect, before working
+around it.
 
 ## Running Python on Windows
 
@@ -74,3 +75,81 @@ py -3 scripts/tcpou.py code-equal <file|dir>... [--ref REV | --against FILE] # c
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 
 **A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional; it is idempotent, so running it twice is safe.
+
+**`set`, `add-method`, `add-property`, `register` and `reguid` refuse a project an XAE has open**, exit 1, and change nothing. They look for XAE's `<project>.project.~u` lock file in every folder from the file up to the one holding the `.sln`, and two levels below that one, as `xae_build.ps1` does. A lock counts while XAE rewrote it in the last two minutes, or while the PID on its third line runs on this machine. A file with no `.sln` above it is never refused. A write there makes XAE ask to reload, and can lose edits it holds unsaved (`twincat/xae-automation.md`). Edit through that XAE with `xae_edit.ps1` instead. `--allow-open` writes anyway; use it only when the user has said to expect the reload prompt. `show`, `get`, `check`, `pins` and `code-equal` only read, and never refuse.
+
+## `scripts/xae_edit.ps1`
+
+Edits, saves and builds through the XAE the user has open, so XAE never asks to reload. Windows with
+XAE only, in Windows PowerShell 5.1 (`powershell.exe`, not `pwsh`) at the same elevation as XAE.
+Why it works and what was measured is in `twincat/xae-automation.md`.
+
+Every edit `tcpou.py` makes has a command here: `set` reaches any part through its tree path,
+accessors included, `new` mirrors `tcpou.py new`, and `add-method` / `add-property` mirror theirs.
+`reguid` and `register` have no counterpart because XAE stamps the GUIDs and registers new files
+itself.
+
+```powershell
+# each line runs as: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 <command> ...
+xae_edit.ps1 list                                                         # every XAE: PID, solution, dialogs
+xae_edit.ps1 show       '<TreePath>' -Solution x.sln                      # type, language, file, saved, children
+xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl -Out body.st
+xae_edit.ps1 set        '<TreePath>' -Solution x.sln -Part impl -FromFile body.st
+xae_edit.ps1 new        '<Folder>'   -Solution x.sln -Type fb -Name FB_Pump [-Lang st|ld] [-Returns T] [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-Returns BOOL] [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-property '<PouPath>' -Solution x.sln -Name Speed -Returns LREAL [-FromDecl d.st] [-NoSet]
+xae_edit.ps1 save       '<TreePath>' -Solution x.sln
+xae_edit.ps1 build                   -Solution x.sln [-SaveUserEdits] [-PublicAssemblies <dir>]
+```
+
+**Tree paths** are XAE's, joined with `^`: `TIPC^PLC1^PLC1 Project^POUs^FB_X` for a POU,
+`…^FB_X^M_Reset` for one of its methods, `…^FB_X^Speed^Get` for a property's getter. Quote them:
+they contain spaces. A path that does not
+exist exits 1 and prints what its nearest existing parent holds; `show` with no path lists `TIPC`.
+
+| Command | Does | Refuses |
+|---|---|---|
+| `list` | Every XAE in the Running Object Table, with its solution or the dialog it shows; and any XAE process missing from the table, which runs at another elevation | — |
+| `show` | Item type (604 function block, 609 method), language (1 ST, 5 CFC, 6 LD), the file it lives in, whether that file and its methods and accessors are saved and by whom they were edited, and its children | — |
+| `get` | Writes the part's text, as XAE holds it, to `-Out` (UTF-8, no BOM, LF). `-Part` defaults to `impl`. An LD/CFC body comes out as its XML | — |
+| `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back. A declaration write makes XAE save the object at once, and the tool says so | a body that is not Structured Text (LD, FBD, CFC, SFC, IL, or any XML body); a file of XML; a POU with unsaved edits it did not make; a path that two TwinCAT projects in the solution both have |
+| `new` | Creates an object in that folder, then sets its declaration and body when given. `-Type`: `fb` (default), `prg`, `fun`, `dut` (a struct), `enum`, `union`, `alias`, `gvl`, `itf` (an interface). `-Lang st` or `ld` for `fb`, `prg`, `fun`; `-Returns` gives a function's type (default `BOOL`), or an alias's base type when `-FromDecl` gives none; the tool then writes `TYPE <Name> : <type>;`. XAE writes the file at once and registers it in the `.plcproj` when the project is saved (a `build` saves it): no `register` needed | a name the folder already has; `-FromImpl` for an object with no body |
+| `add-method` | Creates the method in that POU or interface, then sets its declaration (or `METHOD <Name> : <Returns>`) and body when given | a name the POU already has; a body for an interface method; a POU with unsaved edits it did not make |
+| `add-property` | Creates the property in that POU or interface with a `Get` and a `Set` accessor (`-NoSet`: `Get` only), then its declaration when given. Fill the accessors with `set '…^Speed^Get' -Part impl` | a name the POU already has; a POU with unsaved edits it did not make |
+| `save` | Saves the file the path lives in, its methods' and accessors' edits included, so a method saves its POU. Never Save All | a POU with unsaved edits it did not make |
+| `build` | Lists every unsaved PLC object and open document, saves the PLC objects itself one by one, builds in that XAE, prints the Build pane and the compiler entries of the Error List | when any of them holds edits it did not make, or is a PLC object whose saved state cannot be read |
+
+- **Input files** (`-FromFile`, `-FromDecl`, `-FromImpl`) are UTF-8 with or without a BOM, or UTF-16
+  with one; anything else is refused rather than written into the POU as U+FFFD. `get` takes `-Out`
+  and never prints to the console, whose code page loses characters such as `²`.
+- **A body `set` is not on disk until `save`; a declaration is on disk at once**, since XAE saves
+  the object when one is set, pending body edits in it included. `st_review.py` and `git diff` read
+  the disk, so save before reviewing. Prefer `get -Out` to read code the user may have changed in XAE: the file can be
+  older than what XAE holds.
+- **`-Force`** lets `set`, `add-method`, `add-property` and `save` go ahead on a POU that holds someone else's
+  unsaved edits: `set` replaces the whole part, so their edits in that part are lost, and `save`,
+  or any declaration write, writes all of them to disk. It counts once: the POU is then not taken for the tool's own, so the
+  next command on it needs `-Force` again. **`-SaveUserEdits`** lets `build` save them. Both are for
+  when the user has said so. Without them the tool tells its own unsaved edits from the user's by a
+  fingerprint of the POU's whole text, taken after each of its writes, kept in
+  `%TEMP%\twincat-st-xae_edit-<hash>.txt` and void once XAE restarts.
+- **What `build` cannot see.** It walks the PLC objects and the open documents. A change to the
+  System Manager configuration, or to a project file, with no document open is saved by the build
+  without a word. If XAE is set to prompt before building, such a change makes the build wait for
+  that prompt.
+- **Every `new` type, `add-property` and interface members were measured on XAE 4024.55.** Each
+  `CreateChild` call tries the `vInfo` form measured there first; Beckhoff's other documented forms
+  follow for builds that differ, and the tool prints `created with vInfo form N` when one of those
+  was needed. Put `EXTENDS`, `IMPLEMENTS`, a return type or a DUT's members in `-FromDecl`; that is
+  the same declaration text `set -Part decl` writes, so it works whichever form created the object.
+- **`build` needs `envdte.dll`** from the XAE's own `PublicAssemblies` folder, like `xae_build.ps1`:
+  pass `-PublicAssemblies` when XAE is not installed in the default place. It rewrites `.tmc`,
+  `.xti` and `_CompileInfo` like any build, without a prompt. Quote its `Build complete -- N errors,
+  M warnings` line as the evidence.
+
+**Exit code:** 0 = done; 1 = failed, refused, a readback that differs from what was set, a build
+with a failed project, or an unexpected error (printed as `failed: …`); 2 = could not run and wrote
+nothing: bad arguments, no such `.sln`, no XAE or several hold it, XAE shows a dialog or did not
+answer (it rejected the call, or stayed busy for 30 s), no TwinCAT PLC project, no `envdte.dll`, or
+the wrong PowerShell. On exit 2 because of a dialog, ask the user to answer it; never click it from
+a script, and never fall back to `tcpou.py`: the dialog may be in the XAE that holds the solution.

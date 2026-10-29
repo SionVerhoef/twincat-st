@@ -25,7 +25,9 @@ Targets TwinCAT 3.1 build 4024.
 import argparse
 import os
 import re
+import socket
 import sys
+import time
 import uuid
 import xml.etree.ElementTree as ET
 
@@ -313,6 +315,94 @@ def add_member(path, kind, name, typ=None, access=None, setter=True):
 
 
 # -- .plcproj registration ---------------------------------------------------
+
+# While a solution is open, XAE keeps <project>.project.~u under the solution's folder
+# (three lines: user, machine, PID) and rewrites it about every 35 s. A disk write to a
+# project XAE holds raises its "changed outside the environment" prompt, and in one
+# field test answering Yes dropped an unsaved edit XAE held for the same POU. Such a
+# project is edited through XAE (scripts/xae_edit.ps1). A lock is live while it is
+# younger than this, or while the PID it names runs on this machine.
+LOCK_FRESH_S = 120
+
+
+def pid_alive(pid):
+    if os.name == "nt":
+        # Never os.kill(pid, 0) here: on Windows that terminates the process.
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = ctypes.c_void_p
+        k32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+        k32.CloseHandle.argtypes = (ctypes.c_void_p,)
+        h = k32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ctypes.get_last_error() == 5     # access denied: it exists
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return bool(ok) and code.value == 259       # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True                                 # exists, someone else's
+    return True
+
+
+def live_lock(lock):
+    """Why `lock` belongs to a running XAE, or '' when it does not."""
+    try:
+        age = time.time() - os.path.getmtime(lock)
+        raw = open(lock, "rb").read()
+    except OSError:
+        return ""
+    if age < LOCK_FRESH_S:
+        return f"rewritten {age:.0f} s ago"
+    text = raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8", "replace")
+    lines = [s.strip() for s in text.splitlines()]
+    here = {socket.gethostname().lower(), os.environ.get("COMPUTERNAME", "").lower()} - {""}
+    if len(lines) >= 3 and lines[1].lower() in here and lines[2].isdigit() and pid_alive(int(lines[2])):
+        return f"XAE PID {lines[2]} is running"
+    return ""
+
+
+def xae_lock(path):
+    """(lock file, why it is live) for an XAE that holds `path`'s project, or None.
+
+    The lock lies under the solution's folder: look in every folder from the file up to the
+    one that holds the .sln, and in that one two levels down, as xae_build.ps1 does. A file
+    with no .sln above it belongs to no solution an XAE could hold."""
+    here = os.path.dirname(os.path.abspath(path))
+    dirs, d = [], here
+    while True:
+        dirs.append(d)
+        try:
+            names = os.listdir(d)
+        except OSError:
+            names = []
+        if any(n.lower().endswith(".sln") for n in names):
+            break
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+    for root, sub, _ in os.walk(d):
+        dirs.append(root)
+        if root[len(d):].count(os.sep) >= 2:
+            sub[:] = []
+        sub[:] = [s for s in sub if not s.startswith(".")]
+    for folder in dict.fromkeys(dirs):
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for n in names:
+            if n.lower().endswith(".project.~u"):
+                why = live_lock(os.path.join(folder, n))
+                if why:
+                    return os.path.join(folder, n), why
+    return None
+
 
 def register(plcproj, files):
     raw = open(plcproj, "rb").read()
@@ -699,6 +789,9 @@ def main():
     p.add_argument("--part", required=True)
     p.add_argument("--from-file", help="read new source from this file (default: stdin); "
                                        "UTF-8 with or without a BOM, or UTF-16 with one")
+    open_help = ("write although an XAE has this project open: it will ask to reload the file, "
+                 "and edits it holds unsaved for it are at risk. Use xae_edit.ps1 instead")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("new", help="scaffold a new object")
     p.add_argument("--type", required=True, choices=["fb", "prg", "fun", "dut", "gvl"])
@@ -718,6 +811,7 @@ def main():
     p.add_argument("--returns", help="return type, e.g. BOOL (default: none)")
     p.add_argument("--access", type=str.upper, choices=access,
                    help="access modifier (default: none, which TwinCAT reads as PUBLIC)")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("add-property", help="append an empty PROPERTY to a POU or interface")
     p.add_argument("file")
@@ -725,13 +819,16 @@ def main():
     p.add_argument("--type", required=True, help="property type, e.g. LREAL")
     p.add_argument("--access", type=str.upper, choices=access)
     p.add_argument("--no-set", action="store_true", help="getter only (read-only property)")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("register", help="add files to a .plcproj")
     p.add_argument("plcproj")
     p.add_argument("files", nargs="+")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("reguid", help="give every object in a file a fresh Id GUID")
     p.add_argument("files", nargs="+")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("pins", help="list the pin wiring of every FBD/LD box (read-only)")
     p.add_argument("file")
@@ -756,6 +853,18 @@ def main():
     # is UTF-8 too, so a warning that quotes the text survives a redirect.
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
+
+    if hasattr(a, "allow_open") and not a.allow_open:
+        targets = [a.plcproj] if a.cmd == "register" else a.files if a.cmd == "reguid" else [a.file]
+        for path in targets:
+            held = xae_lock(path)
+            if held:
+                print(f"refused: XAE has this project open ({held[0]}: {held[1]}). "
+                      f"A write on disk makes it ask to reload, and edits "
+                      f"it holds unsaved can be lost. Edit through that XAE with "
+                      f"scripts/xae_edit.ps1, or ask the user to close the solution. "
+                      f"--allow-open writes anyway.", file=sys.stderr)
+                return 1
 
     if a.cmd == "show":
         f = TcFile(a.file)

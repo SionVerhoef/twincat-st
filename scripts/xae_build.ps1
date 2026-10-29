@@ -4,8 +4,9 @@ changes no controller. It starts its own XAE process. An XAE with a DIFFERENT so
 left alone. One with the SAME solution open keeps running, but within a second of the build it
 asks "<PLC>.xti was modified outside of TwinCAT XAE. Do you want to reload it?" - answer Yes;
 No keeps the old .xti in memory and writes it back on the next save. The hidden XAE also
-rewrites the shared .vs\<sln>\v15\.suo when it quits. Ask the user to close the solution first,
-or to expect that prompt. When the solution's lock file names a live XAE, the script says so.
+rewrites the shared .vs\<sln>\v15\.suo when it quits. With the solution open, build through that
+XAE instead: xae_edit.ps1 build, which raises no prompt. When the solution's lock file names a live
+XAE, the script says so.
 Exit code: 0 = every project built, 1 = a project failed (SolutionBuild.LastBuildInfo) or the
 script could not run.
 
@@ -47,7 +48,7 @@ foreach ($lock in Get-ChildItem -Path (Split-Path $slnPath) -Filter '*.project.~
     $lines = @(Get-Content $lock.FullName -ErrorAction SilentlyContinue)
     $lockPid = 0
     if ($lines.Count -ge 3 -and [int]::TryParse($lines[2].Trim(), [ref]$lockPid) -and (Get-Process -Id $lockPid -ErrorAction SilentlyContinue)) {
-        "WARNING: the solution is open in XAE (PID $lockPid): it will ask to reload the .xti; answer Yes"
+        "WARNING: the solution is open in XAE (PID $lockPid): it will ask to reload the .xti; answer Yes. xae_edit.ps1 build builds in that XAE without the prompt"
     }
 }
 

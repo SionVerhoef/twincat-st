@@ -106,3 +106,8 @@ jobs:
           python-version: "3.x"
       - name: every rule still detects its defect, on Windows
         run: python tests/run_tests.py
+      # xae_edit.ps1 supports Windows PowerShell 5.1 only, and there is no XAE here, so this
+      # covers its helpers, its argument errors and its COM/Win32 plumbing up to "no XAE holds
+      # the solution". evals/field-test-xae-edit.md covers the rest on an XAE PC.
+      - name: xae_edit.ps1 without XAE, in Windows PowerShell 5.1
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\xae_edit_tests.ps1

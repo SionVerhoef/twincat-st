@@ -112,7 +112,7 @@ Name the rung you reached. Never imply a higher one.
 | Rung | What it proves |
 |---|---|
 | 1. **TcUnit on a real target**, results read back over ADS | Real semantics, real timing |
-| 2. **Headless build** via the Automation Interface on a Windows PC with XAE — `scripts/xae_build.ps1` | Full compiler errors |
+| 2. **Headless build** via the Automation Interface on a Windows PC with XAE — `scripts/xae_build.ps1`, or `xae_edit.ps1 build` when the user has the solution open | Full compiler errors |
 | 3. **`scripts/st_review.py` + a human read** | Known defect patterns absent — **always do this** |
 | 4. Nothing | Then say "unverified, not compiled" plainly |
 
@@ -144,7 +144,7 @@ Load a reference when the task reaches it — don't read them all up front.
 | `references/twincat.md` | TwinCAT specifics — libraries, `FB_init`, online change, 4024 gotchas. |
 | `references/twincat/project-files.md` | Editing `.TcPOU`/`.plcproj`, or a git merge conflict in one. |
 | `references/twincat/ads-and-diagnostics.md` | ADS access, EtherCAT triage, reading a running machine. |
-| `references/twincat/xae-automation.md` | Asked for a build or compile check, and XAE is installed. What a build rewrites, and why activation stays manual. |
+| `references/twincat/xae-automation.md` | Asked for a build or compile check, and XAE is installed, or editing a project the user has open in XAE. What a build rewrites, why disk edits make XAE ask to reload, and why activation stays manual. |
 | `references/twincat/tasks-and-exceptions.md` | Data shared between tasks or cores, locking, or a PLC that stopped on an exception — finding the line, core dumps, `CheckBounds`/`CheckDiv…` implicit checks, `__TRY`/`__CATCH`. |
 | `references/tools.md` | A reviewer or `tcpou.py` result you did not expect — every flag, exit status and subcommand in full. |
 
@@ -155,8 +155,9 @@ Load a reference when the task reaches it — don't read them all up front.
 | Path | For |
 |---|---|
 | `scripts/st_review.py` | The reviewer. Run it on every change. |
-| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF. Commands below. |
-| `scripts/xae_build.ps1` | Windows with XAE only: a headless build with the real compiler output. Only when the user asked for a build — it rewrites `.tmc`/`.xti`/`_CompileInfo`. It never activates. |
+| `scripts/tcpou.py` | Read and edit real `.TcPOU` files without disturbing GUIDs, `<LineIds>`, the BOM or CRLF, **while XAE is closed**. Commands below. |
+| `scripts/xae_edit.ps1` | Windows with XAE only, **while the user has the solution open in XAE**: edit, save and build through that XAE, so it never asks to reload. Commands below. |
+| `scripts/xae_build.ps1` | Windows with XAE only, while the solution is closed: a headless build with the real compiler output. Only when the user asked for a build — it rewrites `.tmc`/`.xti`/`_CompileInfo`. It never activates. |
 | `templates/` | Known-good skeletons — sequence FB, state enum, TcUnit suite. |
 | `examples/` | Real working code from two published projects, each with a `NOTES.md` on what to take from it. When to read it: step 1. |
 
@@ -180,9 +181,32 @@ py -3 scripts/tcpou.py pins     <file> [--pin REGEX] [--box REGEX]       # FBD/L
 py -3 scripts/tcpou.py code-equal <file|dir>... [--ref REV | --against FILE] # comments-only?
 ```
 
-The four that cause damage when missed:
+The five that cause damage when missed:
 
+- **If the user has the solution open in XAE, edit with `xae_edit.ps1`, not `tcpou.py`.** A write on disk makes XAE ask to reload the file, and can lose edits it holds unsaved. `tcpou.py` refuses to write while XAE holds the project; say so to the user rather than reaching for `--allow-open`.
 - **Run `show` before `get`/`set`** rather than guessing a part key (`decl`, `impl`, `Reset:impl`, `ActualValue.Get:impl`), and **check the exit status**: a `set` that never ran leaves the file exactly as unchanged as a `set` that changed nothing.
 - **A new file that is not registered in the `.plcproj` silently does not compile.** `register` is not optional; it is idempotent.
 - **From Windows PowerShell 5.1, move a part with `get --out` and `set --from-file`, never with `>` or a pipe** — both re-encode through the console code page and lose characters such as `²` for good.
 - **Run `pins` before concluding a signal is unused or unwired in an FBD or LD caller** — that wiring lives in the network XML, where a text search finds nothing. Claim "comments only" with `code-equal`, not by eye.
+
+### `xae_edit.ps1`
+
+The same edits through the user's open XAE: they land in XAE's memory, the editor shows them with an unsaved `*`, and nothing asks to reload. A declaration write is the exception: XAE saves that object at once, and the tool says so. Every edit `tcpou.py` makes has a command here; XAE stamps the GUIDs and registers new files itself, so `reguid` and `register` have no counterpart. Run each line as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 …` from Windows PowerShell 5.1, at the same elevation as XAE. Every option is in `references/tools.md`.
+
+```powershell
+xae_edit.ps1 list                                                       # which XAE holds which solution; run it first
+xae_edit.ps1 show       'TIPC^PLC1^PLC1 Project^POUs^FB_X' -Solution x.sln
+xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl -Out body.st
+xae_edit.ps1 set        '<TreePath>' -Solution x.sln -Part impl -FromFile body.st   # ST only; reads back
+xae_edit.ps1 new        '<Folder>'   -Solution x.sln -Type fb -Name FB_Pump [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-Returns BOOL] [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-property '<PouPath>' -Solution x.sln -Name Speed -Returns LREAL [-NoSet]
+xae_edit.ps1 save       '<TreePath>' -Solution x.sln                    # that POU only, never Save All
+xae_edit.ps1 build                   -Solution x.sln                    # builds in the user's XAE
+```
+
+- **`new -Type`** is `fb`, `prg`, `fun`, `dut` (struct), `enum`, `union`, `alias`, `gvl` or `itf`; give `EXTENDS`/`IMPLEMENTS`, a function's return type or a DUT's members in `-FromDecl`. A method or property of an interface takes the interface's path. An accessor is a path too: `set '…^FB_X^Speed^Get' -Part impl`.
+
+- **`save` before `st_review.py` or `git diff`** — they read the disk, which holds a `set` only after the save.
+- **It refuses to touch a POU with unsaved edits it did not make, and `build` refuses while any exist** — a build saves every unsaved object, the user's half-typed edits included. `-Force` and `-SaveUserEdits` override; use them only when the user says so.
+- **Exit 2 with a dialog named means a prompt is open in XAE.** Ask the user to answer it; never click it from a script. Logging in and the online change stay the user's gesture (rule 2).
