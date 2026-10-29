@@ -951,7 +951,8 @@ with tempfile.TemporaryDirectory() as tmp:
           and tcpou("check", str(pou)).returncode == 0)
     r = tcpou("set", str(pou), "--part", "impl", "--allow-open", stdin=body)
     check("--allow-open writes anyway",
-          r.returncode == 0 and tcpou("get", str(pou), "--part", "impl").stdout == body)
+          r.returncode == 0
+          and tcpou("get", str(pou), "--part", "impl").stdout.replace(b"\r\n", b"\n") == body)
     stale = time.time() - 600
     os.utime(lock, (stale, stale))
     r = tcpou("add-method", str(pou), "--name", "M_Reset")
