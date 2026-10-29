@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+**Editing a project the user has open in XAE**
+
+- **`scripts/xae_edit.ps1`** edits, saves and builds through the XAE the user already has open,
+  so XAE no longer asks to reload a file after every agent edit. It finds that XAE in the Running
+  Object Table by its solution and writes through the Automation Interface: the edit lands in
+  XAE's memory, the open editor shows it with an unsaved `*`, and the file changes when XAE saves
+  it. Commands `list`, `show`, `get`, `set`, `add-method`, `add-pou`, `save` and `build`. It never
+  starts an XAE, never logs in and never activates.
+- **It guards the user's XAE.** It stops with the dialog's text when XAE shows one, since XAE then
+  rejects every call and a plain retry hangs. It refuses to edit or save a POU holding unsaved
+  edits it did not make, and to build while any exist, because a build saves them all (`-Force`,
+  `-SaveUserEdits`). It reads back every write. It sets Structured Text only: LD and CFC bodies
+  come back as XML, and writing XML back worked once, which is too little to offer.
+- Built from probe scripts run on XAE 4024.55 by a field agent, not yet run as a tool there:
+  `evals/field-test-xae-edit.md` is the runbook. `tests/xae_edit_tests.ps1` tests what needs no
+  XAE, on Windows PowerShell 5.1 in CI.
+- **`tcpou.py` refuses to write a project an XAE has open**: `set`, `add-method`, `add-property`,
+  `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file is under two minutes
+  old. In the field test a disk edit there raised two reload prompts, and with an unsaved edit
+  held in XAE for the same POU, answering Yes lost that edit. `--allow-open` writes anyway.
+- `references/twincat/xae-automation.md` opens with which tool to use when, and `xae_build.ps1`'s
+  "same solution open" advice points to `xae_edit.ps1 build`.
+
 ## 0.5.0 — 2026-10-26
 
 **Agents and skill**

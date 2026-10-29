@@ -8,6 +8,12 @@ How to edit a real TwinCAT 3 (4024) project from outside the IDE without corrupt
 > source, and methods and properties nest *inside* the POU so a top-level-only parse drops most of
 > the code. This file covers *writing* these files safely, which is the harder half.
 
+> **Never write a project's files on disk while an XAE holds its solution.** XAE asks to reload
+> every file changed behind its back, and an unsaved edit it held for that file can be lost
+> (measured: `xae-automation.md` → *Which tool*). While the solution is open, edit through XAE with
+> `scripts/xae_edit.ps1`; everything below is for a project XAE does not hold. `tcpou.py` refuses
+> to write while XAE's `<project>.project.~u` lock file is fresh.
+
 ## The parsing trap, and why it matters when writing too
 
 Methods and properties are **nested inside** the POU, each with its own `Declaration` and `Implementation`. A naive "read the top-level `<ST>` block" grabs only the FB body and silently drops every method — the bulk of the logic in OOP code.
@@ -34,7 +40,7 @@ Every subcommand and flag — `new --shape`, part keys, the PowerShell encoding 
 
 ## The silent failure: `.plcproj` registration
 
-**A `.TcPOU` on disk that is not listed in `.plcproj` is not compiled — with no error.** The IDE adds the entry when you create a file through it; a file created from the shell will not have one.
+**A `.TcPOU` on disk that is not listed in `.plcproj` is not compiled — with no error.** The IDE adds the entry when you create a file through it, and so does `xae_edit.ps1 add-pou`; a file created from the shell will not have one.
 
 ```xml
 <ItemGroup>

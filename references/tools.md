@@ -1,8 +1,9 @@
-# Tools — the reviewer and the `.TcPOU` editor in full
+# Tools — the reviewer and the two editors in full
 
 `SKILL.md` carries the commands and the few rules that cause damage when missed. This file
-has the rest: what every flag and exit status means, and each `tcpou.py` subcommand's
-behaviour. Read it when a tool does something you did not expect, before working around it.
+has the rest: what every flag and exit status means, and each `tcpou.py` and `xae_edit.ps1`
+subcommand's behaviour. Read it when a tool does something you did not expect, before working
+around it.
 
 ## Running Python on Windows
 
@@ -74,3 +75,63 @@ py -3 scripts/tcpou.py code-equal <file|dir>... [--ref REV | --against FILE] # c
 **Run `show` before `get`/`set` rather than guessing a part key.** A wrong key exits 1 and prints the real ones — but if you then verify your own edit by hashing the file, a `set` that never ran looks exactly like a `set` that changed nothing. Check the exit status, not just the bytes.
 
 **A new file that is not registered in the `.plcproj` silently does not compile.** `tcpou.py register` is not optional; it is idempotent, so running it twice is safe.
+
+**`set`, `add-method`, `add-property`, `register` and `reguid` refuse a project an XAE has open**, exit 1, and change nothing. They look for a `<project>.project.~u` lock file that XAE rewrote in the last two minutes, in the file's folder and each one above it up to the folder holding the `.sln`. A write there makes XAE ask to reload, and can lose edits it holds unsaved (`twincat/xae-automation.md`). Edit through that XAE with `xae_edit.ps1` instead. `--allow-open` writes anyway; use it only when the user has said to expect the reload prompt. `show`, `get`, `check`, `pins` and `code-equal` only read, and never refuse.
+
+## `scripts/xae_edit.ps1`
+
+Edits, saves and builds through the XAE the user has open, so XAE never asks to reload. Windows with
+XAE only, in Windows PowerShell 5.1 (`powershell.exe`, not `pwsh`) at the same elevation as XAE.
+Why it works and what was measured is in `twincat/xae-automation.md`.
+
+```powershell
+# each line runs as: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 <command> ...
+xae_edit.ps1 list                                                         # every XAE: PID, solution, dialogs
+xae_edit.ps1 show       '<TreePath>' -Solution x.sln                      # type, language, file, saved, children
+xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl -Out body.st
+xae_edit.ps1 set        '<TreePath>' -Solution x.sln -Part impl -FromFile body.st
+xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-pou    '<Folder>'   -Solution x.sln -Name FB_Pump [-Lang st|ld]
+xae_edit.ps1 save       '<TreePath>' -Solution x.sln
+xae_edit.ps1 build                   -Solution x.sln [-SaveUserEdits] [-PublicAssemblies <dir>]
+```
+
+**Tree paths** are XAE's, joined with `^`: `TIPC^PLC1^PLC1 Project^POUs^FB_X` for a POU,
+`…^FB_X^M_Reset` for one of its methods. Quote them: they contain spaces. A path that does not
+exist exits 1 and prints what its nearest existing parent holds; `show` with no path lists `TIPC`.
+
+| Command | Does | Refuses |
+|---|---|---|
+| `list` | Every XAE in the Running Object Table, with its solution or the dialog it shows; and any XAE process missing from the table, which runs at another elevation | — |
+| `show` | Item type (604 function block, 609 method), language (1 ST, 6 LD), the file it lives in, whether that file is saved and by whom it was edited, and its children | — |
+| `get` | Writes the part's text, as XAE holds it, to `-Out` (UTF-8, no BOM, LF). `-Part` defaults to `impl`. An LD/CFC body comes out as its XML | — |
+| `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back | an LD/FBD/CFC/SFC/IL body; a file of XML; a POU with unsaved edits it did not make |
+| `add-method` | Creates the method in that POU, then sets its declaration and body when given | a name the POU already has; a POU with unsaved edits it did not make |
+| `add-pou` | Creates a function block in that folder. XAE writes the `.TcPOU` and registers it in the `.plcproj` at once: no `register` needed | a name the folder already has |
+| `save` | Saves the file the path lives in, so a method saves its POU. Never Save All | a POU with unsaved edits it did not make |
+| `build` | Lists what the build will save, builds in that XAE, prints the Build pane and the compiler entries of the Error List | when an unsaved PLC object holds edits it did not make |
+
+- **Input files** (`-FromFile`, `-FromDecl`, `-FromImpl`) are UTF-8 with or without a BOM, or UTF-16
+  with one; anything else is refused rather than written into the POU as U+FFFD. `get` takes `-Out`
+  and never prints to the console, whose code page loses characters such as `²`.
+- **A `set` is not on disk until `save`.** `st_review.py` and `git diff` read the disk, so save
+  before reviewing. Prefer `get -Out` to read code the user may have changed in XAE: the file can be
+  older than what XAE holds.
+- **`-Force`** lets `set`, `add-method` and `save` go ahead on a POU that holds someone else's
+  unsaved edits: `set` replaces the whole part, so their edits in that part are lost, and `save`
+  writes all of them to disk. **`-SaveUserEdits`** lets `build` save them. Both are for when the
+  user has said so. Without them the tool tells its own unsaved edits from the user's by a fingerprint of the POU
+  it takes after each write, kept in `%TEMP%\twincat-st-xae_edit-<hash>.txt` and void once XAE
+  restarts.
+- **`add-pou` makes function blocks only**, in ST or LD. Programs, functions, properties, DUTs and
+  GVLs take type codes nobody has verified yet; make those in XAE, or with `tcpou.py` while XAE is
+  closed. To give a new block `EXTENDS`, `set` its declaration.
+- **`build` needs `envdte.dll`** from the XAE's own `PublicAssemblies` folder, like `xae_build.ps1`:
+  pass `-PublicAssemblies` when XAE is not installed in the default place. It rewrites `.tmc`,
+  `.xti` and `_CompileInfo` like any build, without a prompt. Quote its `Build complete -- N errors,
+  M warnings` line as the evidence.
+
+**Exit code:** 0 = done; 1 = failed, refused, a readback that differs from what was set, or a build
+with a failed project; 2 = could not run: no XAE holds the solution, several do, XAE shows a dialog
+or did not answer for 30 s, or the wrong PowerShell. On exit 2 because of a dialog, ask the user to
+answer it; never click it from a script.

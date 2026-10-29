@@ -25,9 +25,11 @@ defect this skill leads with. This is the other half of the gate:
   * pins reads an LD network as XAE's own PLCopen export shows it: rail input,
     negations, the owning method, coil and RETURN rungs - and refuses a CFC body
   * code-equal is not fooled by CRLF inside a string literal (core.autocrlf)
+  * tcpou.py refuses to write a project an XAE holds open, where the write would
+    raise XAE's reload prompt and can lose an edit XAE holds unsaved
   * a missing path is reported rather than raising
   * SKILL.md's description fits the 1,024-character limit (0.2.0 shipped over
-    it) and its command block names every tcpou.py subcommand
+    it) and its command blocks name every tcpou.py and xae_edit.ps1 subcommand
   * agents/openai.yaml carries the two strings Codex lists, at lengths it accepts
 
 Every subprocess starts without PYTHONIOENCODING and PYTHONUTF8 unless a test sets
@@ -46,6 +48,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -913,6 +916,55 @@ with tempfile.TemporaryDirectory() as tmp:
     check("an interface member refuses an access modifier",
           tcpou("add-method", str(itf), "--name", "P2", "--access", "PRIVATE").returncode == 1)
 
+# --- a project an XAE holds open is not written behind its back ---------------
+# XAE keeps <project>.project.~u beside a project it has open and rewrites it about
+# every 35 s. A disk write there makes it ask to reload, and in one field test Yes
+# dropped an unsaved edit XAE held for the same POU. xae_edit.ps1 is the route then.
+with tempfile.TemporaryDirectory() as tmp:
+    sln = Path(tmp) / "Line1"
+    plc = sln / "Line1" / "PLC1"
+    (plc / "POUs").mkdir(parents=True)
+    (sln / "Line1.sln").write_text("")
+    pou = plc / "POUs" / "FB_Open.TcPOU"
+    tcpou("new", "--type", "fb", "--name", pou.stem, "--dir", str(pou.parent))
+    plcproj = plc / "PLC1.plcproj"
+    plcproj.write_text('<Project>\n  <ItemGroup>\n  </ItemGroup>\n</Project>\n')
+    lock = plc / "PLC1.project.~u"
+    lock.write_text("user\r\nPC\r\n4242\r\n")
+    pou_before, proj_before = pou.read_bytes(), plcproj.read_bytes()
+    body = b"nCount := nCount + 1;\n"
+
+    r = tcpou("set", str(pou), "--part", "impl", stdin=body)
+    err = r.stderr.decode("utf-8", "replace")
+    check("set refuses a POU while XAE holds its project, and names xae_edit.ps1",
+          r.returncode == 1 and "xae_edit.ps1" in err and pou.read_bytes() == pou_before, err)
+    refused = [c for c in (["add-method", str(pou), "--name", "M_Reset"],
+                           ["add-property", str(pou), "--name", "Speed", "--type", "LREAL"],
+                           ["reguid", str(pou)],
+                           ["register", str(plcproj), str(pou)])
+               if tcpou(*c).returncode != 1]
+    check("add-method, add-property, reguid and register refuse it too",
+          not refused and pou.read_bytes() == pou_before and plcproj.read_bytes() == proj_before,
+          repr(refused))
+    check("reading a held project is not refused",
+          tcpou("get", str(pou), "--part", "impl").returncode == 0
+          and tcpou("check", str(pou)).returncode == 0)
+    r = tcpou("set", str(pou), "--part", "impl", "--allow-open", stdin=body)
+    check("--allow-open writes anyway",
+          r.returncode == 0 and tcpou("get", str(pou), "--part", "impl").stdout == body)
+    stale = time.time() - 600
+    os.utime(lock, (stale, stale))
+    r = tcpou("add-method", str(pou), "--name", "M_Reset")
+    check("a lock no XAE has rewritten for minutes does not block",
+          r.returncode == 0, r.stderr.decode("utf-8", "replace"))
+
+    # The walk stops at the solution's folder: a lock above it is another project's.
+    os.utime(lock, None)
+    lock.replace(Path(tmp) / "Other.project.~u")
+    r = tcpou("set", str(pou), "--part", "impl", stdin=body)
+    check("a lock above the solution folder is not this project's", r.returncode == 0,
+          r.stderr.decode("utf-8", "replace"))
+
 # --- SKILL.md stays loadable and documents every subcommand ------------------
 # 0.2.0 shipped a description over the limit, and add-method/add-property went
 # undocumented in SKILL.md for a release. Neither had anything guarding it.
@@ -925,6 +977,12 @@ if desc:
 subcommands = re.findall(r'add_parser\("([a-z-]+)"', TCPOU.read_text(encoding="utf-8"))
 undocumented = [c for c in subcommands if not re.search(rf"tcpou\.py {re.escape(c)}\s", skill)]
 check("SKILL.md names every tcpou.py subcommand", bool(subcommands) and not undocumented,
+      ", ".join(undocumented))
+xae_cmds = re.search(r"^\$script:Commands = @\((.*)\)$",
+                     (ROOT / "scripts" / "xae_edit.ps1").read_text(encoding="utf-8"), re.M)
+xae_cmds = re.findall(r"'([a-z-]+)'", xae_cmds.group(1)) if xae_cmds else []
+undocumented = [c for c in xae_cmds if not re.search(rf"xae_edit\.ps1 {re.escape(c)}\s", skill)]
+check("SKILL.md names every xae_edit.ps1 command", bool(xae_cmds) and not undocumented,
       ", ".join(undocumented))
 # Codex shows these two strings in its skill list; OpenAI asks for 25-64 characters.
 openai_yaml = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")

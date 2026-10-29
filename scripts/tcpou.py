@@ -26,6 +26,7 @@ import argparse
 import os
 import re
 import sys
+import time
 import uuid
 import xml.etree.ElementTree as ET
 
@@ -313,6 +314,39 @@ def add_member(path, kind, name, typ=None, access=None, setter=True):
 
 
 # -- .plcproj registration ---------------------------------------------------
+
+# While a solution is open, XAE keeps <project>.project.~u in the project's folder and
+# rewrites it about every 35 s. A disk write to a project XAE holds raises its "changed
+# outside the environment" prompt, and in one field test answering Yes dropped an
+# unsaved edit XAE held for the same POU. Such a project is edited through XAE
+# (scripts/xae_edit.ps1). A lock older than this was left by an XAE that has exited.
+LOCK_FRESH_S = 120
+
+
+def xae_lock(path):
+    """(lock file, seconds since XAE rewrote it) for an XAE holding `path`'s project, or None.
+
+    Walks up from the file and stops at the folder that holds the .sln."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        try:
+            names = os.listdir(d)
+        except OSError:
+            names = []
+        for n in names:
+            if n.lower().endswith(".project.~u"):
+                lock = os.path.join(d, n)
+                try:
+                    age = time.time() - os.path.getmtime(lock)
+                except OSError:
+                    continue
+                if age < LOCK_FRESH_S:
+                    return lock, age
+        parent = os.path.dirname(d)
+        if parent == d or any(n.lower().endswith(".sln") for n in names):
+            return None
+        d = parent
+
 
 def register(plcproj, files):
     raw = open(plcproj, "rb").read()
@@ -699,6 +733,9 @@ def main():
     p.add_argument("--part", required=True)
     p.add_argument("--from-file", help="read new source from this file (default: stdin); "
                                        "UTF-8 with or without a BOM, or UTF-16 with one")
+    open_help = ("write although an XAE has this project open: it will ask to reload the file, "
+                 "and edits it holds unsaved for it are at risk. Use xae_edit.ps1 instead")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("new", help="scaffold a new object")
     p.add_argument("--type", required=True, choices=["fb", "prg", "fun", "dut", "gvl"])
@@ -718,6 +755,7 @@ def main():
     p.add_argument("--returns", help="return type, e.g. BOOL (default: none)")
     p.add_argument("--access", type=str.upper, choices=access,
                    help="access modifier (default: none, which TwinCAT reads as PUBLIC)")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("add-property", help="append an empty PROPERTY to a POU or interface")
     p.add_argument("file")
@@ -725,13 +763,16 @@ def main():
     p.add_argument("--type", required=True, help="property type, e.g. LREAL")
     p.add_argument("--access", type=str.upper, choices=access)
     p.add_argument("--no-set", action="store_true", help="getter only (read-only property)")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("register", help="add files to a .plcproj")
     p.add_argument("plcproj")
     p.add_argument("files", nargs="+")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("reguid", help="give every object in a file a fresh Id GUID")
     p.add_argument("files", nargs="+")
+    p.add_argument("--allow-open", action="store_true", help=open_help)
 
     p = sub.add_parser("pins", help="list the pin wiring of every FBD/LD box (read-only)")
     p.add_argument("file")
@@ -756,6 +797,18 @@ def main():
     # is UTF-8 too, so a warning that quotes the text survives a redirect.
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
+
+    if hasattr(a, "allow_open") and not a.allow_open:
+        targets = [a.plcproj] if a.cmd == "register" else a.files if a.cmd == "reguid" else [a.file]
+        for path in targets:
+            held = xae_lock(path)
+            if held:
+                print(f"refused: XAE has this project open ({held[0]}, rewritten "
+                      f"{held[1]:.0f} s ago). A write on disk makes it ask to reload, and edits "
+                      f"it holds unsaved can be lost. Edit through that XAE with "
+                      f"scripts/xae_edit.ps1, or ask the user to close the solution. "
+                      f"--allow-open writes anyway.", file=sys.stderr)
+                return 1
 
     if a.cmd == "show":
         f = TcFile(a.file)

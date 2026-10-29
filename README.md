@@ -76,6 +76,8 @@ Details, including where the grader flatters either arm: [`evals/results-iterati
   touching its GUIDs, BOM or line endings; `new` scaffolds an object with a fresh GUID;
   `register` adds it to the `.plcproj`; `reguid` and `check` repair and validate; `pins` lists
   the wiring of FBD/LD boxes; `code-equal` proves an edit changed only comments.
+- **`xae_edit.ps1`** — on a Windows PC where the solution is open in XAE, edits, saves and builds
+  through that XAE, so it never asks to reload a file. It leaves the user's unsaved edits alone.
 - **`xae_build.ps1`** — on a Windows PC with XAE, builds the solution in a hidden XAE and prints
   the real compiler output. It never activates.
 
@@ -161,6 +163,7 @@ twincat-st/
 ├── scripts/
 │   ├── st_review.py                    the reviewer — 32 rules, PLCopen-keyed
 │   ├── tcpou.py                        surgical .TcPOU editing, FBD/LD pins, comments-only proof
+│   ├── xae_edit.ps1                    edit and build through the user's open XAE, no reload prompt
 │   └── xae_build.ps1                   headless XAE build (Windows + XAE only, never activates)
 ├── references/
 │   ├── cyclic-execution-rules.md       CORE — the execution model + review rubric
@@ -176,7 +179,7 @@ twincat-st/
 │   ├── twincat.md                      VENDOR — libraries, FB_init, online change, 4024
 │   ├── twincat/project-files.md        VENDOR — .TcPOU/.plcproj editing, git hygiene
 │   ├── twincat/ads-and-diagnostics.md  VENDOR — ADS, EtherCAT triage
-│   ├── twincat/xae-automation.md       VENDOR — headless builds, what a build rewrites
+│   ├── twincat/xae-automation.md       VENDOR — builds, edits through the open XAE
 │   └── twincat/tasks-and-exceptions.md VENDOR — shared data between tasks, PLC exceptions
 ├── templates/                          known-good FB / enum / TcUnit skeletons
 ├── examples/                           real MIT/BSD-2 code to pattern-match against
@@ -258,6 +261,9 @@ it, and `SKILL.md` rule 3 makes the agent say so every time.
 
 **Not yet verified on a TwinCAT install** (not yet tried in a field round)
 
+- **`xae_edit.ps1`.** Every call it makes was measured with probe scripts on XAE 4024.55 (no
+  prompt, file untouched until saved, the open editor showing the edit), but the tool itself has
+  not run there. `evals/field-test-xae-edit.md` is the runbook. Its unit tests run on Windows in CI.
 - **`VAR RETAIN` with a retain handler.** Rule 9's *kept* cells for `RETAIN` restate InfoSys; no
   controller with NOVRAM and a retain handler has been tried.
 - **`__TRY` on a 32-bit runtime.** Only an x64 runtime was available, and it refuses `__TRY`.
@@ -273,9 +279,10 @@ judged real or false, and real house code for `examples/` — see `examples/READ
 ```bash
 py -3 tests/run_tests.py          # every rule fires; known false positives stay silent
 py -3 evals/selftest.py           # the eval grader: gold scores full, null scores zero
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\xae_edit_tests.ps1   # xae_edit.ps1, no XAE needed
 ```
 
-Both run in CI, the test suite on Linux and on Windows. These are plain scripts, not pytest suites. `evals/README.md` explains how the
+All three run in CI: the test suite on Linux and on Windows, the PowerShell tests on Windows. These are plain scripts, not pytest suites. `evals/README.md` explains how the
 skill itself is evaluated against a no-skill baseline.
 
 ## Licence
