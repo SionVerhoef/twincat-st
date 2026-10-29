@@ -191,18 +191,21 @@ The five that cause damage when missed:
 
 ### `xae_edit.ps1`
 
-The same edits through the user's open XAE: they land in XAE's memory, the editor shows them with an unsaved `*`, and nothing asks to reload. Run each line as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 …` from Windows PowerShell 5.1, at the same elevation as XAE. Every option is in `references/tools.md`.
+The same edits through the user's open XAE: they land in XAE's memory, the editor shows them with an unsaved `*`, and nothing asks to reload. Every edit `tcpou.py` makes has a command here; XAE stamps the GUIDs and registers new files itself, so `reguid` and `register` have no counterpart. Run each line as `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 …` from Windows PowerShell 5.1, at the same elevation as XAE. Every option is in `references/tools.md`.
 
 ```powershell
 xae_edit.ps1 list                                                       # which XAE holds which solution; run it first
 xae_edit.ps1 show       'TIPC^PLC1^PLC1 Project^POUs^FB_X' -Solution x.sln
 xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl -Out body.st
 xae_edit.ps1 set        '<TreePath>' -Solution x.sln -Part impl -FromFile body.st   # ST only; reads back
-xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-FromDecl d.st] [-FromImpl i.st]
-xae_edit.ps1 add-pou    '<Folder>'   -Solution x.sln -Name FB_Pump [-Lang st|ld]  # XAE registers it
+xae_edit.ps1 new        '<Folder>'   -Solution x.sln -Type fb -Name FB_Pump [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-Returns BOOL] [-FromDecl d.st] [-FromImpl i.st]
+xae_edit.ps1 add-property '<PouPath>' -Solution x.sln -Name Speed -Returns LREAL [-NoSet]
 xae_edit.ps1 save       '<TreePath>' -Solution x.sln                    # that POU only, never Save All
 xae_edit.ps1 build                   -Solution x.sln                    # builds in the user's XAE
 ```
+
+- **`new -Type`** is `fb`, `prg`, `fun`, `dut` (struct), `enum`, `union`, `alias`, `gvl` or `itf`; give `EXTENDS`/`IMPLEMENTS`, a function's return type or a DUT's members in `-FromDecl`. A method or property of an interface takes the interface's path. An accessor is a path too: `set '…^FB_X^Speed^Get' -Part impl`.
 
 - **`save` before `st_review.py` or `git diff`** — they read the disk, which holds a `set` only after the save.
 - **It refuses to touch a POU with unsaved edits it did not make, and `build` refuses while any exist** — a build saves every unsaved object, the user's half-typed edits included. `-Force` and `-SaveUserEdits` override; use them only when the user says so.

@@ -9,6 +9,8 @@ PowerShell 5.1, the only PowerShell the script supports.
   * the guards, on fake tree items: the build guard finds unsaved POUs and fails closed on one it
     cannot read; a POU the user typed in after the tool's edit is refused; -Force goes ahead once
     and never makes the user's edits pass as the tool's own afterwards
+  * CreateChild on fake tree items: a vInfo form XAE refuses is followed by the next one, and an
+    error with the object created anyway stops instead of creating it twice
   * the script itself, run as a child process: its argument errors exit 2, 'list' with no XAE
     exits 0 (so the C# interop compiles and the ROT enumerates), and a solution no XAE holds
     exits 2 with the advice to open it
@@ -37,13 +39,13 @@ $body = Join-Path $tmp 'body.st'
 Set-Content -LiteralPath $body -Value 'x := 1;' -Encoding Ascii
 
 # --- arguments ----------------------------------------------------------------
-$ok = @{ Solution = 'x.sln'; TreePath = 'TIPC^PLC1'; Part = 'impl'; FromFile = $body; Out = 'o.st'; Name = 'M_New' }
+$ok = @{ Solution = 'x.sln'; TreePath = 'TIPC^PLC1'; Part = 'impl'; FromFile = $body; Out = 'o.st'; Name = 'M_New'; Returns = 'LREAL' }
 Check 'list needs nothing' ((Get-ArgumentError 'list' @{}) -eq '')
 Check 'an unknown command is refused' ((Get-ArgumentError 'frobnicate' $ok) -like 'unknown command*')
 Check 'every other command needs -Solution' ((Get-ArgumentError 'show' @{}) -like '*-Solution*')
 Check 'show defaults its tree path' ((Get-ArgumentError 'show' @{ Solution = 'x.sln' }) -eq '')
 Check 'build needs no tree path' ((Get-ArgumentError 'build' @{ Solution = 'x.sln' }) -eq '')
-foreach ($c in 'get', 'set', 'add-method', 'add-pou', 'save') {
+foreach ($c in 'get', 'set', 'new', 'add-method', 'add-property', 'save') {
     $a = $ok.Clone(); $a.Remove('TreePath')
     Check "$c needs a tree path" ((Get-ArgumentError $c $a) -like '*tree path*')
 }
@@ -58,6 +60,18 @@ Check 'a missing input file is named' ((Get-ArgumentError 'set' $a) -like 'no su
 $a = $ok.Clone(); $a.Name = '1st'
 Check 'add-method refuses a name that is no identifier' ((Get-ArgumentError 'add-method' $a) -like '*-Name*')
 Check 'a complete set passes' ((Get-ArgumentError 'set' $ok) -eq '')
+$a = $ok.Clone(); $a.Remove('Returns')
+Check 'add-property needs -Returns, the type of the property' ((Get-ArgumentError 'add-property' $a) -like '*-Returns*')
+$a = $ok.Clone(); $a.Returns = "INT;`r`nEND_VAR"
+Check '-Returns takes one type, not a fragment of code' ((Get-ArgumentError 'add-method' $a) -like '-Returns takes one type*')
+$a = $ok.Clone(); $a.Type = 'gvl'; $a.FromImpl = $body
+Check 'new refuses a body for an object that has none' ((Get-ArgumentError 'new' $a) -like '*has no body*')
+$a.Type = 'fun'
+Check 'new takes a body for a function' ((Get-ArgumentError 'new' $a) -eq '')
+Check 'every -Type has a CreateChild code' (@('fb', 'prg', 'fun', 'dut', 'enum', 'union', 'alias', 'gvl', 'itf' |
+    Where-Object { -not $script:NewTypes[$_] }).Count -eq 0)
+Check 'a vInfo form is printed with its type' (((Format-VInfo $null) -eq 'null') -and
+    ((Format-VInfo 1) -eq 'Int32 1') -and ((Format-VInfo ([string[]] @('1', 'INT'))) -eq 'String[] [1, INT]'))
 
 Check 'identifiers' ((Test-Identifier 'M_Reset') -and (Test-Identifier '_x1') -and -not (Test-Identifier '1x') -and
                      -not (Test-Identifier 'a b') -and -not (Test-Identifier "M_X`n") -and -not (Test-Identifier ''))
@@ -178,12 +192,12 @@ Check 'the build guard finds the unsaved POU, and counts unreadable ones as not 
 # Stop-Edit exits the process; here it throws, so a refusal can be checked.
 function Stop-Edit([int] $code, [string] $message) { throw "STOP $code $message" }
 function Test-Guard($owner) { try { Assert-OwnerClean $owner; 'passed' } catch { $_.Exception.Message } }
-$script:Xae = @{ Pid = 7 }; $script:StateFile = Join-Path $tmp 'guard.txt'; $script:State = @{}; $script:Forced = @{}
+$script:Xae = @{ Pid = $PID }; $script:StateFile = Join-Path $tmp 'guard.txt'; $script:State = @{}; $script:Forced = @{}
 $owner = @{ Item = $fbA; Path = 'TIPC^PLC1^PLC1 Project^POUs^FB_A' }
 Check 'unsaved edits nobody recorded are refused' ((Test-Guard $owner) -like 'STOP 1 refused*')
 Update-OwnerState $owner
 Check "the tool's own recorded edit goes ahead" ((Test-Guard $owner) -eq 'passed')
-Check 'and is kept in the state file' ((Read-EditState $script:StateFile 7).Count -eq 1)
+Check 'and is kept in the state file' ((Read-EditState $script:StateFile $PID).Count -eq 1)
 $m1.ImplementationText = 'M_X := FALSE; (* typed by the user *)'
 Check "typing in another part of the POU after the tool's edit is refused" ((Test-Guard $owner) -like 'STOP 1*')
 $Force = $true
@@ -191,9 +205,34 @@ Check '-Force goes ahead' ((Test-Guard $owner) -eq 'passed')
 Update-OwnerState $owner
 $Force = $false
 Check "after -Force, the user's edits never pass as the tool's own" (
-    (Test-Guard $owner) -like 'STOP 1*' -and (Read-EditState $script:StateFile 7).Count -eq 0)
+    (Test-Guard $owner) -like 'STOP 1*' -and (Read-EditState $script:StateFile $PID).Count -eq 0)
 $fbA.VSProjectItem.Saved = $true
 Check 'a saved POU always goes ahead' ((Test-Guard $owner) -eq 'passed')
+
+# CreateChild: Beckhoff's documented vInfo forms disagree, so the tool tries them in turn.
+$pous = New-Fake 'POUs' 'C:\p' $true
+$pous | Add-Member ScriptMethod CreateChild {
+    param($n, $code, $before, $v)
+    if ($v -is [string[]]) { throw 'Type mismatch' }
+    $c = New-Fake $n "C:\p\$n.TcPOU" $true
+    $this.Kids = @($this.Kids) + $c; $this.ChildCount = $this.Kids.Count
+    $c
+}
+$forms = @(); $forms += , ([string[]] @('1', 'INT')); $forms += , ([object[]] @(1, 'INT'))
+$made = New-TreeChild @{ Item = $pous; Path = 'TIPC^PLC1^PLC1 Project^POUs' } 'F_Calc' 603 $forms
+Check 'a vInfo form XAE refuses is followed by the next one' (
+    $made.Path -eq 'TIPC^PLC1^PLC1 Project^POUs^F_Calc' -and $pous.ChildCount -eq 1)
+$duts = New-Fake 'DUTs' 'C:\p' $true
+$duts | Add-Member ScriptMethod CreateChild {
+    param($n, $code, $before, $v)
+    $this.Kids = @($this.Kids) + (New-Fake $n "C:\p\$n.TcDUT" $true); $this.ChildCount = $this.Kids.Count
+    throw 'Unspecified error'
+}
+$forms = @(); $forms += , $null; $forms += ''
+function Test-Create($t, $n, $code, $forms) { try { [void] (New-TreeChild $t $n $code $forms); 'passed' } catch { $_.Exception.Message } }
+$r = Test-Create @{ Item = $duts; Path = 'TIPC^PLC1^PLC1 Project^DUTs' } 'ST_A' 606 $forms
+Check 'an error with the object created anyway stops, rather than creating it twice' (
+    $r -like 'STOP 1*anyway*' -and $duts.ChildCount -eq 1) $r
 
 # --- the script as a child process --------------------------------------------
 function Invoke-Child([string[]] $argv) {

@@ -11,13 +11,19 @@ in and never activates. With XAE closed, use tcpou.py and xae_build.ps1 instead.
   show       [<TreePath>]                              type, language, file, unsaved state, children (default TIPC)
   get        <TreePath> [-Part decl|impl] -Out <file>  write the text XAE holds to a UTF-8 file (LD/CFC: XML)
   set        <TreePath> -Part decl|impl -FromFile <f>  replace it in XAE's memory, then read it back. impl: ST only
-  add-method <PouPath> -Name M_X [-FromDecl f] [-FromImpl f]   a new method in that POU
-  add-pou    <FolderPath> -Name FB_X [-Lang st|ld]     a new function block; XAE writes its file and registers it
+  new        <FolderPath> -Type <t> -Name X [-Lang st|ld] [-Returns T] [-FromDecl f] [-FromImpl f]
+                                                       a new object; XAE writes its file and registers it.
+                                                       -Type fb (default), prg, fun, dut (struct), enum,
+                                                       union, alias, gvl, itf (interface)
+  add-method <PouPath> -Name M_X [-Returns T] [-FromDecl f] [-FromImpl f]   a new method in a POU or interface
+  add-property <PouPath> -Name P -Returns T [-FromDecl f] [-NoSet]  a new property with Get (and Set) accessors
   save       <TreePath>                                save that object's file (a method saves its POU). Never Save All
   build                                                build in this XAE and print the compiler output
 
-  -Force           set, add-method, save: go ahead although the POU holds unsaved edits this tool did not
-                   make. set replaces the whole part, so those edits in that part are lost
+  An accessor is a tree path too: set '<PouPath>^Speed^Get' -Part impl -FromFile get.st
+
+  -Force           set, add-method, add-property, save: go ahead although the POU holds unsaved edits
+                   this tool did not make. set replaces the whole part, so those edits in that part are lost
   -SaveUserEdits   build: go ahead although it will save unsaved edits this tool did not make
   -PublicAssemblies '<IDE>\PublicAssemblies'   build: where envdte.dll lives for this XAE
 
@@ -40,15 +46,23 @@ param(
     [string] $FromDecl = '',
     [string] $FromImpl = '',
     [ValidateSet('st', 'ld')] [string] $Lang = 'st',
+    [ValidateSet('fb', 'prg', 'fun', 'dut', 'enum', 'union', 'alias', 'gvl', 'itf')] [string] $Type = 'fb',
+    [string] $Returns = '',
+    [switch] $NoSet,
     [switch] $Force,
     [switch] $SaveUserEdits,
     [string] $PublicAssemblies = 'C:\Program Files (x86)\Beckhoff\TcXaeShell\Common7\IDE\PublicAssemblies'
 )
 $ErrorActionPreference = 'Stop'
 
-$script:Commands = @('list', 'show', 'get', 'set', 'add-method', 'add-pou', 'save', 'build')
+$script:Commands = @('list', 'show', 'get', 'set', 'new', 'add-method', 'add-property', 'save', 'build')
 $script:Forced = @{}    # owners this run went ahead on with -Force: never recorded as its own
-$script:Usage = 'usage: xae_edit.ps1 list | show|get|set|add-method|add-pou|save <TreePath> -Solution <x.sln> | build -Solution <x.sln>  (see the header of xae_edit.ps1)'
+$script:Usage = 'usage: xae_edit.ps1 list | show|get|set|new|add-method|add-property|save <TreePath> -Solution <x.sln> | build -Solution <x.sln>  (see the header of xae_edit.ps1)'
+
+# CreateChild sub types, from Beckhoff's Automation Interface table "Creating PLC objects". Only
+# 604 (function block) and 609 (method) have been measured; the field run checks the rest.
+$script:NewTypes = @{ prg = 602; fun = 603; fb = 604; enum = 605; dut = 606; union = 607; alias = 623; gvl = 615; itf = 618 }
+$script:ItfType = 618
 
 # --- Pure helpers: no XAE, no COM. tests/xae_edit_tests.ps1 dot-sources this file for them. ---
 
@@ -56,11 +70,14 @@ function Get-ArgumentError([string] $cmd, [hashtable] $a) {
     if ($cmd -notin $script:Commands) { return "unknown command '$cmd'" }
     if ($cmd -eq 'list') { return '' }
     if (-not $a.Solution) { return '-Solution <x.sln> is required' }
-    if (($cmd -in @('get', 'set', 'add-method', 'add-pou', 'save')) -and -not $a.TreePath) { return "$cmd needs a tree path" }
+    if (($cmd -in @('get', 'set', 'new', 'add-method', 'add-property', 'save')) -and -not $a.TreePath) { return "$cmd needs a tree path" }
     if ($cmd -eq 'get' -and -not $a.Out) { return 'get needs -Out <file>' }
     if ($cmd -eq 'set' -and -not $a.Part) { return 'set needs -Part decl or -Part impl' }
     if ($cmd -eq 'set' -and -not $a.FromFile) { return 'set needs -FromFile <file>' }
-    if (($cmd -in @('add-method', 'add-pou')) -and -not (Test-Identifier $a.Name)) { return "$cmd needs -Name, an identifier such as M_Reset or FB_Pump" }
+    if (($cmd -in @('new', 'add-method', 'add-property')) -and -not (Test-Identifier $a.Name)) { return "$cmd needs -Name, an identifier such as M_Reset or FB_Pump" }
+    if ($cmd -eq 'add-property' -and -not $a.Returns) { return 'add-property needs -Returns <type>, the type of the property' }
+    if ($a.Returns -match '[\r\n;]') { return '-Returns takes one type, such as LREAL or ARRAY[0..9] OF INT' }
+    if ($cmd -eq 'new' -and $a.FromImpl -and $a.Type -notin @('fb', 'prg', 'fun')) { return "a $($a.Type) has no body: -FromImpl is for fb, prg and fun" }
     foreach ($f in $a.FromFile, $a.FromDecl, $a.FromImpl) {
         if ($f -and -not (Test-Path -LiteralPath $f -PathType Leaf)) { return "no such file: $f" }
     }
@@ -68,6 +85,12 @@ function Get-ArgumentError([string] $cmd, [hashtable] $a) {
 }
 
 function Test-Identifier([string] $name) { $name -match '^[A-Za-z_][A-Za-z0-9_]*\z' }
+
+function Format-VInfo($v) {
+    if ($null -eq $v) { 'null' }
+    elseif ($v -is [array]) { "$($v.GetType().Name) [$($v -join ', ')]" }
+    else { "$($v.GetType().Name) $v" }
+}
 
 # Graphical bodies (LD, FBD, CFC) come back as XmlArchive XML; Structured Text never starts with '<'.
 function Test-XmlBody([string] $text) { $text -match '^\s*<' }
@@ -629,38 +652,106 @@ function Invoke-Set {
     Say "set the $Part of $($t.Path) in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
 }
 
-function Invoke-AddMethod {
+function Get-ItemType($item) { try { [int] $item.ItemType } catch { 0 } }
+
+# CreateChild with the first vInfo form XAE accepts, each tried only while the child does not
+# exist yet. Beckhoff's table and its own samples disagree on some forms, and only the function
+# block's and the method's were measured, so the form that worked is printed: the field run keeps
+# that one. Returns the new item inside a hashtable, which the pipeline does not unroll.
+function New-TreeChild($t, [string] $name, [int] $code, [object[]] $forms) {
+    $errors = @()
+    for ($i = 0; $i -lt $forms.Count; $i++) {
+        Assert-NoDialog
+        $child = $null
+        try { $child = $t.Item.CreateChild($name, $code, '', $forms[$i]) } catch { $errors += "vInfo $(Format-VInfo $forms[$i]): $($_.Exception.Message)" }
+        Assert-Answered "creating $name"
+        if ($null -ne $child) {
+            if ($forms.Count -gt 1) { Say "  created with vInfo form $($i + 1) of $($forms.Count): $(Format-VInfo $forms[$i])" }
+            return @{ Sm = $t.Sm; Item = $child; Path = "$($t.Path)^$name" }
+        }
+        if (Test-HasChild $t.Item $name) { Stop-Edit 1 "XAE reported an error but created $name in $($t.Path) anyway; check it in XAE. $($errors -join '; ')" }
+    }
+    Stop-Edit 1 "XAE did not create $name (type $code) in $($t.Path): $($errors -join '; ')"
+}
+
+function Invoke-New {
     $t = Find-TreeItem $TreePath
     $decl = if ($FromDecl) { Read-SourceFile $FromDecl } else { $null }
     $impl = if ($FromImpl) { Read-SourceFile $FromImpl } else { $null }
     if ((Test-XmlBody $decl) -or (Test-XmlBody $impl)) { Stop-Edit 1 'refused: XML is not Structured Text' }
     if (Test-HasChild $t.Item $Name) { Stop-Edit 1 "refused: $($t.Path) already has $Name" }
-    $owner = Get-RequiredOwner $t
-    Assert-OwnerClean $owner
-    Assert-NoDialog
-    $m = $null
-    try { $m = $t.Item.CreateChild($Name, 609, '', $null) } catch { Stop-Edit 1 "XAE did not create method $Name in $($t.Path): $($_.Exception.Message)" }
-    Assert-Answered "creating method $Name"
-    if ($null -eq $m) { Stop-Edit 1 "XAE did not create method $Name in $($t.Path)" }
-    Update-OwnerState $owner
-    $path = "$($t.Path)^$Name"
-    if ($null -ne $decl) { Write-Part $owner $m $path 'decl' $decl }
-    if ($null -ne $impl) { Write-Part $owner $m $path 'impl' $impl }
-    Update-OwnerState $owner
-    Say "added method $path in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
+    $lang = (@{ st = 1; ld = 6 })[$Lang]
+    $ret = if ($Returns) { $Returns } else { 'BOOL' }
+    $forms = @()
+    if ($Type -in @('fb', 'prg')) { $forms += $lang }
+    elseif ($Type -eq 'fun') { $forms += , ([string[]] @("$lang", $ret)); $forms += , ([object[]] @($lang, $ret)) }
+    else { $forms += , $null }
+    $obj = New-TreeChild $t $Name $script:NewTypes[$Type] $forms
+    if ($null -ne $decl) { Write-Part $obj $obj.Item $obj.Path 'decl' $decl }
+    if ($null -ne $impl) { Write-Part $obj $obj.Item $obj.Path 'impl' $impl }
+    Update-OwnerState $obj
+    $state = if (Get-Saved $obj.Item) { 'saved' } else { 'unsaved; the file changes on: xae_edit.ps1 save' }
+    Say "added $Type $($obj.Path) as $(Get-FileName $obj.Item) ($state). XAE registers it in the .plcproj itself"
 }
 
-function Invoke-AddPou {
+# A method of a POU (609, measured) or of an interface (610, from Beckhoff's table).
+function Invoke-AddMethod {
     $t = Find-TreeItem $TreePath
+    $decl = if ($FromDecl) { Read-SourceFile $FromDecl } elseif ($Returns) { "METHOD $Name : $Returns`r`n" } else { $null }
+    $impl = if ($FromImpl) { Read-SourceFile $FromImpl } else { $null }
+    if ((Test-XmlBody $decl) -or (Test-XmlBody $impl)) { Stop-Edit 1 'refused: XML is not Structured Text' }
     if (Test-HasChild $t.Item $Name) { Stop-Edit 1 "refused: $($t.Path) already has $Name" }
-    $code = (@{ st = 1; ld = 6 })[$Lang]
-    Assert-NoDialog
-    $pou = $null
-    try { $pou = $t.Item.CreateChild($Name, 604, '', $code) } catch { Stop-Edit 1 "XAE did not create $Name in $($t.Path): $($_.Exception.Message)" }
-    Assert-Answered "creating $Name"
-    if ($null -eq $pou) { Stop-Edit 1 "XAE did not create $Name in $($t.Path)" }
-    Update-OwnerState @{ Item = $pou; Path = "$($t.Path)^$Name" }
-    Say "added function block $($t.Path)^$Name ($($Lang.ToUpper())); XAE wrote $(Get-FileName $pou) and registered it in the .plcproj"
+    $itf = (Get-ItemType $t.Item) -eq $script:ItfType
+    if ($itf -and $null -ne $impl) { Stop-Edit 1 'refused: an interface method has no body, so -FromImpl does not apply' }
+    $owner = Get-RequiredOwner $t
+    Assert-OwnerClean $owner
+    $forms = @()
+    if (-not $itf) { $forms += , $null }
+    elseif ($Returns) { $forms += $Returns; $forms += , ([string[]] @($Returns)) }
+    else { $forms += , $null; $forms += '' }
+    $m = New-TreeChild $t $Name $(if ($itf) { 610 } else { 609 }) $forms
+    Update-OwnerState $owner
+    if ($null -ne $decl) { Write-Part $owner $m.Item $m.Path 'decl' $decl }
+    if ($null -ne $impl) { Write-Part $owner $m.Item $m.Path 'impl' $impl }
+    Update-OwnerState $owner
+    Say "added method $($m.Path) in XAE (unsaved; the file changes on: xae_edit.ps1 save)"
+}
+
+# A property (611; 612 in an interface) with its Get and, unless -NoSet, its Set accessor. XAE's
+# editor adds both with a new property; whether CreateChild does is not known, so the tool adds
+# whichever is missing (613/614; 654/655 in an interface) and removes Set for -NoSet.
+function Invoke-AddProperty {
+    $t = Find-TreeItem $TreePath
+    $decl = if ($FromDecl) { Read-SourceFile $FromDecl } else { $null }
+    if (Test-XmlBody $decl) { Stop-Edit 1 'refused: XML is not Structured Text' }
+    if (Test-HasChild $t.Item $Name) { Stop-Edit 1 "refused: $($t.Path) already has $Name" }
+    $itf = (Get-ItemType $t.Item) -eq $script:ItfType
+    $owner = Get-RequiredOwner $t
+    Assert-OwnerClean $owner
+    $forms = @()
+    if ($itf) { $forms += $Returns; $forms += , ([string[]] @($Returns)) }
+    else { $forms += , ([string[]] @('1', $Returns)); $forms += , ([object[]] @(1, $Returns)) }
+    $p = New-TreeChild $t $Name $(if ($itf) { 612 } else { 611 }) $forms
+    Update-OwnerState $owner
+    $codes = if ($itf) { @{ Get = 654; Set = 655 } } else { @{ Get = 613; Set = 614 } }
+    foreach ($acc in 'Get', 'Set') {
+        $has = Test-HasChild $p.Item $acc
+        if ($acc -eq 'Set' -and $NoSet) {
+            if ($has) {
+                Assert-NoDialog
+                try { $p.Item.DeleteChild('Set') } catch { Stop-Edit 1 "XAE did not remove the Set accessor of $($p.Path): $($_.Exception.Message). Delete it in XAE." }
+                Assert-Answered "removing the Set accessor of $($p.Path)"
+                Say '  removed the Set accessor XAE added (-NoSet)'
+            }
+            continue
+        }
+        if (-not $has) { [void] (New-TreeChild $p $acc $codes[$acc] @(, $null)); Say "  added the $acc accessor" }
+    }
+    Update-OwnerState $owner
+    if ($null -ne $decl) { Write-Part $owner $p.Item $p.Path 'decl' $decl }
+    Update-OwnerState $owner
+    $kids = @(for ($i = 1; $i -le $p.Item.ChildCount; $i++) { $p.Item.Child($i).Name })
+    Say "added property $($p.Path) with $($kids -join ', ') in XAE (unsaved; the file changes on: xae_edit.ps1 save). Bodies: set '$($p.Path)^Get' -Part impl"
 }
 
 function Invoke-Save {
@@ -721,7 +812,8 @@ function Invoke-Build {
 
 function Invoke-XaeEdit {
     $err = Get-ArgumentError $Command @{ TreePath = $TreePath; Solution = $Solution; Part = $Part; Out = $Out
-                                         FromFile = $FromFile; Name = $Name; FromDecl = $FromDecl; FromImpl = $FromImpl }
+                                         FromFile = $FromFile; Name = $Name; FromDecl = $FromDecl; FromImpl = $FromImpl
+                                         Type = $Type; Returns = $Returns }
     if ($err) { Stop-Edit 2 "$err`n$script:Usage" }
     if ($PSVersionTable.PSEdition -ne 'Desktop') { Stop-Edit 2 'needs Windows PowerShell 5.1: run it with powershell.exe, not pwsh' }
     if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') { Stop-Edit 2 'needs a single-threaded apartment: run powershell.exe without -MTA' }
@@ -732,13 +824,14 @@ function Invoke-XaeEdit {
         Connect-Xae $Solution
         Assert-NoDialog
         switch ($Command) {
-            'show'       { Invoke-Show }
-            'get'        { Invoke-Get }
-            'set'        { Invoke-Set }
-            'add-method' { Invoke-AddMethod }
-            'add-pou'    { Invoke-AddPou }
-            'save'       { Invoke-Save }
-            'build'      { Invoke-Build }
+            'show'         { Invoke-Show }
+            'get'          { Invoke-Get }
+            'set'          { Invoke-Set }
+            'new'          { Invoke-New }
+            'add-method'   { Invoke-AddMethod }
+            'add-property' { Invoke-AddProperty }
+            'save'         { Invoke-Save }
+            'build'        { Invoke-Build }
         }
     }
     finally { [XaeFilter]::Revoke() }
