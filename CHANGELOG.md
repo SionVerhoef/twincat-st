@@ -25,8 +25,10 @@
   without that, `set` overwrote typing in a method. `build` finds the PLC project by path, since
   the PLC node's children do not list it. A declaration write makes XAE save the object at once,
   which the tool now reports. An alias is created with its base type. After that run, `build`
-  also lists an unsaved PLC file its walk did not reach, such as the task after a cycle-time
-  change. `tests/xae_edit_tests.ps1` tests what needs no XAE, on Windows PowerShell 5.1 in CI.
+  also lists an unsaved PLC file its walk did not reach; no real case has shown that path yet,
+  since the task after a cycle-time change is caught by the walk. A second field round confirmed
+  the guards by hand and found no defect; an online change after a script edit is still untested.
+  `tests/xae_edit_tests.ps1` tests what needs no XAE, on Windows PowerShell 5.1 in CI.
 - **`tcpou.py` refuses to write a project an XAE has open**: `set`, `add-method`, `add-property`,
   `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file under the solution's
   folder is under two minutes old, or names a PID running on this machine. In the field test a disk edit there raised two reload prompts, and with an unsaved edit

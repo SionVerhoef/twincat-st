@@ -141,7 +141,10 @@ What the tool does to keep the user's XAE safe, and why:
   `DeclarationText`/`ImplementationText` before it is saved (measured). An edit in a method or
   accessor, typed or set, leaves the POU's own `VSProjectItem.Saved` at True: XAE marks a DTE
   document of that member, `<file>;<POU>.<member>`, unsaved instead. So "saved" means the POU
-  and every such document; reading the POU alone let `set` overwrite typing in a method.
+  and every such document; reading the POU alone let `set` overwrite typing in a method. Neither
+  an undo back to the saved text nor *Don't save* on closing the editor clears `Saved` (measured),
+  and *Don't save* also discards the tool's edit. The POU then reads as edited by someone else
+  until it is saved: the tool cannot tell a discarded edit from typing, so it refuses.
 - **`build` checks first.** A build saves every unsaved object, so it would save the user's
   half-typed edits too. Measured: two edits pending in memory were on disk afterwards, with the
   build's time. The tool lists the unsaved PLC objects and open documents and refuses when any is
@@ -150,8 +153,8 @@ What the tool does to keep the user's XAE safe, and why:
   about. A System Manager change with no document open is not seen. It reaches the PLC project
   by `LookupTreeItem('TIPC^<PLC>^<PLC> Project')`: the PLC node's `Child(i)` lists only
   `<PLC> Instance`. An unsaved document counts as covered only when its file is one the walk
-  reported, so a PLC file the walk does not reach, such as the task's `.TcTTO` after a cycle-time
-  change, is listed too.
+  reported, so a PLC file the walk does not reach is listed too. The task is not such a file: a
+  cycle-time change sets its own `Saved` to False, and the walk lists it by tree path (measured).
 - **It reads back every write**, and a difference other than line endings is exit 1.
 - **It sets Structured Text only.** On an LD or CFC body, `ImplementationText` returns the same
   XmlArchive XML as the file (`<NWL>…`, `<CFC>…`). Writing back modified CFC XML worked once, which

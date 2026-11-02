@@ -227,8 +227,8 @@ Check "typing in a method of a saved POU is refused" ((Test-Guard $owner) -like 
 $found = @(Find-Unsaved $root 'TIPC^PLC1^PLC1 Project')
 Check 'the build guard finds a POU whose method alone is unsaved' (
     @($found | Where-Object { $_.Path -like '*^FB_A' -and -not $_.Unreadable }).Count -eq 1)
-# A cycle-time change shows only as the document PlcTask.TcTTO; whether the walk reaches the task
-# is not measured, so the document must be listed unless the walk reported its file.
+# A cycle-time change also sets the task's own Saved to False, so the real walk catches it. This
+# test forces the other path: a document must be listed unless the walk reported its file.
 $task = New-Object psobject -Property @{ FullName = 'C:\p\PlcTask.TcTTO'; Saved = $false }
 $script:Xae.Dte.Documents = @($doc, $task)
 $docs = @(Get-UnsavedDocuments @{ 'c:\P\fb_a.TcPOU' = $true })
