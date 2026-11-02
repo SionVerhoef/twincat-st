@@ -210,3 +210,87 @@ tests only:
   was needed; the saved-state note names object creation as well as a declaration.
 
 `field-test-xae-edit.md` lists what a second round runs.
+
+## Round 2
+
+This round ran `field-test-xae-edit-round2.md` on round 1's TwinCAT PC on 2026-11-02 (TcXaeShell,
+`TcXaeShell.DTE.15.0`; XAE saves `ProductVersion="3.1.4024.12"`), Windows 10 (19045), Python 3.12.10, Windows
+PowerShell 5.1.19041.7548. The skill was at commit `2de2391` (the merge of PR #50, which already
+holds PR #49), in a fresh clone. `<scratch>` was a fresh clone of the scratch TcUnit solution at
+`8f3eaab` plus the CFC probe POU (`6d91cbb`), on its own branch, committed before the first
+check. Round 1's state file in `%TEMP%` was deleted first. Every XAE was closed, one started from
+the Start menu, not elevated, and `<scratch>` opened by hand. The checks ran from PowerShell 7 with
+`chcp 437` and `PYTHONUTF8` and `PYTHONIOENCODING` removed (`PYTHONIOENCODING` was set on this PC);
+`xe` runs `xae_edit.ps1` through `powershell.exe`, so the tool itself ran on Windows PowerShell 5.1.
+
+**E0 to E10 pass; E16 and E17 did not run.** The stop rule did not trigger: every command in E9e
+and E9f that writes, saves or builds exited 1, and `xyz` did not reach the disk, so round 1's F3
+is fixed on a real XAE. Of the three changes no XAE had run, `new -Type alias -Returns` passes
+(E18h), and the walk with the member documents read once passes on the scratch solution (E9f,
+E10a). The build guard's document matching was not isolated: in E10b the task's own `saved` went
+`False`, so the tree walk caught the change and listed it by tree path. E16 did not run because
+no test controller was available; E17 (optional) did not run.
+
+No defect came out. One deviation from the runbook (D1) made E9c's first `set` refuse. That is the
+tool working as designed, but the runbook can prevent it.
+
+| # | Result | Evidence |
+|---|---|---|
+| E0 | pass | `run_tests.py`: 144 `ok`, `all checks passed`, exit 0, the same count as CI. `xae_edit_tests.ps1` with the XAE running: 89 `ok`, one `skip  list with no XAE: an XAE or Visual Studio is running (PID 604)`, `all checks passed`, exit 0. Its output also holds `warning: TIPC^PLC1^PLC1 Project^POUs^FB_A holds unsaved edits this tool did not make; going ahead (-Force)` and `created with vInfo form 2 of 2: Object[] [1, INT]`, from tests on fake items |
+| E1b | pass | `PID 604  TcXaeShell.DTE.15.0  <scratch>\TcUnitScratch.sln`, exit 0 |
+| E9a | pass | `get` exit 0. `set the impl of TIPC^PLC1^PLC1 Project^POUs^FB_Sequence in XAE (unsaved; the file changes on: xae_edit.ps1 save)`, exit 0. `show`: `saved     False, edited by this tool` |
+| E9b | pass | Before typing in `M_Fail`, the tester closed `FB_Sequence`'s editor and answered XAE's close prompt with *Don't save* (D1). Then, with a space typed in `M_Fail`: `show` `saved     False, edited by someone else`; `set` `refused: TIPC^PLC1^PLC1 Project^POUs^FB_Sequence holds unsaved edits this tool did not make, probably typed in XAE. Ask the user to save or undo them. -Force goes ahead anyway: set replaces the whole part, edits in it included, and save, or any declaration write, writes them all to disk.`, exit 1. `show "…^M_Fail"`: `saved     False, edited by someone else (its file object TIPC^PLC1^PLC1 Project^POUs^FB_Sequence)`. The space stayed in the editor |
+| E9c | pass, after D1 was cleared | After the tester undid the space, `show` still said `saved     False, edited by someone else` and the first `set` was refused the same way, exit 1 (D1). The tester ran *File → Save All*; the file then differed from `6d91cbb` only by XAE's save format (`ProductVersion="3.1.4024.12"`, no final line break), with neither the space nor `// R2` in it. `show`: `saved     True`. The `set` of E9a: `(unsaved; …)`, exit 0, and `show` `saved     False, edited by this tool`. With a space typed in `FB_Sequence`'s own body: `show` `edited by someone else`, `set` refused the same way, exit 1, and the space stayed |
+| E9d | pass | `save`: refused, the same line, exit 1. `set … -Force`: `warning: TIPC^PLC1^PLC1 Project^POUs^FB_Sequence holds unsaved edits this tool did not make; going ahead (-Force)` then `(unsaved; …)`, exit 0; `get -Part impl` read back equal to `b.st`. The second `save`: refused, exit 1 |
+| E9e | pass | `get "…^M_Fail" -Part impl -Out mf.st` exit 0. After *Save All*: `show` on the POU `saved     True`, on `^M_Fail` `saved     True (its file object …^FB_Sequence)`, and `// R2` on disk. With `//xyz` typed in `M_Fail`: `show "…^M_Fail"` `saved     False, edited by someone else (its file object TIPC^PLC1^PLC1 Project^POUs^FB_Sequence)`; `set "…^M_Fail"`: `refused: TIPC^PLC1^PLC1 Project^POUs^FB_Sequence holds unsaved edits this tool did not make, …`, exit 1 |
+| E9f | pass | With `//xyz` still typed: `set "…^FB_Sequence"` and `save` each `refused: TIPC^PLC1^PLC1 Project^POUs^FB_Sequence holds unsaved edits this tool did not make, …`, exit 1. `build`: `refused: a build saves every unsaved object, and these hold edits this tool did not make:` / `  TIPC^PLC1^PLC1 Project^POUs^FB_Sequence` / `Ask the user to save or undo them, or pass -SaveUserEdits.`, exit 1, 1.4 s, nothing else listed. `Select-String xyz` on `FB_Sequence.TcPOU`: no match |
+| E6 | pass | `new`: `added fb TIPC^PLC1^PLC1 Project^POUs^FB_XeR2 as <scratch>\TcUnitScratch\PLC1\POUs\FB_XeR2.TcPOU (saved: XAE writes the file itself when it creates an object or a declaration is set). XAE registers it in the .plcproj when the project is saved: a build saves it`, exit 0, no `created with vInfo form` line. `add-method`: `added method …^FB_XeR2^M_Check in XAE (unsaved; the file changes on: xae_edit.ps1 save)`, exit 0. `show`: `saved     False, edited by this tool (its file object TIPC^PLC1^PLC1 Project^POUs^FB_XeR2)`. `save`: `saved TIPC^PLC1^PLC1 Project^POUs^FB_XeR2 to <scratch>\…\FB_XeR2.TcPOU`, exit 0. `Select-String`: `FB_XeR2.TcPOU:21: <ST><![CDATA[M_Check := nIn > 0;` |
+| E18h | pass | `added alias TIPC^PLC1^PLC1 Project^DUTs^T_XeNd as <scratch>\TcUnitScratch\PLC1\DUTs\T_XeNd.TcDUT (saved: …)`, exit 0, no `created with vInfo form` line. `get -Part decl` exit 0; `t_nd.st` and the file on disk both hold `TYPE T_XeNd : UDINT;` / `END_TYPE` |
+| E10a | pass | With a space typed in `FB_Sequence`'s body: `refused: a build saves every unsaved object, and these hold edits this tool did not make:` / `  TIPC^PLC1^PLC1 Project^POUs^FB_Sequence` / `Ask the user to save or undo them, or pass -SaveUserEdits.`, exit 1, 1.2 s, nothing else listed: no false refusal. `-SaveUserEdits`: `saved TIPC^PLC1^PLC1 Project^POUs^FB_Sequence`, the Build pane with `Build complete -- 0 errors, 0 warnings : ready for download!` and `Build: 2 succeeded or up-to-date, 0 failed, 0 skipped`, `=== Projects failed: 0 ===`, exit 0, 8.1 s, no prompt. The `.plcproj` gained exactly the `Compile` entries for `DUTs\T_XeNd.TcDUT` and `POUs\FB_XeR2.TcPOU` |
+| E10b | pass, by tree path | `show "TIPC^PLC1^PLC1 Project"` lists `^PlcTask  type 621`. `show` the task before the change: `file <scratch>\TcUnitScratch\PLC1\PlcTask.TcTTO`, `saved     True`, `^MAIN  type 650`. After the tester changed the cycle time, unsaved: `saved     False, edited by someone else`. `build`: `refused: a build saves every unsaved object, and these hold edits this tool did not make:` / `  TIPC^PLC1^PLC1 Project^PlcTask` / `Ask the user to save or undo them, or pass -SaveUserEdits.`, exit 1, 1.3 s, nothing written. Listed as the tree path, not the document: the task's `saved` turns `False`, so the walk catches it and the document matching is not what decided here. The tester then set the cycle time back and saved; the file differs from before only by XAE's save format |
+| E16 | not run | no test controller available |
+| E17 | not run | optional |
+
+### D1: *Don't save* on the POU's editor leaves the tool's record stale
+
+Between E9a and E9b the tester opened `FB_Sequence`, found it unsaved (E9a's own `set`), closed its
+editor and answered XAE's close prompt with *Don't save*. That prompt was XAE's own, raised by
+closing an editor, not by a command, so no check is failed by it. What it did:
+
+- It discarded E9a's edit in XAE: `get -Part impl` no longer held `// R2`, and `git status` in
+  `<scratch>` was clean.
+- It did **not** clear the POU's unsaved mark: `show` kept `saved False`, also after the tester
+  undid the space typed in `M_Fail`. The `M_Fail` tab kept its `*` after the undo, and Solution
+  Explorer marked only `FB_Sequence` as unsaved.
+- So the text no longer matched the fingerprint `set` stored in E9a, and the tool read the POU as
+  `edited by someone else`. E9c's first `set` was refused. That is the safe side: the tool cannot
+  tell a discarded edit from typing.
+
+*Save All* cleared it, since the text in XAE was the original again. Proposed for the runbook:
+E9b should say to open `M_Fail`'s editor without closing `FB_Sequence`'s, and never to answer
+*Don't save*. A line in `references/twincat/xae-automation.md` could say that after *Don't save*
+or an undo the object stays unsaved and reads as edited by someone else until it is saved.
+
+### Facts recorded
+
+- `xae_edit_tests.ps1` with an XAE running: 89 `ok` and one `skip`, as the runbook expects.
+- An undo in XAE back to the saved text does not clear `Saved` on the POU, nor the `*` on the
+  member's tab.
+- `build`'s refusal with one object listed: 1.2-1.4 s on the scratch solution, now through the
+  walk (in round 1 the 0.7-0.8 s was F4's early exit). A full build with `-SaveUserEdits`: 8.1 s.
+- The PLC task (type 621) under the PLC project has the child `^MAIN`, type 650. A cycle-time
+  change made in XAE sets the task's `saved` to `False`, so the tree walk sees it.
+- XAE's save format again: `ProductVersion="3.1.4024.12"`, no final line break, and in
+  `PlcTask.TcTTO` `<ObjectProperties />` dropped.
+
+### Clean-up
+
+The tester removes `<scratch>` (its own git repository, the round's state committed after E9,
+E18h, E10a and E10b), `b.st`, `mf.st`, `d.st`, `i.st` and `t_nd.st` in the skill clone, and
+`%TEMP%\twincat-st-xae_edit-*.txt`. `//xyz` was removed and saved by the tester. No controller
+was touched, so nothing needs re-activating.
+
+### Still to run
+
+E16 on the test controller, and E17 on Project_A if wanted. To prove the document matching on
+its own, a case is needed where an unsaved `.Tc*` document has no tree item that reads `False`.
