@@ -428,3 +428,11 @@ run on XAE.
 - **N5** After a build through XAE, the closing line starts `Compiled in XAE, not tested on a
   target.`; the rest stays word for word. No eval greps for the exact opening.
 - N1, N2 and N6 are runbook or `show` notes and were not changed. E16 is still untested.
+
+Verified on the XAE PC on 2026-11-04 at `475568e`, Windows PowerShell 5.1, an XAE running:
+`xae_edit_tests.ps1` 103 `ok` and one `skip` (`list with no XAE`), `all checks passed`, exit 0;
+`run_tests.py` 144 `ok`, `all checks passed`, exit 0; `check_private.py` exit 0 (measured). Nothing
+needed changing.
+
+**Release decision: go** (maintainer, 2026-11-04). F5 and F6 rest on unit tests only, F7 is a
+documented limit, and E16 is still untested; the release notes say so.

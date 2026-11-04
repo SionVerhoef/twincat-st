@@ -112,7 +112,7 @@ git submodule add https://github.com/SionVerhoef/twincat-st .agents/skills/twinc
 Pin a release rather than following `main`, and commit the pin:
 
 ```bash
-git -C .claude/skills/twincat-st checkout v0.5.0
+git -C .claude/skills/twincat-st checkout v0.6.0
 git add .claude/skills/twincat-st
 ```
 

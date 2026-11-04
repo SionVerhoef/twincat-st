@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-11-04
 
 **Editing a project the user has open in XAE**
 
