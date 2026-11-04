@@ -93,7 +93,7 @@ itself.
 # each line runs as: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\xae_edit.ps1 <command> ...
 xae_edit.ps1 list                                                         # every XAE: PID, solution, dialogs
 xae_edit.ps1 show       '<TreePath>' -Solution x.sln                      # type, language, file, saved, children
-xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl -Out body.st
+xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl [-Out body.st]
 xae_edit.ps1 set        '<TreePath>' -Solution x.sln -Part impl -FromFile body.st
 xae_edit.ps1 new        '<Folder>'   -Solution x.sln -Type fb -Name FB_Pump [-Lang st|ld] [-Returns T] [-FromDecl d.st] [-FromImpl i.st]
 xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-Returns BOOL] [-FromDecl d.st] [-FromImpl i.st]
@@ -111,17 +111,18 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
 |---|---|---|
 | `list` | Every XAE in the Running Object Table, with its solution or the dialog it shows; and any XAE process missing from the table, which runs at another elevation | — |
 | `show` | Item type (604 function block, 609 method), language (1 ST, 5 CFC, 6 LD), the file it lives in, whether that file and its methods and accessors are saved and by whom they were edited, and its children | — |
-| `get` | Writes the part's text, as XAE holds it, to `-Out` (UTF-8, no BOM, LF). `-Part` defaults to `impl`. An LD/CFC body comes out as its XML | — |
+| `get` | Writes the part's text, as XAE holds it, to `-Out` (UTF-8, no BOM, LF), or without `-Out` prints it to stdout as UTF-8 and nothing else. `-Part` defaults to `impl`. An LD/CFC body comes out as its XML | — |
 | `set` | Replaces `-Part decl` or `impl` from `-FromFile` in XAE's memory, then reads it back. A declaration write makes XAE save the object at once, and the tool says so | a body that is not Structured Text (LD, FBD, CFC, SFC, IL, or any XML body); a file of XML; a POU with unsaved edits it did not make; a path that two TwinCAT projects in the solution both have |
 | `new` | Creates an object in that folder, then sets its declaration and body when given. `-Type`: `fb` (default), `prg`, `fun`, `dut` (a struct), `enum`, `union`, `alias`, `gvl`, `itf` (an interface). `-Lang st` or `ld` for `fb`, `prg`, `fun`; `-Returns` gives a function's type (default `BOOL`), or an alias's base type when `-FromDecl` gives none; the tool then writes `TYPE <Name> : <type>;`. XAE writes the file at once and registers it in the `.plcproj` when the project is saved (a `build` saves it): no `register` needed | a name the folder already has; `-FromImpl` for an object with no body |
 | `add-method` | Creates the method in that POU or interface, then sets its declaration (or `METHOD <Name> : <Returns>`) and body when given | a name the POU already has; a body for an interface method; a POU with unsaved edits it did not make |
 | `add-property` | Creates the property in that POU or interface with a `Get` and a `Set` accessor (`-NoSet`: `Get` only), then its declaration when given. Fill the accessors with `set '…^Speed^Get' -Part impl` | a name the POU already has; a POU with unsaved edits it did not make |
 | `save` | Saves the file the path lives in, its methods' and accessors' edits included, so a method saves its POU. Never Save All | a POU with unsaved edits it did not make |
-| `build` | Lists every unsaved PLC object and open document, saves the PLC objects itself one by one, builds in that XAE, prints the Build pane and the compiler entries of the Error List | when any of them holds edits it did not make, or is a PLC object whose saved state cannot be read |
+| `build` | Lists every unsaved PLC object and open document, and the System Manager project when it is unsaved; saves the PLC objects itself one by one, builds in that XAE, prints the Build pane and the compiler entries of the Error List. Skips `References` and `External Types`, which hold no files | when any of them holds edits it did not make, or its saved state cannot be read; an unsaved System Manager project is never its own |
 
 - **Input files** (`-FromFile`, `-FromDecl`, `-FromImpl`) are UTF-8 with or without a BOM, or UTF-16
-  with one; anything else is refused rather than written into the POU as U+FFFD. `get` takes `-Out`
-  and never prints to the console, whose code page loses characters such as `²`.
+  with one; anything else is refused rather than written into the POU as U+FFFD. `get` without
+  `-Out` is for reading: Windows PowerShell decodes a child's output through the console code page,
+  which garbles characters such as `²`. To move a part into `set`, use `get -Out`.
 - **A body `set` is not on disk until `save`; a declaration is on disk at once**, since XAE saves
   the object when one is set, pending body edits in it included. `st_review.py` and `git diff` read
   the disk, so save before reviewing. Prefer `get -Out` to read code the user may have changed in XAE: the file can be
@@ -133,10 +134,15 @@ exist exits 1 and prints what its nearest existing parent holds; `show` with no 
   when the user has said so. Without them the tool tells its own unsaved edits from the user's by a
   fingerprint of the POU's whole text, taken after each of its writes, kept in
   `%TEMP%\twincat-st-xae_edit-<hash>.txt` and void once XAE restarts.
-- **What `build` cannot see.** It walks the PLC objects and the open documents. A change to the
-  System Manager configuration, or to a project file, with no document open is saved by the build
-  without a word. If XAE is set to prompt before building, such a change makes the build wait for
-  that prompt.
+- **What `build` cannot see.** It walks the PLC objects and the open documents, and reads whether
+  the System Manager project (`.tsproj`) is unsaved, so an unsaved setting such as a Real-Time CPU
+  limit is listed. An unsaved setting on a PLC project's properties pages (compiler defines and the
+  like) is not seen, even with its page open: nothing readable through the Automation Interface
+  turns unsaved (measured), and the build saves it. `build` prints a `note:` line saying so each
+  time it builds. Before an agent builds, ask the user to save or close the PLC project's
+  properties. XAE's own *Activate Configuration* also builds, and so saves everything unsaved,
+  with no check (measured). If XAE is set to prompt before building, an unseen change makes the
+  build wait for that prompt.
 - **Every `new` type, `add-property` and interface members were measured on XAE 4024.55.** Each
   `CreateChild` call tries the `vInfo` form measured there first; Beckhoff's other documented forms
   follow for builds that differ, and the tool prints `created with vInfo form N` when one of those
