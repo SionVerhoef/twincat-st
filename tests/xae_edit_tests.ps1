@@ -10,7 +10,9 @@ PowerShell 5.1, the only PowerShell the script supports.
     cannot read; a POU the user typed in after the tool's edit is refused; -Force goes ahead once
     and never makes the user's edits pass as the tool's own afterwards; typing in a method of a
     saved POU, which XAE keeps in a member document, counts as unsaved; the build guard lists an
-    unsaved document of a file its walk did not report
+    unsaved document of a file its walk did not report, and an unsaved System Manager project;
+    it skips External Types and References, whose items are no files
+  * get without -Out: the part reaches stdout as UTF-8, whatever the console code page
   * CreateChild on fake tree items: a vInfo form XAE refuses is followed by the next one, and an
     error with the object created anyway stops instead of creating it twice
   * the script itself, run as a child process: its argument errors exit 2, 'list' with no XAE
@@ -52,7 +54,7 @@ foreach ($c in 'get', 'set', 'new', 'add-method', 'add-property', 'save') {
     Check "$c needs a tree path" ((Get-ArgumentError $c $a) -like '*tree path*')
 }
 $a = $ok.Clone(); $a.Remove('Out')
-Check 'get needs -Out: stdout would go through the console code page' ((Get-ArgumentError 'get' $a) -like '*-Out*')
+Check 'get without -Out runs: it prints the part to stdout (field agents tried it first)' ((Get-ArgumentError 'get' $a) -eq '')
 $a = $ok.Clone(); $a.Remove('Part')
 Check 'set needs -Part: no default part to overwrite by mistake' ((Get-ArgumentError 'set' $a) -like '*-Part*')
 $a = $ok.Clone(); $a.Remove('FromFile')
@@ -104,7 +106,10 @@ Check 'a CFC body after blank lines is XML' (Test-XmlBody "`r`n  <CFC>")
 Check 'ST with a comparison is not XML' (-not (Test-XmlBody "IF a < b THEN`r`n  c := 1;`r`nEND_IF"))
 Check 'an empty body is not XML' (-not (Test-XmlBody ''))
 Check 'a POU file is a file object' (Test-ObjectFileName 'C:\src\Line1\PLC1\POUs\FB_X.TcPOU')
-Check 'a GVL and a DUT are file objects' ((Test-ObjectFileName 'GVL_Io.TcGVL') -and (Test-ObjectFileName 'E_State.TcDUT'))
+Check 'a GVL and a DUT are file objects, as the full paths XAE gives' (
+    (Test-ObjectFileName 'C:\src\PLC1\GVLs\GVL_Io.TcGVL') -and (Test-ObjectFileName '\\server\src\PLC1\DUTs\E_State.TcDUT'))
+Check 'a bare file name is not: XAE names every object file by its full path' (-not (Test-ObjectFileName 'GVL_Io.TcGVL'))
+Check "an external type named Tc... is not (round 3, F5)" (-not (Test-ObjectFileName 'PLC_project.PLC.PLC1.ExternalTypes.TcEventSeverity'))
 Check "a method's file name is not" (-not (Test-ObjectFileName 'C:\src\POUs\FB_X.TcPOU;FB_X.M_Reset'))
 Check 'nor is a method whose name starts Tc' (-not (Test-ObjectFileName 'C:\src\POUs\FB_X.TcPOU;FB_X.TcpSend'))
 Check 'a folder is not' (-not (Test-ObjectFileName 'C:\src\Line1\PLC1\POUs'))
@@ -196,6 +201,28 @@ $seen = @($found | ForEach-Object { "$($_.Path -replace '^.*\^', '')=$($_.Unread
 Check 'the build guard finds the unsaved POU, and counts unreadable ones as not its own' (
     $seen -eq 'FB_A=False FB_U=True FB_O=True') $seen
 
+# External Types (652) and References (617) hold library items: an external type's file name is a
+# dotted name and its Saved null (round 3, F5). Skipped by item type, so even an item there whose
+# name looks like a file is not walked into.
+$ext = New-Fake 'External Types' '' $null '' '' @(
+    (New-Fake 'TcEventSeverity' 'PLC_project.PLC.PLC1.ExternalTypes.TcEventSeverity' $null),
+    (New-Fake 'T_Odd' 'C:\p\T_Odd.TcDUT' $null))
+$ext | Add-Member NoteProperty ItemType 652
+$refs = New-Fake 'References' '' $null '' '' @((New-Fake 'Tc2_Standard' 'C:\p\Tc2_Standard.TcLib' $null))
+$refs | Add-Member NoteProperty ItemType 617
+$fbS = New-Fake 'FB_S' 'C:\p\FB_S.TcPOU' $false
+$extRoot = New-Fake 'PLC1 Project' '' $null '' '' @($ext, $refs, (New-Fake 'POUs' 'C:\p' $true '' '' @($fbS)))
+$found = @(Find-Unsaved $extRoot 'TIPC^PLC1^PLC1 Project')
+$seen = @($found | ForEach-Object { $_.Path -replace '^.*\^', '' }) -join ' '
+Check 'the build guard skips External Types and References, and still finds an unsaved POU' ($seen -eq 'FB_S') $seen
+$sm = New-Object psobject -Property @{ Items = @{
+    'TIPC' = (New-Fake 'TIPC' '' $null '' '' @((New-Fake 'PLC1' '' $null)))
+    'TIPC^PLC1^PLC1 Project' = $extRoot } }
+$sm | Add-Member ScriptMethod LookupTreeItem { param($p) $this.Items[$p] }
+$script:Sms = @($sm); $script:Xae = @{ Pid = $PID }
+$seen = @(Get-UnsavedObjects | ForEach-Object { $_.Path }) -join ' '
+Check '... also from the PLC project the build walks' ($seen -eq 'TIPC^PLC1^PLC1 Project^POUs^FB_S') $seen
+
 # Stop-Edit exits the process; here it throws, so a refusal can be checked.
 function Stop-Edit([int] $code, [string] $message) { throw "STOP $code $message" }
 function Test-Guard($owner) { try { Assert-OwnerClean $owner; 'passed' } catch { $_.Exception.Message } }
@@ -237,7 +264,36 @@ Check "the build guard lists an unsaved PLC file it did not report, not a report
 $script:Xae.Dte.Documents = @($doc, $other)
 $doc.Saved = $true
 Check "another POU's document whose name starts the same does not count" (Test-OwnerSaved $fbA)
+Check 'a DTE with no Solution, as in these fakes, has no settings to check' (@(Get-UnsavedSettings).Count -eq 0)
+
+# An unsaved Real-Time setting is no document; only the .tsproj project reads Saved=False (round 3, F6).
+function Test-Build($named) { try { Assert-BuildAllowed $named; 'passed' } catch { $_.Exception.Message } }
+function Set-Projects([object[]] $projects) {
+    $script:Xae = @{ Pid = $PID; Dte = @{ Documents = @(); Solution = @{ Projects = $projects } } }
+}
+Set-Projects @(@{ FullName = 'C:\P\X.tsproj'; Saved = $false })
+$lines = @(Get-UnsavedSettings)
+Check 'an unsaved System Manager project is listed' (
+    $lines.Count -eq 1 -and $lines[0] -eq 'C:\P\X.tsproj (System Manager configuration, unsaved)') ($lines -join ', ')
+$r = Test-Build $lines
+Check '... and the build refuses, naming it' ($r -like 'STOP 1 refused*C:\P\X.tsproj (System Manager configuration, unsaved)*-SaveUserEdits*') $r
+$SaveUserEdits = $true
+Check '... unless -SaveUserEdits' ((Test-Build $lines) -eq 'passed')
+$SaveUserEdits = $false
+Check 'nothing named: the build goes ahead' ((Test-Build @()) -eq 'passed')
+Set-Projects @(@{ FullName = 'C:\P\X.tsproj'; Saved = $true })
+Check 'a saved System Manager project is not listed' (@(Get-UnsavedSettings).Count -eq 0)
+Set-Projects @(@{ FullName = 'C:\P\Meas.tcmproj'; Saved = $false }, @{ FullName = 'C:\P\X.TSPROJ'; Saved = $true })
+Check 'another kind of project is not read, even unsaved: only .tsproj was measured' (@(Get-UnsavedSettings).Count -eq 0)
+Set-Projects @(@{ FullName = 'C:\P\X.tsproj'; Saved = $null })
+$lines = @(Get-UnsavedSettings)
+Check 'a System Manager project whose state cannot be read is listed: fail closed' (
+    $lines.Count -eq 1 -and $lines[0] -like '*could not be read*') ($lines -join ', ')
 $script:Xae = @{ Pid = $PID }
+
+# Nothing readable turns unsaved for a PLC project's properties page (round 3, F7): build says so.
+Check 'the build prints one line saying PLC project settings are not checked' (
+    $script:SettingsNote -notmatch "[`r`n]" -and $script:SettingsNote -like "note: *PLC project's properties pages are not checked*saved by this build")
 
 # CreateChild: Beckhoff's documented vInfo forms disagree, so the tool tries them in turn.
 $pous = New-Fake 'POUs' 'C:\p' $true
@@ -265,12 +321,13 @@ Check 'an error with the object created anyway stops, rather than creating it tw
     $r -like 'STOP 1*anyway*' -and $duts.ChildCount -eq 1) $r
 
 # --- the script as a child process --------------------------------------------
-function Invoke-Child([string[]] $argv) {
+function Invoke-Child([string[]] $argv, [string] $file = $xaeEdit) {
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName = (Get-Process -Id $PID).Path
-    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$xaeEdit`" " + (($argv | ForEach-Object { "`"$_`"" }) -join ' ')
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$file`" " + (($argv | ForEach-Object { "`"$_`"" }) -join ' ')
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
+    $psi.StandardOutputEncoding = New-Object Text.UTF8Encoding $false
     $psi.RedirectStandardError = $true
     $p = [Diagnostics.Process]::Start($psi)
     $o = $p.StandardOutput.ReadToEndAsync(); $e = $p.StandardError.ReadToEndAsync()
@@ -282,6 +339,13 @@ $r = Invoke-Child @()
 Check 'no command: exit 2 and the usage' ($r.Code -eq 2 -and $r.Err -like '*usage:*') "exit $($r.Code): $($r.Err)"
 $r = Invoke-Child @('set', 'TIPC^PLC1', '-Solution', 'x.sln', '-FromFile', $body)
 Check 'set without -Part: exit 2 before touching XAE' ($r.Code -eq 2 -and $r.Err -like '*-Part*') "exit $($r.Code): $($r.Err)"
+# get without -Out prints through Write-StdoutUtf8. Through the console code page, the 0xB2 would
+# not come back; an extra line break would show at the end.
+$probe = Join-Path $tmp 'stdout.ps1'
+Set-Content -LiteralPath $probe -Encoding Ascii -Value @(". '$xaeEdit'", 'Write-StdoutUtf8 ("// mm" + [char]0xB2 + "`nx := 1;`n")')
+$r = Invoke-Child @() $probe
+Check 'get without -Out prints UTF-8 to stdout, the console code page aside, nothing added' (
+    $r.Code -eq 0 -and $r.Out -ceq "// mm$([char]0xB2)`nx := 1;`n") "exit $($r.Code): [$($r.Out)] $($r.Err)"
 $running = @(Get-Process TcXaeShell, devenv -ErrorAction SilentlyContinue)
 if ($running) { [Console]::Out.WriteLine("skip  list with no XAE: an XAE or Visual Studio is running (PID $($running[0].Id))") }
 else {

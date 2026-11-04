@@ -124,6 +124,8 @@ Close with: what you wrote and which shape it uses · what was verified and what
 
 > Not compiled. A qualified engineer must review and validate this code against the drive and platform documentation before it runs on a machine.
 
+When the code built through XAE with 0 errors (rung 2), the line starts `Compiled in XAE, not tested on a target.` instead of `Not compiled.`; the rest stays word for word.
+
 "Not compiled" alone is not enough, and neither is "review it before it goes on the machine": in a field test, agents wrote the first every time and the full line once in eight.
 
 ## Where to read next
@@ -196,7 +198,7 @@ The same edits through the user's open XAE: they land in XAE's memory, the edito
 ```powershell
 xae_edit.ps1 list                                                       # which XAE holds which solution; run it first
 xae_edit.ps1 show       'TIPC^PLC1^PLC1 Project^POUs^FB_X' -Solution x.sln
-xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl -Out body.st
+xae_edit.ps1 get        '<TreePath>' -Solution x.sln -Part impl [-Out body.st]   # without -Out it prints, for reading only; use -Out to move a part into set
 xae_edit.ps1 set        '<TreePath>' -Solution x.sln -Part impl -FromFile body.st   # ST only; reads back
 xae_edit.ps1 new        '<Folder>'   -Solution x.sln -Type fb -Name FB_Pump [-FromDecl d.st] [-FromImpl i.st]
 xae_edit.ps1 add-method '<PouPath>'  -Solution x.sln -Name M_Reset [-Returns BOOL] [-FromDecl d.st] [-FromImpl i.st]
@@ -208,5 +210,5 @@ xae_edit.ps1 build                   -Solution x.sln                    # builds
 - **`new -Type`** is `fb`, `prg`, `fun`, `dut` (struct), `enum`, `union`, `alias`, `gvl` or `itf`; give `EXTENDS`/`IMPLEMENTS`, a function's return type or a DUT's members in `-FromDecl`. A method or property of an interface takes the interface's path. An accessor is a path too: `set '…^FB_X^Speed^Get' -Part impl`.
 
 - **`save` before `st_review.py` or `git diff`** — they read the disk, which holds a `set` only after the save.
-- **It refuses to touch a POU with unsaved edits it did not make, and `build` refuses while any exist** — a build saves every unsaved object, the user's half-typed edits included. `-Force` and `-SaveUserEdits` override; use them only when the user says so.
+- **It refuses to touch a POU with unsaved edits it did not make, and `build` refuses while any exist** — a build saves every unsaved object, the user's half-typed edits included. `-Force` and `-SaveUserEdits` override; use them only when the user says so. Settings on a PLC project's properties pages are not checked: ask the user to save or close the PLC project's properties before you build.
 - **Exit 2 with a dialog named means a prompt is open in XAE.** Ask the user to answer it; never click it from a script. Logging in and the online change stay the user's gesture (rule 2).

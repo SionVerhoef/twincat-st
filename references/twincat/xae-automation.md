@@ -150,7 +150,17 @@ What the tool does to keep the user's XAE safe, and why:
   build's time. The tool lists the unsaved PLC objects and open documents and refuses when any is
   not its own, or cannot be read, unless `-SaveUserEdits`. It then saves the PLC objects itself
   before building, so XAE's *Before building* option has none of them left to save or prompt
-  about. A System Manager change with no document open is not seen. It reaches the PLC project
+  about. An unsaved System Manager setting (a Real-Time CPU limit) is no document; the `.tsproj`
+  project in `Solution.Projects` reads `Saved=False` while it is pending, and the tool's own edits
+  leave it `True` (measured), so the tool lists it as never its own. Only `.tsproj` projects are
+  read: the `Saved` of the other project kinds was never measured. An unsaved setting on a PLC
+  project's properties pages (*Compiler defines*) is not seen, even with its page open: no
+  document, project or tree item reads unsaved (measured, round 3), and the build saves it.
+  `build` prints a `note:` line saying so; ask the user to save or close those pages before an
+  agent builds. XAE's *Activate Configuration* builds too, and saves everything unsaved with no
+  check (measured). The walk skips `References` (617) and `External Types` (652): an external
+  type's file name is a dotted name such as `….ExternalTypes.TcEventSeverity`, not a path, and its
+  `Saved` is null, so walking into them only produced a false refusal. It reaches the PLC project
   by `LookupTreeItem('TIPC^<PLC>^<PLC> Project')`: the PLC node's `Child(i)` lists only
   `<PLC> Instance`. An unsaved document counts as covered only when its file is one the walk
   reported, so a PLC file the walk does not reach is listed too. The task is not such a file: a

@@ -10,7 +10,8 @@ closed, use tcpou.py and xae_build.ps1 instead.
 
   list                                                 every XAE: PID, solution, open dialogs. Run it first
   show       [<TreePath>]                              type, language, file, unsaved state, children (default TIPC)
-  get        <TreePath> [-Part decl|impl] -Out <file>  write the text XAE holds to a UTF-8 file (LD/CFC: XML)
+  get        <TreePath> [-Part decl|impl] [-Out <file>]  the text XAE holds, to a UTF-8 file or as UTF-8 to
+                                                       stdout (LD/CFC: XML). Use -Out to move a part into set
   set        <TreePath> -Part decl|impl -FromFile <f>  replace it in XAE's memory, then read it back. impl: ST only
   new        <FolderPath> -Type <t> -Name X [-Lang st|ld] [-Returns T] [-FromDecl f] [-FromImpl f]
                                                        a new object; XAE writes its file and registers it.
@@ -65,6 +66,13 @@ $script:Usage = 'usage: xae_edit.ps1 list | show|get|set|new|add-method|add-prop
 # measured on 4024.55 (evals/field-review-xae-edit.md).
 $script:NewTypes = @{ prg = 602; fun = 603; fb = 604; enum = 605; dut = 606; union = 607; alias = 623; gvl = 615; itf = 618 }
 $script:ItfType = 618
+# References (617) and External Types (652) hold library items, not files a build saves. An
+# external type's FileNames(1) is '<project>.PLC.<PLC>.ExternalTypes.<Name>' and its Saved null
+# (measured, 4024.55, round 3), so walking into them only finds things to fail closed on.
+$script:NoFileTypes = @(617, 652)
+# Printed before every build: nothing this tool can read turns unsaved when a setting on a PLC
+# project's properties page does (measured, 4024.55, round 3: F7 in evals/field-review-xae-edit.md).
+$script:SettingsNote = "note: settings on a PLC project's properties pages are not checked: an unsaved change there is saved by this build"
 
 # --- Pure helpers: no XAE, no COM. tests/xae_edit_tests.ps1 dot-sources this file for them. ---
 
@@ -73,7 +81,6 @@ function Get-ArgumentError([string] $cmd, [hashtable] $a) {
     if ($cmd -eq 'list') { return '' }
     if (-not $a.Solution) { return '-Solution <x.sln> is required' }
     if (($cmd -in @('get', 'set', 'new', 'add-method', 'add-property', 'save')) -and -not $a.TreePath) { return "$cmd needs a tree path" }
-    if ($cmd -eq 'get' -and -not $a.Out) { return 'get needs -Out <file>' }
     if ($cmd -eq 'set' -and -not $a.Part) { return 'set needs -Part decl or -Part impl' }
     if ($cmd -eq 'set' -and -not $a.FromFile) { return 'set needs -FromFile <file>' }
     if (($cmd -in @('new', 'add-method', 'add-property')) -and -not (Test-Identifier $a.Name)) { return "$cmd needs -Name, an identifier such as M_Reset or FB_Pump" }
@@ -104,9 +111,14 @@ function Get-AliasBase([string] $decl, [string] $returns) {
 # Graphical bodies (LD, FBD, CFC) come back as XmlArchive XML; Structured Text never starts with '<'.
 function Test-XmlBody([string] $text) { $text -match '^\s*<' }
 
-# A file-level object's VSProjectItem names its file; a method's names '<file>;<POU>.<method>',
-# which can end like a file too (FB_X.TcPOU;FB_X.TcpSend).
-function Test-ObjectFileName([string] $file) { $file -notmatch ';' -and $file -match '\.Tc[A-Za-z]+\z' }
+# A file-level object's VSProjectItem names its file, always as a full path (every field round);
+# a method's names '<file>;<POU>.<method>', which can end like a file too (FB_X.TcPOU;FB_X.TcpSend),
+# and an external type's a dotted name that can too (...ExternalTypes.TcEventSeverity). Not a list
+# of extensions: one would silently skip any object kind missing from it.
+function Test-ObjectFileName([string] $file) {
+    if ($file -match ';' -or $file -notmatch '\.Tc[A-Za-z]+\z') { return $false }
+    try { [IO.Path]::IsPathRooted($file) } catch { $false }    # .NET Framework throws on '<', '|'
+}
 
 function Get-ParentPath([string] $path) {
     $i = $path.LastIndexOf('^')
@@ -197,6 +209,16 @@ function Write-EditState([string] $file, [int] $xaePid, [hashtable] $map) {
 # --- XAE plumbing ---
 
 function Say([string] $text) { [Console]::Out.WriteLine($text) }
+
+# The text as UTF-8 bytes on stdout, nothing added. [Console]::Out encodes through the console code
+# page, and setting [Console]::OutputEncoding would change it for the user's console as well.
+function Write-StdoutUtf8([string] $text) {
+    [Console]::Out.Flush()
+    $b = (New-Object Text.UTF8Encoding $false).GetBytes($text)
+    $s = [Console]::OpenStandardOutput()
+    $s.Write($b, 0, $b.Length)
+    $s.Flush()
+}
 
 # Not Write-Error: under $ErrorActionPreference = 'Stop' it throws a full error record instead.
 function Stop-Edit([int] $code, [string] $message) {
@@ -576,10 +598,12 @@ function Test-HasChild($item, [string] $name) {
 # Unsaved file-level objects under a PLC project, as @{ Item; Path; Unreadable }. Folders are
 # walked; an object's own children (methods, properties) live in its file and are not. An object
 # whose saved state cannot be read is reported too, as someone else's: the guard fails closed.
+# References and External Types are skipped by item type: nothing in them is a file.
 function Find-Unsaved($item, [string] $path, [hashtable] $unsaved = (Get-UnsavedMemberFiles)) {
     $n = $item.ChildCount
     for ($i = 1; $i -le $n; $i++) {
         $c = $item.Child($i)
+        if ((Get-ItemType $c) -in $script:NoFileTypes) { continue }
         $p = "$path^$($c.Name)"
         $file = Get-FileName $c
         # A method here means $item was an object whose own file name could not be read.
@@ -637,6 +661,35 @@ function Get-UnsavedDocuments([hashtable] $reported) {
     Assert-Answered 'listing open documents'
 }
 
+# An unsaved System Manager setting is not a document: a Real-Time change left every document
+# saved, but the .tsproj project read Saved=False, IsDirty=True, and Saved=True before it (measured,
+# 4024.55, round 3). This tool's own edits left that project Saved=True (measured), and it writes
+# PLC objects only, so a line here is never its own. Only .tsproj: the Saved of a Connectivity,
+# Measurement or Drive Manager project was never read, and a Measurement project rewrites its
+# files on its own. No Solution (the unit fakes) means nothing to check.
+function Get-UnsavedSettings {
+    $sol = $null
+    if ($null -ne $script:Xae -and $null -ne $script:Xae.Dte) { $sol = $script:Xae.Dte.Solution }
+    if ($null -eq $sol) { return }
+    foreach ($p in $sol.Projects) {
+        $f = ''; try { $f = [string] $p.FullName } catch { }
+        if (-not $f.EndsWith('.tsproj', [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $s = $null; try { $s = $p.Saved } catch { }
+        if ($s -eq $true) { continue }
+        if ($s -is [bool]) { "$f (System Manager configuration, unsaved)" }
+        else { "$f (System Manager configuration, its saved state could not be read)" }
+    }
+    Assert-Answered 'reading the System Manager projects'
+}
+
+# A build saves everything unsaved, so it is refused while anything named holds edits this tool
+# did not make, unless -SaveUserEdits.
+function Assert-BuildAllowed([string[]] $named) {
+    if (@($named).Count -and -not $SaveUserEdits) {
+        Stop-Edit 1 "refused: a build saves every unsaved object, and these hold edits this tool did not make:`n  $($named -join "`n  ")`nAsk the user to save or undo them, or pass -SaveUserEdits."
+    }
+}
+
 function Remove-SavedState {
     foreach ($k in @($script:State.Keys)) {
         $it = $null
@@ -686,6 +739,7 @@ function Invoke-Get {
     $text = Get-PartText $t.Item $p
     Assert-Answered "reading the $p of $($t.Path)"
     if ($null -eq $text) { Stop-Edit 1 "$($t.Path) has no $p part" }
+    if (-not $Out) { Write-StdoutUtf8 (ConvertTo-Eol $text "`n"); return }
     Write-Utf8File $Out (ConvertTo-Eol $text "`n")
     $note = if (Test-XmlBody $text) { ' (a graphical body: XML, which set refuses)' } else { '' }
     Say "wrote the $p of $($t.Path) to $(Resolve-FullPath $Out)$note"
@@ -860,11 +914,9 @@ function Invoke-Build {
     }
     $reported = @{}
     foreach ($u in @($mine) + @($theirs)) { $f = Get-FileName $u.Item; if ($f) { $reported[$f] = $true } }
-    $docs = @(Get-UnsavedDocuments $reported)
+    $docs = @(Get-UnsavedDocuments $reported) + @(Get-UnsavedSettings)
     $named = @($theirs | ForEach-Object { if ($_.Unreadable) { "$($_.Path) (its saved state could not be read)" } else { $_.Path } }) + $docs
-    if ($named.Count -and -not $SaveUserEdits) {
-        Stop-Edit 1 "refused: a build saves every unsaved object, and these hold edits this tool did not make:`n  $($named -join "`n  ")`nAsk the user to save or undo them, or pass -SaveUserEdits."
-    }
+    Assert-BuildAllowed $named
     foreach ($u in @($mine) + @($theirs)) {
         if ($u.Unreadable) { Say "left to the build's own save: $($u.Path)"; continue }
         Save-Owner $u
@@ -872,6 +924,7 @@ function Invoke-Build {
     }
     foreach ($d in $docs) { Say "left to the build's own save: $d" }
     Remove-SavedState
+    Say $script:SettingsNote
     Assert-NoDialog
     $sb = $script:Xae.Dte.Solution.SolutionBuild
     $sb.Build($true)

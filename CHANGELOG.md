@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-11-04
 
 **Editing a project the user has open in XAE**
 
@@ -26,9 +26,19 @@
   the PLC node's children do not list it. A declaration write makes XAE save the object at once,
   which the tool now reports. An alias is created with its base type. After that run, `build`
   also lists an unsaved PLC file its walk did not reach; no real case has shown that path yet,
-  since the task after a cycle-time change is caught by the walk. A second field round confirmed
-  the guards by hand and found no defect; an online change after a script edit is still untested.
-  `tests/xae_edit_tests.ps1` tests what needs no XAE, on Windows PowerShell 5.1 in CI.
+  since the task after a cycle-time change is caught by the walk, nor did round 3. A second field
+  round confirmed the guards by hand and found no defect. A third found three: `build` refused
+  falsely on a project using an external type named `Tc…` (F5), and saved an unsaved System
+  Manager setting (F6) and an unsaved PLC project setting (F7) without listing them. F5 and F6
+  are fixed and unit-tested only, with no XAE run after the fix: the walk skips `References` and
+  `External Types`, an object file must be a full path, and `build` lists the `.tsproj` project
+  when it reads unsaved. F7 is a documented limit: nothing the tool can read turns unsaved, so
+  `build` prints a `note:` line before every build. An online change after a script edit is still
+  untested. `tests/xae_edit_tests.ps1` tests what needs no XAE, on Windows PowerShell 5.1 in CI.
+- `xae_edit.ps1 get` without `-Out` prints the part to stdout as UTF-8 instead of exiting 2; both
+  field agents tried it first.
+- The closing line of a code hand-over starts `Compiled in XAE, not tested on a target.` instead
+  of `Not compiled.` when the code was built through XAE.
 - **`tcpou.py` refuses to write a project an XAE has open**: `set`, `add-method`, `add-property`,
   `register` and `reguid` exit 1 while XAE's `<project>.project.~u` lock file under the solution's
   folder is under two minutes old, or names a PID running on this machine. In the field test a disk edit there raised two reload prompts, and with an unsaved edit

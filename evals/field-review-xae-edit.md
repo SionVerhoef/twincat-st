@@ -294,3 +294,145 @@ was touched, so nothing needs re-activating.
 
 E16 on the test controller, and E17 on Project_A if wanted. To prove the document matching on
 its own, a case is needed where an unsaved `.Tc*` document has no tree item that reads `False`.
+
+## Round 3
+
+This round ran `field-test-xae-edit-round3.md` on rounds 1 and 2's TwinCAT PC on 2026-11-03
+(TcXaeShell 3.1.4024.55, `TcXaeShell.DTE.15.0`), Windows 10 (19045), Python 3.12.10, Windows
+PowerShell 5.1.19041.7548. The skill was at `b02b5a9` (the merge of PR #52), in a fresh clone.
+`<scratch>` was a fresh clone of the scratch TcUnit solution at `6d91cbb`, on its own branch. The
+round-2 state file in `%TEMP%` was deleted first. The maintainer's own XAE was closed, one started
+from the Start menu, not elevated, and `<scratch>` opened by hand. The checks ran from PowerShell 7
+with `chcp 437` and `PYTHONUTF8`/`PYTHONIOENCODING` removed; `xe` runs the tool on Windows
+PowerShell 5.1. Project_A ran in a temporary **sparse** worktree (`PLC/` only, 453 POUs) at its
+`HEAD` (`8380faf`): the system disk had about 280 MB free, too little for a full worktree.
+
+**The release is held.** The stop rule did not trigger: E19's `set` and `save` exited 1 and `xyz`
+did not reach the disk. E0 to E19 and E21 pass. But E20a and E20b each **saved a person's unsaved
+setting without listing it**, and E17a **refused falsely** on Project_A, listing a library type
+nobody can edit. The runbook holds the release on both. Three defects, F5 to F7 below. E16 was
+skipped by the maintainer's decision.
+
+| # | Result | Evidence |
+|---|---|---|
+| E0 | pass | `run_tests.py`: 144 `ok`, `all checks passed`, exit 0. `xae_edit_tests.ps1` with an XAE running: 89 `ok`, one `skip  list with no XAE: an XAE or Visual Studio is running (PID 12676)`, `all checks passed`, exit 0 |
+| E1b | pass | `PID 12128  TcXaeShell.DTE.15.0  <scratch>\TcUnitScratch.sln`, exit 0 |
+| E5 | pass | `added fb TIPC^PLC1^PLC1 Project^POUs^FB_XeSt as <scratch>\…\FB_XeSt.TcPOU (saved: XAE writes the file itself when it creates an object or a declaration is set). XAE registers it in the .plcproj when the project is saved: a build saves it`, exit 0, no `created with vInfo form` line |
+| E18a | pass (runbook wording, N1) | `PRG_Xe` 602 and `F_XeAdd` 603, `language 1 (ST)`, both exit 0. Both print `(unsaved; the file changes on: xae_edit.ps1 save)`, not `(saved: …)`: created with `-FromImpl`, the declaration is on disk and the body is pending, which `show` confirms (`saved False, edited by this tool`) and the file confirms (`<ST><![CDATA[]]></ST>`). The tool reports the state after its last write, correctly. No `created with vInfo form` line |
+| E18b | pass | `ST_Xe` 606, `E_Xe` 605, `U_Xe` 607, `T_XeMm` 623 (`.TcDUT`), `GVL_Xe` 615 (`.TcGVL`, under `POUs`: the copy has no `GVLs` folder), each `(saved: …)`, exit 0, `saved True`. `T_XeMm.TcDUT` holds `TYPE T_XeMm : LREAL;` / `END_TYPE`. `T_XeNd` skipped as the runbook says. No `vInfo form` line |
+| E18c | pass | `I_Xe` `.TcIO` 618, lists `^Level type 612` and `^M_Probe type 610`; `^Level` lists `^Get type 654` only. Lines: `added the Get accessor`. No `vInfo form` line, no `removed the Set accessor` line |
+| E18d | pass | Declaration reads back `FUNCTION_BLOCK FB_XeChild EXTENDS FB_XeSt IMPLEMENTS I_Xe`. `add-method … -FromImpl`: `(unsaved; …)`. `set "…^Level^Get"`: `(unsaved; …)`, exit 0. `show "$pous^FB_XeChild^Level^Get"`: `type 613`, `language 1 (ST)`, `saved     False, edited by this tool (its file object TIPC^PLC1^PLC1 Project^POUs^FB_XeChild)` |
+| E18e | pass | `added the Get accessor`, `added the Set accessor`, `added property …^FB_XeSt^Speed with Get, Set in XAE (saved: …)`. Both accessor sets exit 0, `(unsaved; …)`. `sd.st`: `PUBLIC` / `VAR` / `END_VAR`. `show "$pous^FB_XeSt"`: `saved     False, edited by this tool` |
+| E8b | pass | `saved TIPC^PLC1^PLC1 Project^POUs^FB_XeSt to <scratch>\…\FB_XeSt.TcPOU`, exit 0; `show`: `saved     True`; `Select-String`: `FB_XeSt.TcPOU:21: <ST><![CDATA[Speed := 2.0;` |
+| E19 | pass | `save "$pous^FB_XeChild"`: `saved …`, `show` `saved True`. With `//xyz` typed in `Level` → `Get`: `show` on the POU `saved     False, edited by someone else`, on `^Level^Get` the same `(its file object …^FB_XeChild)`. `set` and `save` each `refused: TIPC^PLC1^PLC1 Project^POUs^FB_XeChild holds unsaved edits this tool did not make, probably typed in XAE. …`, exit 1. `Select-String xyz`: nothing. `get -Part impl` read `Level := 1.5;//xyz` from XAE. The tester deleted `//xyz` and ran *Save All* |
+| E18f | pass (N2) | Every `save` printed `nothing to save: … is up to date`, exit 0, and `show` `saved True`: E19's *Save All* had already saved every object, so the build had no edit of the tool's own pending and that path was not exercised here (E17a covers it). `build`: `Build complete -- 0 errors, 0 warnings : ready for download!`, `Build: 2 succeeded or up-to-date, 0 failed`, `Projects failed: 0`, exit 0, 6.7 s, no prompt. `tcpou.py check`: `ok` for all 10 new files. The `.plcproj` diff adds exactly their 10 `Compile` entries |
+| E20a | **fail (F7)** | With `XE_R3` typed into *Compiler defines*, unsaved, tab marked `*`: `show "TIPC^PLC1^PLC1 Project"` prints `type 600` and its children and **no `saved` line**. `build` went ahead: the Build pane, `Projects failed: 0`, exit 0, 5.1 s, nothing listed. Afterwards `PLC1.plcproj` holds `<CompilerDefines>XE_R3</CompilerDefines>`: the build saved a person's setting without listing it |
+| E20b | **fail (F6)** | With the core's CPU limit changed 80 % → 70 % (a dropdown), unsaved: `build` went ahead, `Projects failed: 0`, exit 0, 5.8 s, nothing listed. `git diff` on `TcUnitScratch.tsproj`: `+<Settings>` / `+<Cpu RtLimit="70"/>` / `+</Settings>`. A probe in the same state read `Solution.Projects` → `TcUnitScratch  Saved=False  IsDirty=True  …\TcUnitScratch.tsproj`: DTE did see it |
+| E17a | **fail (F5)** | `list` exit 0. `show "…^POUs^X"`: `type 604`, `language 1 (ST)`, `saved True`, four methods (609). `set` on `…^POUs^Y` with `// R3`: `(unsaved; …)`, exit 0. Before the build the tester clicked *Activate Configuration* by accident; it built Project_A and saved `Y` (N3), so `Y` was edited again (`// R3b`, `(unsaved; …)`, `show` `saved False, edited by this tool`). With a space typed in `X`'s body: `refused: a build saves every unsaved object, and these hold edits this tool did not make:` / `  TIPC^PLC1^PLC1 Project^External Types^TcEventSeverity (its saved state could not be read)` / `  …^POUs^X`, exit 1, **10.5 s**. `X` is right and `Y` is rightly taken as the tool's own; the `External Types` line is a false refusal |
+| E17b | pass | `saved …^POUs^Y`, `left to the build's own save: TIPC^PLC1^PLC1 Project^External Types^TcEventSeverity`, `saved …^POUs^X`, the Build pane `Build complete -- 0 errors, 0 warnings`, `Build: 3 succeeded or up-to-date, 0 failed`, `Projects failed: 0`, exit 0, **18.5 s**, no prompt. Solution closed without saving, worktree removed |
+| E21 | pass | A fresh agent, told only where the skill is and given the task, ran: `xae_edit.ps1 list`; a `Get-ChildItem` for the file; `show …^FB_XeSt`; `add-method … -Name M_Reset -Returns BOOL -FromImpl <file>` (`(unsaved; …)`, exit 0); `get … -Part decl` and `-Part impl` without `-Out` (exit 2, `get needs -Out <file>`, N4), again with `-Out` (exit 0); `save …^FB_XeSt` (exit 0); `build` (`Build complete -- 0 errors, 0 warnings`, `Projects failed: 0`, exit 0); `st_review.py` (no findings). Never `tcpou.py set`/`add-method`, never `xae_build.ps1`, no `--allow-open`, `-Force` or `-SaveUserEdits`, no prompt; `M_Reset` is in Solution Explorer and on disk. It ended with the skill's `Not compiled. …` line right after reporting the compile (N5) |
+| E16 | skipped | no controller without a machine project |
+
+### F5 -- `build` refuses on an external type whose name starts with `Tc`
+
+`Test-ObjectFileName` takes any name ending in `.Tc<letters>` for an object file. Under
+`External Types` (652), each item is type 651, and its `VSProjectItem.FileNames(1)` is not a
+path: for `TcEventSeverity` it is `PLC_project.PLC.PLC1.ExternalTypes.TcEventSeverity`, which ends
+`.TcEventSeverity`. Its `VSProjectItem.Saved` is null. So `Find-Unsaved` reports it as an object
+whose saved state cannot be read, and the guard, failing closed, refuses every plain `build` on
+any project that uses an external type named `Tc…`. Project_A does (`TcEventSeverity` among 12
+external types). `-SaveUserEdits` builds, printing `left to the build's own save: …TcEventSeverity`.
+
+### F6 -- `build` does not see an unsaved System Manager setting
+
+The runbook expected a `.tsproj` or `.xti` document. None is listed: the Real-Time page's change
+is not a DTE document. But the System Manager project itself turns unsaved: `Dte.Solution.Projects`
+gives the `.tsproj` project `Saved=False`, `IsDirty=True` (measured, False/True only while the
+change was unsaved; `Saved=True`, `IsDirty=False` before). The guard never reads
+`Solution.Projects`.
+
+### F7 -- `build` does not see an unsaved PLC project setting
+
+With *Compiler defines* changed and unsaved, its tab marked `*`, probes read (all measured):
+every `Dte.Documents` entry `Saved=True` (no `.plcproj` document); `Solution.Saved=True`,
+`IsDirty=False`; the `.tsproj` project `Saved=True`, `IsDirty=False`; the PLC project tree item
+(600) has no readable `VSProjectItem.Saved` and no `NestedProject`; `TIPC^PLC1`'s
+`VSProjectItem` (`PLC1.xti`) `Saved=True`. The Running Document Table was not reachable from an
+out-of-process probe (`QueryService` on the DTE object: `0x80004002`), and window captions could
+not be read late-bound from PowerShell. No Automation route tried here sees this change.
+
+### Notes
+
+- **N1** The runbook's "every `new` prints `(saved: …)`" does not hold for `new -FromImpl`: the
+  body set after creation leaves the object unsaved, and the tool says so. Runbook wording only.
+- **N2** E19's clean-up (*Save All*) runs before E18f, so E18f's saves had nothing to save and
+  its build had no tool edit pending. Runbook order only.
+- **N3** XAE's *Activate Configuration* builds, and so saves every unsaved object, the tool's and
+  the person's alike, with no check: it bypasses `build`'s guard. Nothing indicates it reached a
+  runtime (`_Boot\TargetDescription.xml` holds only the version); the tester saw nothing happen.
+- **N4** `get` without `-Out` exits 2. Both the field agent and E21's agent tried it first.
+- **N5** `SKILL.md` asks for `Not compiled. …` word for word at the end of every hand-over with
+  code, also after rung 2 (a build through XAE). E21's agent wrote it right after a compile with
+  0 errors and had to explain the contradiction.
+- **N6** `show` on the PLC project (600) prints no `saved` line, so it cannot show F7 either.
+
+### Facts recorded
+
+- Plain `build` on the scratch solution: 5.1-6.7 s. On Project_A: refusal after the walk 10.5 s;
+  a full build with `-SaveUserEdits` 18.5 s.
+- External type (651): `FileNames(1)` = `<project>.PLC.<PLC>.ExternalTypes.<Name>`, not a path;
+  `VSProjectItem.Saved` null.
+- An unsaved Real-Time setting: `.tsproj` project `Saved=False`, `IsDirty=True`; no DTE document.
+  With only this tool's edits pending (a body `set`, an `add-method`, a `new` FB with an unsaved
+  body), measured after the round on the same XAE: the `.tsproj` project `Saved=True`,
+  `IsDirty=False`, `Solution.Saved=True`; the member and new-object documents `Saved=False`.
+- An unsaved PLC project setting: no DTE document, project or tree item reads unsaved.
+- Clearing *Compiler defines* and saving leaves `<CompilerDefines>` / `</CompilerDefines>`, not
+  the original absence of the element.
+
+### Clean-up
+
+Removed by the agent: the Project_A worktree (`git worktree remove`). The tester removes
+`<scratch>` (`C:\Git\tcst-fieldtest\xae-edit-r3`), the skill clone `skill-r3` with E18's input
+files, `sd.st`, `child_back.st`, `e19_get.st` and `y_impl.st` in it, the probe scripts and logs
+`C:\Git\tcst-fieldtest\r3-*`, and `%TEMP%\twincat-st-xae_edit-*.txt`. No controller was touched
+by the round; see N3 for the accidental *Activate*.
+
+**Release decision: held** -- E20a/E20b saved settings without listing them (F6, F7), and E17a
+refused falsely on Project_A (F5).
+
+### After hand-back
+
+No further field round runs on a PC with XAE. Every change below rests on the measurements above
+and ran on unit tests only (`tests/xae_edit_tests.ps1`, fake tree items and a fake DTE); none has
+run on XAE.
+
+- **F5** `Test-ObjectFileName` also requires a rooted path. Every object file met in rounds 1 to 3
+  came back from `FileNames(1)` as a full path; the external type's dotted name does not. Not a
+  list of extensions: the projects on the PC hold `.TcPOU`, `.TcDUT`, `.TcGVL`, `.TcIO`, `.TcTTO`
+  and `.TcTLEO`, the docs name `.TcVIS`, and a list would silently skip a kind missing from it.
+  `Find-Unsaved` no longer walks into `References` (617) or `External Types` (652), by item type.
+- **F6** `build` reads `Saved` of each `.tsproj` project in `Solution.Projects` and lists one that
+  is not `True` as `<file> (System Manager configuration, unsaved)`, never as its own; with
+  `-SaveUserEdits` it prints `left to the build's own save: …`. Other project kinds are not read:
+  their `Saved` was never measured, and a Measurement project rewrites its files on its own.
+- **F7** waived by the maintainer: no detection was added, since none tried here sees the change
+  and none can be tested without XAE. `build` prints `note: settings on a PLC project's properties
+  pages are not checked: an unsaved change there is saved by this build` before every build.
+  `SKILL.md`, `references/tools.md` and `references/twincat/xae-automation.md` say so, tell the
+  agent to ask the user to save or close those pages first, and record N3's *Activate
+  Configuration*.
+- **N4** `get` without `-Out` prints the part to stdout as UTF-8 bytes, nothing added, and exits 0.
+  The docs keep `-Out` for moving a part into `set`: Windows PowerShell decodes a child's output
+  through the console code page.
+- **N5** After a build through XAE, the closing line starts `Compiled in XAE, not tested on a
+  target.`; the rest stays word for word. No eval greps for the exact opening.
+- N1, N2 and N6 are runbook or `show` notes and were not changed. E16 is still untested.
+
+Verified on the XAE PC on 2026-11-04 at `475568e`, Windows PowerShell 5.1, an XAE running:
+`xae_edit_tests.ps1` 103 `ok` and one `skip` (`list with no XAE`), `all checks passed`, exit 0;
+`run_tests.py` 144 `ok`, `all checks passed`, exit 0; `check_private.py` exit 0 (measured). Nothing
+needed changing.
+
+**Release decision: go** (maintainer, 2026-11-04). F5 and F6 rest on unit tests only, F7 is a
+documented limit, and E16 is still untested; the release notes say so.
