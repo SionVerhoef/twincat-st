@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `SKILL.md` hands TwinCAT NC axis questions (axis configuration, NC error codes, homing in the
+  NC, coupling, `.xti` axis files) to the companion skill `twincat-motion`.
+
 ## 0.6.0 — 2026-11-04
 
 **Editing a project the user has open in XAE**
