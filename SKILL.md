@@ -13,6 +13,8 @@ description: "Writes, reviews and debugs Structured Text for Beckhoff TwinCAT 3 
 
 **Scope traces and recordings** — reading a `.svdx`, sizing a recording, diagnosing an axis from measured data — belong to the companion skill `twincat-scope`. Load it if it is installed.
 
+**TwinCAT NC axes** — axis configuration and parameters, NC error codes (0x4xxx), homing in the NC, coupling and cam tables, `.xti` axis files, and why an axis won't enable or move — belong to the companion skill `twincat-motion`. Load it if it is installed. This skill still owns how the PLC code around the MC_ blocks is written and reviewed.
+
 ## Why a skill, rather than just writing the code
 
 A capable model writes Structured Text that *reads* correctly and *behaves* wrongly, because it imports a sequential mental model into a cyclically-scanned real-time system. The recurring failures are specific and predictable:
