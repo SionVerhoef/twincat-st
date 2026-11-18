@@ -1,6 +1,6 @@
 ---
 name: twincat-st
-description: "Writes, reviews and debugs Structured Text for Beckhoff TwinCAT 3 and CODESYS V3, and ships a reviewer for the dialect traps that easy-looking questions hide (PT := 500, level-driven Execute, blocking loops, float equality). Use when the user has any Structured Text question or task, even a one-liner, rather than answering from memory: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, or drawing ladder diagrams. Never write TwinSAFE/FSoE safety logic."
+description: "Writes, reviews and debugs Structured Text for Beckhoff TwinCAT 3 and CODESYS V3, and ships a reviewer for the dialect traps that easy-looking questions hide (PT := 500, level-driven Execute, blocking loops, float equality). Use when the user has any Structured Text question or task, even a one-liner, rather than answering from memory: a timer, counter or trigger that never fires, a hung state machine, OOP (EXTENDS, ABSTRACT, SUPER^, interfaces, FB_init, online change), writing or reviewing function blocks, PackML, PLCopen motion and Execute/Done, ADS, TcUnit, .TcPOU/.plcproj files, or a folder that contains them. Not for Siemens SCL/TIA Portal, Rockwell Studio 5000, OpenPLC/matiec, EtherCAT wiring or hardware selection, Scope traces, NC axis configuration (twincat-motion), or drawing ladder diagrams; a team framework with its own review skill owns reviews of code written against it. Never write TwinSAFE/FSoE safety logic."
 ---
 
 # Structured Text that survives contact with a machine
@@ -82,6 +82,8 @@ Match the surrounding project's conventions even where they differ from `referen
 ### 4. Review — with the tool, not by eye
 
 **A request to review is not a request to repair.** Asked to review, check, or "tell me what you find", report each finding with its location, rule id and the fix you would make — and leave the files as they are. Edit only when the user asks for fixes, or after asking whether they want them. A PLC project is often about to go onto a machine; changes nobody asked for are changes nobody re-tested.
+
+**If a team review skill covers the framework this code is written against, that skill owns the review report.** Run `scripts/st_review.py` for it and hand over the findings with their rule ids (`CP8`, `X1`…) rather than writing a second report.
 
 Run the reviewer on anything you wrote or were asked to review:
 

@@ -4,6 +4,9 @@
 
 - `SKILL.md` hands TwinCAT NC axis questions (axis configuration, NC error codes, homing in the
   NC, coupling, `.xti` axis files) to the companion skill `twincat-motion`.
+- The `description` also lists NC axis configuration under *Not for*, and says a team framework
+  with its own review skill owns reviews of code written against it. Step 4 tells the agent to run
+  `st_review.py` for that skill and hand over findings with rule ids instead of a second report.
 
 ## 0.6.0 — 2026-11-04
 
